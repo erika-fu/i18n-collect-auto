@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -I --connect-timeout 10 https://github.com)",
+      "Bash(git ls-remote *)",
+      "Bash(gh auth *)",
+      "Bash(curl -sS -o /dev/null -w '%{http_code}\\\\n' https://api.github.com/repos/erika-fu/i18n-collect-auto)"
+    ]
+  }
+}
