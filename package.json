@@ -1,49 +1,16 @@
 {
-  "name": "i18n-auto-webpack-demo",
-  "version": "0.1.0",
+  "name": "i18n-collect-workspace",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint",
-    "inspect": "vue inspect > output.js",
-    "test-watch": "node --inspect-brk ./node_modules/@vue/cli-service/bin/vue-cli-service.js build --watch"
-  },
-  "dependencies": {
-    "core-js": "^3.8.3",
-    "i18n-auto-webpack": "^0.5.5",
-    "vue": "^2.6.14",
-    "vue-i18n": "8.28.2",
-    "md5": "^2.3.0"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.12.16",
-    "@babel/eslint-parser": "^7.12.16",
-    "@vue/cli-plugin-babel": "~5.0.0",
-    "@vue/cli-plugin-eslint": "~5.0.0",
-    "@vue/cli-service": "~5.0.0",
-    "eslint": "^7.32.0",
-    "eslint-plugin-vue": "^8.0.3",
-    "vue-template-compiler": "^2.6.14",
-    "webpack-cli": "^4.10.0"
-  },
-  "eslintConfig": {
-    "root": true,
-    "env": {
-      "node": true
-    },
-    "extends": [
-      "plugin:vue/essential",
-      "eslint:recommended"
-    ],
-    "parserOptions": {
-      "parser": "@babel/eslint-parser"
-    },
-    "rules": {}
-  },
-  "browserslist": [
-    "> 1%",
-    "last 2 versions",
-    "not dead"
-  ]
+    "serve": "npm run serve -w i18n-auto-webpack-demo",
+    "build": "npm run build -w i18n-auto-webpack-demo",
+    "lint": "npm run lint -w i18n-auto-webpack-demo",
+    "test": "npm test -w i18n-collect",
+    "inspect": "npm run inspect -w i18n-auto-webpack-demo",
+    "test-watch": "npm run test-watch -w i18n-auto-webpack-demo"
+  }
 }

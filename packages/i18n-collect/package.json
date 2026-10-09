@@ -1,0 +1,16 @@
+{
+  "name": "i18n-collect",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "peerDependencies": {
+    "webpack": "^4.0.0 || ^5.0.0"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.12.16",
+    "@babel/traverse": "^7.12.16",
+    "loader-utils": "^1.4.0"
+  }
+}

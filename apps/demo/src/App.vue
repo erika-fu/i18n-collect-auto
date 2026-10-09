@@ -17,22 +17,9 @@ export default {
       width:10
     }
   },
-  updated(){
-    
-    console.log("updated");
-    console.log("updated",this.$refs.a);
-    setTimeout(()=>{
-      console.log("TIMEOUT");
-      
-    })
-  },
   methods:{
     change(){
       this.width = 20
-      this.$nextTick(()=>{
-        console.log("nexttick",this.$refs.a);
-        console.log("nexttick");
-      })
     }
   }
 }
@@ -46,11 +33,6 @@ export default {
   text-align: center;
   color: #2c3e50;
   margin-top: 60px;
-}
-.container{
-  width: 200px;
-  height:20px;
-  overflow: auto;
 }
 .content{
   width:100%

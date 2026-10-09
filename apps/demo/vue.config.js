@@ -1,5 +1,7 @@
 const { defineConfig } = require('@vue/cli-service')
-const { resolve } = require('path')
+
+const loaderPath = require.resolve('i18n-collect/myloader')
+const MyI18nPlugin = require('i18n-collect/myplugin')
 
 module.exports = defineConfig({
   transpileDependencies: true,
@@ -10,18 +12,7 @@ module.exports = defineConfig({
       devtool: 'source-map'
     }
 
-    // 仅开发环境启用插件
-    if (process.env.NODE_ENV === 'development') {
-      config.plugins = [
-        ...(config.plugins || []),
-        new (require('./myplugin'))({
-          output: {
-            path: resolve(__dirname, './lang'),
-            filename: 'zh_hash.json'
-          }
-        })
-      ]
-    }
+    config.plugins = [...(config.plugins || []), new MyI18nPlugin()]
 
     return config
   },
@@ -35,7 +26,7 @@ module.exports = defineConfig({
       .rule('js')
       .test(/\.js$/)
       .use('i18n-auto-loader')
-        .loader(resolve(__dirname, './myloader')) // 绝对路径
+        .loader(loaderPath) // 绝对路径
         .before('babel-loader') // 优先于 babel 执行
         .end()
 
@@ -47,7 +38,15 @@ module.exports = defineConfig({
       .test(/\.vue$/)
       .resourceQuery(/type=template/)
       .use('i18n-auto-loader')
-        .loader(resolve(__dirname, './myloader'))
+        .loader(loaderPath)
+        .end()
+
+    config.module
+      .rule('vue-script-i18n-collect')
+      .test(/\.vue$/)
+      .resourceQuery(/type=script/)
+      .use('i18n-auto-loader')
+        .loader(loaderPath)
         .end()
   }
 })

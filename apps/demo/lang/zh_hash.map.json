@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "parserVersion": "babel-7",
+  "configHash": "76d1a483935264789886e57db018dced",
+  "entries": [
+    {
+      "key": "7eca689f0d3389d9dea66ae112e5cfd7",
+      "value": "你好",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 15,
+            "column": 8
+          },
+          "end": {
+            "line": 15,
+            "column": 12
+          }
+        }
+      ]
+    },
+    {
+      "key": "dba2532ae92948933cda539ef740d073",
+      "value": "我不好",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 16,
+            "column": 8
+          },
+          "end": {
+            "line": 16,
+            "column": 13
+          }
+        }
+      ]
+    }
+  ]
+}
