@@ -102,6 +102,19 @@ function merge(base, options, allowed) {
   return { ...base, ...options }
 }
 
+function hashConfig(config) {
+  return crypto.createHash('md5').update(JSON.stringify(config)).digest('hex')
+}
+
+function canonicalRoot(root) {
+  const resolved = path.resolve(root)
+  try {
+    return fs.realpathSync(resolved)
+  } catch (error) {
+    return resolved
+  }
+}
+
 function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {}) {
   const projectRoot = path.resolve(root)
   const file = path.join(projectRoot, CONFIG_FILE)
@@ -111,13 +124,15 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
     fileConfig = require(file)
   }
   let config = validate(projectRoot, fileConfig)
+  const fileConfigHash = hashConfig(config)
   config = validate(projectRoot, merge(config, loaderOptions, new Set(['include', 'exclude', 'attributeAllowlist', 'styleExtensions'])))
   config = validate(projectRoot, merge(config, pluginOptions, new Set(['outputPath', 'sourceMapFilename'])))
   return {
     ...config,
     root: projectRoot,
-    configHash: crypto.createHash('md5').update(JSON.stringify(config)).digest('hex')
+    configHash: hashConfig(config),
+    fileConfigHash
   }
 }
 
-module.exports = { CONFIG_FILE, DEFAULTS, loadConfig, validate }
+module.exports = { CONFIG_FILE, DEFAULTS, canonicalRoot, loadConfig, validate }

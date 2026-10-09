@@ -6,20 +6,31 @@ const test = require('node:test')
 const webpack = require('webpack')
 const loader = require('../myloader')
 
-function runLoader({ root, source, sourceMap, meta, resourcePath, resourceQuery = '', options = {} }) {
+function runLoader({ root, source, sourceMap, meta, resourcePath, resourceQuery = '', options = {}, track }) {
   const buildInfo = {}
+  const dependencies = []
+  const missing = []
   let result
-  loader.call({
+  let thrown
+  const context = {
     resourcePath,
     resourceQuery,
     rootContext: root,
     _module: { buildInfo },
     getOptions: () => ({ root, ...options }),
+    addDependency(file) { dependencies.push(file) },
+    addMissingDependency(file) { missing.push(file) },
     callback(error, nextSource, nextMap, nextMeta) {
       result = { error, nextSource, nextMap, nextMeta }
     }
-  }, source, sourceMap, meta)
-  return { ...result, metadata: buildInfo.i18nCollect }
+  }
+  if (track) Object.assign(context, track)
+  try {
+    loader.call(context, source, sourceMap, meta)
+  } catch (error) {
+    thrown = error
+  }
+  return { ...result, thrown, metadata: buildInfo.i18nCollect, dependencies, missing }
 }
 
 test('passes string source, source map, and meta through unchanged', () => {
@@ -111,6 +122,51 @@ test('commits an empty Vue template snapshot and skips excluded scripts', () => 
     scriptResult.metadata.snapshot.identity,
     templateResult.metadata.snapshot.identity
   )
+})
+
+test('a script parse error names the project path, block, and source location', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  const source = 'const message = "你好\n'
+  const { thrown } = runLoader({
+    root,
+    source,
+    sourceMap: null,
+    meta: null,
+    resourcePath: path.join(root, 'src/example.js')
+  })
+  assert.ok(thrown)
+  assert.match(thrown.message, /src\/example\.js/)
+  assert.match(thrown.message, /script/)
+  assert.match(thrown.message, /line 1/)
+  assert.match(thrown.message, /column 16/)
+  assert.match(thrown.message, /Unterminated string constant/)
+})
+
+test('registers an existing configuration file and a missing one', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const configFile = path.join(root, 'i18n-collect.config.js')
+  fs.writeFileSync(configFile, 'module.exports = { include: ["src"] }\n')
+  const present = runLoader({
+    root,
+    source: 'module.exports = "你好"\n',
+    sourceMap: null,
+    meta: null,
+    resourcePath: path.join(root, 'src/example.js')
+  })
+  assert.deepStrictEqual(present.dependencies, [configFile])
+  assert.deepStrictEqual(present.missing, [])
+
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  const absent = runLoader({
+    root: bare,
+    source: 'module.exports = "你好"\n',
+    sourceMap: null,
+    meta: null,
+    resourcePath: path.join(bare, 'src/example.js')
+  })
+  assert.deepStrictEqual(absent.dependencies, [])
+  assert.deepStrictEqual(absent.missing, [path.join(bare, 'i18n-collect.config.js')])
 })
 
 test('webpack passes source, source map, and meta through the loader', { timeout: 20000 }, async () => {

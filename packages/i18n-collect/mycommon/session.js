@@ -34,6 +34,10 @@ function freshRound() {
   }
 }
 
+function clone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value))
+}
+
 function storeFromSnapshots(snapshots) {
   const store = new CollectionStore()
   for (const snapshot of snapshots || []) {
@@ -42,14 +46,89 @@ function storeFromSnapshots(snapshots) {
   return store
 }
 
+function moduleMetadata({ root, fileConfigHash, included, snapshot }) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    root,
+    fileConfigHash,
+    invoked: true,
+    included: Boolean(included),
+    snapshot: snapshot || null
+  }
+}
+
+function metadataPath(metadata) {
+  const snapshot = metadata && metadata.snapshot
+  return snapshot && snapshot.projectPath ? snapshot.projectPath : null
+}
+
+function interpretMetadata(metadata, context) {
+  const projectPath = metadataPath(metadata)
+  const prefix = projectPath
+    ? `i18n-collect ignored metadata for ${projectPath}`
+    : 'i18n-collect ignored module metadata'
+  const validEnvelope = metadata &&
+    typeof metadata === 'object' &&
+    metadata.schemaVersion === SCHEMA_VERSION &&
+    metadata.invoked === true &&
+    typeof metadata.included === 'boolean' &&
+    typeof metadata.root === 'string' &&
+    typeof metadata.fileConfigHash === 'string'
+  if (!validEnvelope) {
+    return { integrated: false, snapshot: null, diagnostic: `${prefix}: schema is invalid or unsupported` }
+  }
+  if (metadata.root !== context.root) {
+    return {
+      integrated: false,
+      snapshot: null,
+      diagnostic: `${prefix}: metadata does not belong to the current root compiler`
+    }
+  }
+  if (metadata.fileConfigHash !== context.fileConfigHash) {
+    return {
+      integrated: false,
+      snapshot: null,
+      diagnostic: `${prefix}: configuration does not match the current root compiler`
+    }
+  }
+  if (!metadata.included) return { integrated: true, snapshot: null, diagnostic: null }
+  const snapshot = metadata.snapshot
+  if (!snapshot || typeof snapshot.identity !== 'string' || !Array.isArray(snapshot.entries)) {
+    return { integrated: false, snapshot: null, diagnostic: `${prefix}: schema is invalid or unsupported` }
+  }
+  return { integrated: true, snapshot, diagnostic: null }
+}
+
+function assembleLiveSet(modules, context) {
+  const byIdentity = new Map()
+  const diagnostics = []
+  let integrated = false
+  for (const mod of modules || []) {
+    const metadata = mod && mod.buildInfo && mod.buildInfo[COLLECT_METADATA]
+    if (!metadata) continue
+    const read = interpretMetadata(metadata, context)
+    if (read.diagnostic) diagnostics.push(read.diagnostic)
+    if (read.integrated) integrated = true
+    if (read.snapshot && read.snapshot.identity) byIdentity.set(read.snapshot.identity, read.snapshot)
+  }
+  return {
+    snapshots: [...byIdentity.values()],
+    integrated,
+    diagnostics: [...new Set(diagnostics)]
+  }
+}
+
 class CollectionSession {
   constructor() {
     this.rounds = new WeakMap()
+    this.snapshotList = []
+    this.committedConfigHash = null
     this.committed = new CollectionStore()
   }
 
   begin(compilation) {
-    this.rounds.set(mainCompilation(compilation), freshRound())
+    const main = mainCompilation(compilation)
+    if (!this.rounds.has(main)) this.rounds.set(main, freshRound())
   }
 
   round(compilation) {
@@ -80,17 +159,63 @@ class CollectionSession {
     return this.round(compilation).invocations
   }
 
+  isAbandoned(compilation) {
+    const round = this.rounds.get(mainCompilation(compilation))
+    return Boolean(round && round.abandoned)
+  }
+
+  // Submissions normalized from child compilations. A later retention policy
+  // can merge these when a child module is absent from the main module graph.
+  candidateSnapshots(compilation) {
+    const round = this.rounds.get(mainCompilation(compilation))
+    if (!round) return []
+    return clone([...round.submissions.values()])
+  }
+
+  committedSnapshots() {
+    return clone(this.snapshotList)
+  }
+
   abandon(compilation) {
     const round = this.round(compilation)
     round.abandoned = true
     round.submissions.clear()
   }
 
-  commit(compilation, snapshots) {
+  commit(compilation, snapshots, configHash) {
     const round = this.round(compilation)
     if (round.abandoned) return this.committed
-    this.committed = storeFromSnapshots(snapshots)
-    round.submissions.clear()
+    this.snapshotList = clone(snapshots || [])
+    if (configHash !== undefined) this.committedConfigHash = configHash
+    this.committed = storeFromSnapshots(this.snapshotList)
+    this.rounds.delete(mainCompilation(compilation))
+    return this.committed
+  }
+
+  checkpoint() {
+    return {
+      snapshots: clone(this.snapshotList),
+      configHash: this.committedConfigHash
+    }
+  }
+
+  rollback(saved) {
+    this.snapshotList = clone(saved.snapshots)
+    this.committedConfigHash = saved.configHash
+    this.committed = storeFromSnapshots(this.snapshotList)
+  }
+
+  async release(compilation, snapshots, configHash, write) {
+    if (this.isAbandoned(compilation)) return this.committed
+    const saved = this.checkpoint()
+    this.commit(compilation, snapshots, configHash)
+    try {
+      await write(this.committed)
+    } catch (error) {
+      this.rollback(saved)
+      this.abandon(compilation)
+      throw error
+    }
     return this.committed
   }
 }
@@ -112,5 +237,7 @@ module.exports = {
   getSession,
   rootCompiler,
   mainCompilation,
-  storeFromSnapshots
+  storeFromSnapshots,
+  moduleMetadata,
+  assembleLiveSet
 }

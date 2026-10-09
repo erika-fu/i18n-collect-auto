@@ -4,14 +4,18 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const webpack = require('webpack')
+const { NormalModule } = webpack
 const { VueLoaderPlugin } = require('@vue/vue-loader-v15')
+const { loadConfig } = require('../mycommon/config')
+const { getSession } = require('../mycommon/session')
 const MyI18nPlugin = require('../myplugin')
 
 const HELLO = '7eca689f0d3389d9dea66ae112e5cfd7'
 
-function compile(config) {
+function compile(config, prepare) {
   return new Promise((resolve, reject) => {
     const compiler = webpack(config)
+    if (prepare) prepare(compiler)
     compiler.run((error, stats) => {
       compiler.close(closeError => {
         if (error) reject(error)
@@ -42,6 +46,58 @@ function readOutput(root, outputPath = 'lang/zh_hash.json', sourceMapFilename = 
 
 function messages(stats) {
   return stats.toJson({ errors: true }).errors.map(error => error.message).join('\n')
+}
+
+function jsProject(root, entry) {
+  return {
+    ...project(root, entry),
+    cache: { type: 'memory' },
+    plugins: [new MyI18nPlugin()],
+    module: { rules: [{ test: /\.js$/, loader: require.resolve('../myloader') }] }
+  }
+}
+
+function start(config) {
+  const compiler = webpack(config)
+  return {
+    compiler,
+    run() {
+      return new Promise((resolve, reject) => {
+        compiler.run((error, stats) => {
+          if (error) reject(error)
+          else resolve(stats)
+        })
+      })
+    },
+    close() {
+      return new Promise((resolve, reject) => {
+        compiler.close(error => error ? reject(error) : resolve())
+      })
+    }
+  }
+}
+
+function loaderResource(loaderContext, mod) {
+  const resource = (mod && (mod.resource || mod.userRequest)) || (loaderContext && loaderContext.resourcePath) || ''
+  return String(resource).split('?')[0]
+}
+
+function countLoaders(compiler, counts) {
+  compiler.hooks.compilation.tap('i18n-count', compilation => {
+    NormalModule.getCompilationHooks(compilation).loader.tap('i18n-count', (loaderContext, mod) => {
+      const resource = loaderResource(loaderContext, mod)
+      for (const suffix of Object.keys(counts)) {
+        if (resource.endsWith(suffix)) counts[suffix] += 1
+      }
+    })
+  })
+}
+
+function snapshotIdentities(stats) {
+  return [...stats.compilation.modules]
+    .map(mod => mod.buildInfo && mod.buildInfo.i18nCollect && mod.buildInfo.i18nCollect.snapshot)
+    .filter(Boolean)
+    .map(snapshot => snapshot.identity)
 }
 
 test('aggregates loader snapshots and ignores source that never enters the loader', { timeout: 20000 }, async () => {
@@ -248,6 +304,283 @@ export default { data () { return { b:"我不好" } } }
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('keeps cached snapshots for modules whose loaders do not rerun', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-cache-module-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const entry = path.join(root, 'src/main.js')
+  const stable = path.join(root, 'src/stable.js')
+  const edited = path.join(root, 'src/edited.js')
+  fs.writeFileSync(entry, 'require("./stable")\nrequire("./edited")\n')
+  fs.writeFileSync(stable, 'module.exports = "稳定词条"\n')
+  fs.writeFileSync(edited, 'module.exports = "旧词条"\n')
+  const handle = start(jsProject(root, entry))
+  const counts = { '/src/stable.js': 0, '/src/edited.js': 0 }
+  countLoaders(handle.compiler, counts)
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const stableRuns = counts['/src/stable.js']
+    assert.ok(stableRuns > 0)
+    fs.writeFileSync(edited, 'module.exports = "新词条"\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.strictEqual(counts['/src/stable.js'], stableRuns)
+    assert.ok(counts['/src/edited.js'] > stableRuns)
+    const values = Object.values(readOutput(root).dictionary)
+    assert.deepStrictEqual(values.slice().sort(), ['新词条', '稳定词条'])
+  } finally {
+    await handle.close()
+  }
+})
+
+test('drops a snapshot when its import is removed even if the file remains', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-unimport-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const entry = path.join(root, 'src/main.js')
+  const orphan = path.join(root, 'src/orphan.js')
+  fs.writeFileSync(entry, 'require("./kept")\nrequire("./orphan")\n')
+  fs.writeFileSync(path.join(root, 'src/kept.js'), 'module.exports = "你好"\n')
+  fs.writeFileSync(orphan, 'module.exports = "孤儿词条"\n')
+  const handle = start(jsProject(root, entry))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), ['你好', '孤儿词条'])
+    fs.writeFileSync(entry, 'require("./kept")\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.strictEqual(fs.existsSync(orphan), true)
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['你好'])
+  } finally {
+    await handle.close()
+  }
+})
+
+test('drops a snapshot when its file leaves the module graph', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-delete-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const entry = path.join(root, 'src/main.js')
+  const gone = path.join(root, 'src/gone.js')
+  fs.writeFileSync(entry, 'require("./kept")\nrequire("./gone")\n')
+  fs.writeFileSync(path.join(root, 'src/kept.js'), 'module.exports = "你好"\n')
+  fs.writeFileSync(gone, 'module.exports = "将删除"\n')
+  const handle = start(jsProject(root, entry))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    fs.writeFileSync(entry, 'require("./kept")\n')
+    fs.unlinkSync(gone)
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['你好'])
+  } finally {
+    await handle.close()
+  }
+})
+
+test('drops a deleted Vue block and a replaced style identity', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-evict-vue-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vue = path.join(root, 'src/App.vue')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(vue, `<template>
+  <div>{{ \`这是\${a}的名字呀\` }}</div>
+</template>
+<script>
+export default { data () { return { b:"我不好" } } }
+</script>
+<style>
+.badge { color: red; }
+</style>
+`)
+  fs.writeFileSync(entry, [
+    'require("./App.vue?vue&type=script&lang=js")',
+    'require("./App.vue?vue&type=template&lang=html")',
+    'require("./App.vue?vue&type=style&index=0&lang=css")',
+    ''
+  ].join('\n'))
+  const pass = path.join(root, 'pass-loader.js')
+  fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
+  const collector = require.resolve('../myloader')
+  const handle = start({
+    ...project(root, entry),
+    cache: { type: 'memory' },
+    plugins: [new MyI18nPlugin()],
+    module: {
+      rules: [
+        { test: /\.js$/, loader: collector },
+        { test: /\.vue$/, resourceQuery: /type=script/, use: [pass, collector] },
+        { test: /\.vue$/, resourceQuery: /type=template/, use: [pass, collector] },
+        { test: /\.vue$/, resourceQuery: /type=style/, use: [pass, collector] }
+      ]
+    }
+  })
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), ['我不好', '的名字呀', '这是'])
+    assert.ok(snapshotIdentities(first).includes('src/App.vue::style[index=0;lang=css]'))
+    fs.writeFileSync(vue, `<script>
+export default { data () { return { b:"我不好" } } }
+</script>
+<style lang="scss">
+.badge { color: red; }
+</style>
+`)
+    fs.writeFileSync(entry, [
+      'require("./App.vue?vue&type=script&lang=js")',
+      'require("./App.vue?vue&type=style&index=0&lang=scss")',
+      ''
+    ].join('\n'))
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['我不好'])
+    const identities = snapshotIdentities(second)
+    assert.ok(identities.includes('src/App.vue::script[lang=js]'))
+    assert.ok(identities.includes('src/App.vue::style[index=0;lang=scss]'))
+    assert.ok(!identities.includes('src/App.vue::template[lang=html]'))
+    assert.ok(!identities.includes('src/App.vue::style[index=0;lang=css]'))
+    const committed = getSession(handle.compiler).committedSnapshots().map(snapshot => snapshot.identity)
+    assert.ok(!committed.includes('src/App.vue::template[lang=html]'))
+    assert.ok(!committed.includes('src/App.vue::style[index=0;lang=css]'))
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a failed parse keeps the committed result and both published outputs', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const file = path.join(root, 'src/app.js')
+  fs.writeFileSync(file, 'module.exports = "你好"\n')
+  const handle = start(jsProject(root, file))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const committed = getSession(handle.compiler).committed.runtimeDictionary()
+    fs.writeFileSync(file, 'const message = "你好\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), true)
+    const text = messages(second)
+    assert.match(text, /src\/app\.js/)
+    assert.match(text, /script/)
+    assert.match(text, /line 1/)
+    assert.match(text, /Unterminated string constant/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
+    assert.deepStrictEqual(
+      fs.readdirSync(path.join(root, 'lang')).filter(name => name.includes('.tmp-') || name.includes('.bak-')),
+      []
+    )
+  } finally {
+    await handle.close()
+  }
+})
+
+test('invalid metadata fails the round without replacing the last output', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-bad-meta-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const file = path.join(root, 'src/app.js')
+  fs.writeFileSync(file, 'module.exports = "你好"\n')
+  let corrupt = false
+  const handle = start({
+    ...jsProject(root, file),
+    plugins: [
+      {
+        apply(compiler) {
+          compiler.hooks.thisCompilation.tap('corrupt-metadata', compilation => {
+            compilation.hooks.seal.tap('corrupt-metadata', () => {
+              if (!corrupt) return
+              for (const mod of compilation.modules) {
+                if (mod.buildInfo && mod.buildInfo.i18nCollect) mod.buildInfo.i18nCollect.schemaVersion = 0
+              }
+            })
+          })
+        }
+      },
+      new MyI18nPlugin()
+    ]
+  })
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    corrupt = true
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), true)
+    assert.match(messages(second), /schema/)
+    assert.match(messages(second), /src\/app\.js/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a configuration file change invalidates filtering and configHash', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-reconfig-'))
+  fs.mkdirSync(path.join(root, 'src/kept'), { recursive: true })
+  const configFile = path.join(root, 'i18n-collect.config.js')
+  fs.writeFileSync(configFile, 'module.exports = { include: ["src/kept"] }\n')
+  const file = path.join(root, 'src/kept/app.js')
+  fs.writeFileSync(file, 'module.exports = "你好"\n')
+  const handle = start(jsProject(root, file))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['你好'])
+    const firstHash = readOutput(root).map.configHash
+    fs.writeFileSync(configFile, 'module.exports = { include: ["src/other"] }\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(readOutput(root).dictionary, {})
+    const secondHash = readOutput(root).map.configHash
+    assert.notStrictEqual(secondHash, firstHash)
+    assert.strictEqual(secondHash, loadConfig({ root }).configHash)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('filesystem cache matches an uncached build without a loader rerun', { timeout: 40000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-fscache-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const file = path.join(root, 'src/app.js')
+  fs.writeFileSync(file, 'module.exports = "你好"\n')
+  const cacheDirectory = path.join(root, '.cache')
+  const cached = {
+    ...jsProject(root, file),
+    cache: { type: 'filesystem', cacheDirectory, name: 'i18n-collect-test' }
+  }
+  const first = await compile(cached)
+  assert.strictEqual(first.hasErrors(), false, messages(first))
+  const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+  const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+
+  let loaderRuns = 0
+  const second = await compile(cached, compiler => {
+    compiler.hooks.compilation.tap('i18n-count', compilation => {
+      NormalModule.getCompilationHooks(compilation).loader.tap('i18n-count', (loaderContext, mod) => {
+        if (loaderResource(loaderContext, mod).endsWith('/src/app.js')) loaderRuns += 1
+      })
+    })
+  })
+  assert.strictEqual(second.hasErrors(), false, messages(second))
+  assert.strictEqual(loaderRuns, 0)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+
+  const plainRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-nocache-'))
+  fs.mkdirSync(path.join(plainRoot, 'src'))
+  fs.writeFileSync(path.join(plainRoot, 'src/app.js'), 'module.exports = "你好"\n')
+  const plain = await compile({ ...jsProject(plainRoot, path.join(plainRoot, 'src/app.js')), cache: false })
+  assert.strictEqual(plain.hasErrors(), false, messages(plain))
+  assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.json')), dictionary)
+  assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.map.json')), sourceMap)
 })
 
 test('demo places the collector before thread-loader', () => {
