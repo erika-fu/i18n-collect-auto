@@ -11,14 +11,17 @@ Chinese text identified as candidate user-facing copy and added to the localizat
 A JavaScript or TypeScript backtick literal. Each static Chinese segment is collected independently; interpolation expressions are not collected as copy.
 _Avoid_: Template, template file
 
+**HTML text**:
+A user-visible HTML text-node fragment. Each text node is considered independently: formatting-only leading and trailing whitespace is excluded, meaningful internal whitespace is retained, and text is not merged across element boundaries. Character references contribute their decoded character value while the source range remains anchored to the original spelling.
+
 **User-facing HTML attribute**:
-An HTML attribute whose value may be presented to a user or assistive technology, such as `title`, `placeholder`, `alt`, `aria-label`, or `value`. Only the agreed attribute allowlist qualifies as collected copy.
+An HTML attribute whose value may be presented to a user or assistive technology, such as `title`, `placeholder`, `alt`, `aria-label`, or `value`. Only the agreed attribute allowlist qualifies as collected copy. A static attribute contributes its decoded value; a dynamic binding contributes each statically determinable fragment without evaluating the expression.
 
 **CSS generated content**:
-Chinese text in a CSS `content` declaration that may be rendered as generated user-visible content. Only statically determinable string fragments qualify; other CSS values, selectors, and comments are not collected as copy.
+Chinese text in a CSS `content` declaration that may be rendered as generated user-visible content. Every statically determinable string fragment in the declaration qualifies, including fragments mixed with dynamic CSS values; empty strings, whitespace-only strings, other declarations, custom-property definitions, selectors, and comments do not qualify.
 
 **Source range**:
-A half-open range in the original source, with 1-based line numbers and 0-based columns; the end position is exclusive.
+A half-open range covering the collected fragment's original content, with 1-based line numbers and 0-based columns; the end position is exclusive. For HTML attributes and CSS strings, the range excludes the attribute syntax and string delimiters.
 
 **Source location**:
 The originating file, semantic kind, and source range associated with collected text.
