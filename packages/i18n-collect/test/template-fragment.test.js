@@ -1,9 +1,6 @@
 const assert = require('assert')
-const fs = require('fs')
-const os = require('os')
-const path = require('path')
 const test = require('node:test')
-const MyI18nPlugin = require('../myplugin')
+const { extractTemplateExpressions, extractVueScript } = require('../myloader/extract-vue-compat')
 
 const APP = `<template>
   <div>{{ \`这是\${a}的名字呀\` }}</div>
@@ -15,41 +12,26 @@ export default { data () { return { b:"我不好" } } }
 
 function textAt(source, location) {
   const lines = source.split('\n')
-  if (location.start.line === location.end.line) {
-    return lines[location.start.line - 1].slice(location.start.column, location.end.column)
-  }
-  return [
-    lines[location.start.line - 1].slice(location.start.column),
-    ...lines.slice(location.start.line, location.end.line - 1),
-    lines[location.end.line - 1].slice(0, location.end.column)
-  ].join('\n')
+  return lines[location.start.line - 1].slice(location.start.column, location.end.column)
 }
 
-function collectApp(source) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-template-'))
-  fs.mkdirSync(path.join(root, 'src'))
-  fs.writeFileSync(path.join(root, 'src/App.vue'), source)
-  const plugin = new MyI18nPlugin()
-  let done
-  plugin.apply({
-    context: root,
-    hooks: { done: { tapPromise(_name, fn) { done = fn } } }
-  })
-  return done().then(() => ({
-    source,
-    dictionary: JSON.parse(fs.readFileSync(path.join(root, 'lang/zh_hash.json'), 'utf8')),
-    map: JSON.parse(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'), 'utf8'))
-  }))
-}
-
-test('collects static Chinese fragments around a template interpolation', async () => {
-  const { source, dictionary, map } = await collectApp(APP)
-  assert.deepStrictEqual(Object.values(dictionary).sort(), ['我不好', '的名字呀', '这是'])
-  const fragments = map.entries.filter(entry => entry.value !== '我不好')
+test('collects static Chinese fragments around a template interpolation', () => {
+  const resource = { projectPath: 'src/App.vue' }
+  const fragments = extractTemplateExpressions({ source: APP, resource })
+  const script = extractVueScript({ source: APP, resource })
   assert.deepStrictEqual(fragments.map(entry => entry.value).sort(), ['的名字呀', '这是'])
   for (const entry of fragments) {
-    assert.strictEqual(entry.locations.length, 1)
     assert.strictEqual(entry.locations[0].kind, 'template-expression')
-    assert.strictEqual(textAt(source, entry.locations[0]), entry.value)
+    assert.strictEqual(textAt(APP, entry.locations[0]), entry.value)
   }
+  assert.strictEqual(script[0].locations[0].kind, 'script-string')
+  assert.strictEqual(script[0].value, '我不好')
+  assert.strictEqual(textAt(APP, script[0].locations[0]), '"我不好"')
+})
+
+test('does not execute interpolation expressions or collect HTML text', () => {
+  const source = '<template><p>静态段落</p><p>{{ empty + \'拼接后的中文\' }}</p></template>\n'
+  const entries = extractTemplateExpressions({ source, resource: { projectPath: 'src/Page.vue' } })
+  assert.deepStrictEqual(entries.map(entry => entry.value), ['拼接后的中文'])
+  assert.strictEqual(entries[0].locations[0].kind, 'template-expression')
 })

@@ -1,55 +1,36 @@
 const { loadConfig } = require('../mycommon/config')
 const { writeOutputs } = require('../mycommon/output')
-const { getStore, collect, collectEntries } = require('../myloader')
-const fs = require('fs')
-const path = require('path')
+const {
+  COLLECT_METADATA,
+  SCHEMA_VERSION,
+  getSession,
+  storeFromSnapshots
+} = require('../mycommon/session')
 
-function sourceFiles(directory) {
-  if (!fs.existsSync(directory)) return []
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    const file = path.join(directory, entry.name)
-    if (entry.isDirectory()) return sourceFiles(file)
-    return /\.(js|vue)$/.test(entry.name) ? [file] : []
-  })
+const PLUGIN = 'MyI18nPlugin'
+const NOT_INTEGRATED = 'i18n-collect loader is not integrated. Check ordinary module rules, Vue script/template/style block rules, and the HTML template loader chain.'
+
+function collectMetadata(mod) {
+  const metadata = mod && mod.buildInfo && mod.buildInfo[COLLECT_METADATA]
+  if (!metadata || metadata.schemaVersion !== SCHEMA_VERSION || !metadata.invoked) return null
+  return metadata
 }
 
-function region(source, start, end) {
-  return source.slice(0, start).replace(/[^\n]/g, ' ') + source.slice(start, end)
-}
-
-function templateExpressions(source) {
-  const template = source.match(/<template[^>]*>([\s\S]*?)<\/template>/)
-  if (!template) return []
-  const innerStart = template.index + template[0].indexOf(template[1])
-  const expressions = []
-  const pattern = /\{\{([\s\S]*?)\}\}/g
-  let match
-  while ((match = pattern.exec(template[1]))) {
-    const start = innerStart + match.index + 2
-    expressions.push([start, start + match[1].length])
+function hasMetadata(compilation) {
+  for (const mod of compilation.modules) {
+    if (collectMetadata(mod)) return true
   }
-  return expressions
+  return false
 }
 
-function collectProjectScripts(root, store) {
-  for (const file of sourceFiles(path.join(root, 'src'))) {
-    const source = fs.readFileSync(file, 'utf8')
-    if (!file.endsWith('.vue')) {
-      collect(source, file, root, store)
-      continue
-    }
-    const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)
-    const entries = []
-    if (script) {
-      const code = `${source.slice(0, script.index).replace(/[^\n]/g, ' ')}${script[1]}`
-      entries.push(...collectEntries(code, file, root))
-    }
-    for (const [start, end] of templateExpressions(source)) {
-      entries.push(...collectEntries(region(source, start, end), file, root, 'template-expression'))
-    }
-    const relativePath = path.relative(root, file).split(path.sep).join('/')
-    store.replaceSnapshot(relativePath, entries)
+function liveSnapshots(compilation) {
+  const byIdentity = new Map()
+  for (const mod of compilation.modules) {
+    const metadata = collectMetadata(mod)
+    if (!metadata || !metadata.included || !metadata.snapshot || !metadata.snapshot.identity) continue
+    byIdentity.set(metadata.snapshot.identity, metadata.snapshot)
   }
+  return [...byIdentity.values()]
 }
 
 class MyI18nPlugin {
@@ -58,11 +39,30 @@ class MyI18nPlugin {
   }
 
   apply(compiler) {
-    compiler.hooks.done.tapPromise('MyI18nPlugin', async () => {
+    const root = compiler.root || compiler
+    if (compiler !== root) return
+    const session = getSession(root)
+
+    compiler.hooks.thisCompilation.tap(PLUGIN, compilation => {
+      session.begin(compilation)
+      compilation.hooks.afterSeal.tap(PLUGIN, () => {
+        if (session.invocationCount(compilation) > 0 || hasMetadata(compilation)) return
+        compilation.errors.push(new Error(NOT_INTEGRATED))
+        session.abandon(compilation)
+      })
+    })
+
+    compiler.hooks.done.tapPromise(PLUGIN, async stats => {
+      const compilation = stats.compilation
+      if (stats.hasErrors() || session.round(compilation).abandoned) {
+        session.abandon(compilation)
+        return
+      }
       const config = loadConfig({ root: compiler.context, pluginOptions: this.options })
-      const store = getStore(config.root)
-      collectProjectScripts(config.root, store)
+      const snapshots = liveSnapshots(compilation)
+      const store = storeFromSnapshots(snapshots)
       await writeOutputs(config.root, config, store.runtimeDictionary(), store.sourceMap(config.configHash))
+      session.commit(compilation, snapshots)
     })
   }
 }

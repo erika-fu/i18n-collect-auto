@@ -14,7 +14,10 @@ function configFor(root) {
     output: { path: path.join(root, 'dist'), filename: 'bundle.js' },
     plugins: [new MyI18nPlugin()],
     infrastructureLogging: { level: 'error' },
-    watchOptions: { aggregateTimeout: 20 }
+    watchOptions: { aggregateTimeout: 20 },
+    module: {
+      rules: [{ test: /\.js$/, loader: require.resolve('../myloader') }]
+    }
   }
 }
 

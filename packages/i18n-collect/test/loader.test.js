@@ -5,19 +5,21 @@ const path = require('path')
 const test = require('node:test')
 const webpack = require('webpack')
 const loader = require('../myloader')
-const { keyFor } = require('../mycommon/store')
 
 function runLoader({ root, source, sourceMap, meta, resourcePath, resourceQuery = '', options = {} }) {
+  const buildInfo = {}
   let result
   loader.call({
     resourcePath,
     resourceQuery,
+    rootContext: root,
+    _module: { buildInfo },
     getOptions: () => ({ root, ...options }),
     callback(error, nextSource, nextMap, nextMeta) {
       result = { error, nextSource, nextMap, nextMeta }
     }
   }, source, sourceMap, meta)
-  return result
+  return { ...result, metadata: buildInfo.i18nCollect }
 }
 
 test('passes string source, source map, and meta through unchanged', () => {
@@ -31,7 +33,9 @@ test('passes string source, source map, and meta through unchanged', () => {
   assert.strictEqual(result.nextSource, source)
   assert.strictEqual(result.nextMap, sourceMap)
   assert.strictEqual(result.nextMeta, meta)
-  assert.strictEqual(loader.getStore(root).runtimeDictionary()[keyFor('你好')], '你好')
+  assert.strictEqual(result.metadata.snapshot.identity, 'src/example.js::script')
+  assert.strictEqual(result.metadata.snapshot.entries[0].value, '你好')
+  assert.strictEqual(result.metadata.snapshot.projectPath, 'src/example.js')
 })
 
 test('passes Buffer source through unchanged', () => {
@@ -50,24 +54,28 @@ test('passes Buffer source through unchanged', () => {
   assert.strictEqual(result.nextSource, source)
   assert.strictEqual(result.nextMap, sourceMap)
   assert.strictEqual(result.nextMeta, meta)
-  assert.strictEqual(loader.getStore(root).runtimeDictionary()[keyFor('你好')], '你好')
+  assert.strictEqual(result.metadata.snapshot.entries[0].value, '你好')
 })
 
-test('does not collect a Vue template block or an excluded script', () => {
+test('commits an empty Vue template snapshot and skips excluded scripts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
   fs.mkdirSync(path.join(root, 'src'))
   const template = '<template><p>你好</p></template>'
+  const vuePath = path.join(root, 'src/App.vue')
+  fs.writeFileSync(vuePath, template)
   const templateResult = runLoader({
     root,
     source: template,
     sourceMap: null,
     meta: { kind: 'template' },
-    resourcePath: path.join(root, 'src/App.vue'),
+    resourcePath: vuePath,
     resourceQuery: '?vue&type=template&id=abc&scoped=true&prod=true'
   })
   assert.strictEqual(templateResult.nextSource, template)
   assert.strictEqual(templateResult.nextMeta.kind, 'template')
-  assert.deepStrictEqual(loader.getStore(root).runtimeDictionary(), {})
+  assert.strictEqual(templateResult.metadata.included, true)
+  assert.strictEqual(templateResult.metadata.snapshot.identity, 'src/App.vue::template[lang=html]')
+  assert.deepStrictEqual(templateResult.metadata.snapshot.entries, [])
 
   const excluded = 'const message = "你好"\n'
   const excludedResult = runLoader({
@@ -81,20 +89,28 @@ test('does not collect a Vue template block or an excluded script', () => {
   assert.strictEqual(excludedResult.nextSource, excluded)
   assert.deepStrictEqual(excludedResult.nextMap, { version: 3 })
   assert.strictEqual(excludedResult.nextMeta, null)
-  assert.deepStrictEqual(loader.getStore(root).runtimeDictionary(), {})
+  assert.strictEqual(excludedResult.metadata.invoked, true)
+  assert.strictEqual(excludedResult.metadata.included, false)
+  assert.strictEqual(excludedResult.metadata.snapshot, null)
 
-  const script = 'export default { title: "标题" }\n'
+  const extracted = 'export default { title: "标题" }\n'
+  fs.writeFileSync(vuePath, `<template><p></p></template>\n<script>\n${extracted}</script>\n`)
   const scriptResult = runLoader({
     root,
-    source: script,
+    source: extracted,
     sourceMap: { version: 3, mappings: '' },
     meta: { kind: 'script' },
-    resourcePath: path.join(root, 'src/App.vue'),
+    resourcePath: vuePath,
     resourceQuery: '?vue&type=script&id=abc&scoped=true&prod=true'
   })
-  assert.strictEqual(scriptResult.nextSource, script)
+  assert.strictEqual(scriptResult.nextSource, extracted)
+  assert.strictEqual(scriptResult.metadata.snapshot.entries[0].value, '标题')
   assert.strictEqual(scriptResult.nextMap.mappings, '')
-  assert.strictEqual(loader.getStore(root).runtimeDictionary()[keyFor('标题')], '标题')
+  assert.strictEqual(scriptResult.metadata.snapshot.identity, 'src/App.vue::script[lang=js]')
+  assert.notStrictEqual(
+    scriptResult.metadata.snapshot.identity,
+    templateResult.metadata.snapshot.identity
+  )
 })
 
 test('webpack passes source, source map, and meta through the loader', { timeout: 20000 }, async () => {
@@ -132,13 +148,13 @@ test('webpack passes source, source map, and meta through the loader', { timeout
     }
   })
 
-  await new Promise((resolve, reject) => {
-    compiler.run((error, stats) => {
+  const stats = await new Promise((resolve, reject) => {
+    compiler.run((error, result) => {
       compiler.close(closeError => {
         if (error) reject(error)
         else if (closeError) reject(closeError)
-        else if (stats.hasErrors()) reject(new Error(stats.toJson().errors.map(item => item.message).join('\n')))
-        else resolve()
+        else if (result.hasErrors()) reject(new Error(result.toJson().errors.map(item => item.message).join('\n')))
+        else resolve(result)
       })
     })
   })
@@ -147,5 +163,8 @@ test('webpack passes source, source map, and meta through the loader', { timeout
   assert.strictEqual(seen.content, source)
   assert.deepStrictEqual(seen.map, { version: 3, file: 'app.js', mappings: 'AAAA', sources: ['src/app.js'] })
   assert.deepStrictEqual(seen.meta, { fromUpstream: true })
-  assert.strictEqual(loader.getStore(root).runtimeDictionary()[keyFor('你好')], '你好')
+  const collected = [...stats.compilation.modules]
+    .map(mod => mod.buildInfo && mod.buildInfo.i18nCollect)
+    .filter(meta => meta && meta.snapshot)
+  assert.ok(collected.some(meta => meta.snapshot.entries.some(entry => entry.value === '你好')))
 })

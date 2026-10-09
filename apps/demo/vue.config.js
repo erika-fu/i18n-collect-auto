@@ -1,12 +1,9 @@
-const { defineConfig } = require('@vue/cli-service')
-
 const loaderPath = require.resolve('i18n-collect/myloader')
 const MyI18nPlugin = require('i18n-collect/myplugin')
 
-module.exports = defineConfig({
+module.exports = {
   transpileDependencies: true,
 
-  // 插件必须写在这里（正确位置）
   configureWebpack: () => {
     const config = {
       devtool: 'source-map'
@@ -17,22 +14,16 @@ module.exports = defineConfig({
     return config
   },
 
-  // Loader 正确写法
+  // Loader 在 pitch 阶段读取原始文件。thread-loader 会把排在它后面的 loader
+  // 放进 worker，所以收集 loader 必须排在 thread-loader 之前。
   chainWebpack: config => {
-    // ==========================================
-    // 1. 处理 .js 文件 + Vue <script> 里的 JS
-    // ==========================================
     config.module
       .rule('js')
-      .test(/\.js$/)
       .use('i18n-auto-loader')
-        .loader(loaderPath) // 绝对路径
-        .before('babel-loader') // 优先于 babel 执行
+        .loader(loaderPath)
+        .before('thread-loader')
         .end()
 
-    // ==========================================
-    // 2. 处理 Vue template 中的中文
-    // ==========================================
     config.module
       .rule('vue-template')
       .test(/\.vue$/)
@@ -49,4 +40,4 @@ module.exports = defineConfig({
         .loader(loaderPath)
         .end()
   }
-})
+}
