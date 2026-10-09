@@ -12,11 +12,11 @@ function column(code, offset) {
   return code.slice(lineStart, offset).length
 }
 
-function collect(code, resourcePath, root, store) {
+function collectEntries(code, resourcePath, root, kind) {
   const relativePath = path.relative(root, resourcePath).split(path.sep).join('/')
-  const location = (node, kind) => ({
+  const location = (node, fallbackKind) => ({
     path: relativePath,
-    kind,
+    kind: kind || fallbackKind,
     start: { line: node.loc.start.line, column: column(code, node.start) },
     end: { line: node.loc.end.line, column: column(code, node.end) }
   })
@@ -37,7 +37,12 @@ function collect(code, resourcePath, root, store) {
       })
     }
   })
-  store.replaceSnapshot(relativePath, entries)
+  return entries
+}
+
+function collect(code, resourcePath, root, store) {
+  const relativePath = path.relative(root, resourcePath).split(path.sep).join('/')
+  store.replaceSnapshot(relativePath, collectEntries(code, resourcePath, root))
 }
 
 function getStore(root) {
@@ -61,4 +66,5 @@ function loader(code) {
 
 loader.getStore = getStore
 loader.collect = collect
+loader.collectEntries = collectEntries
 module.exports = loader

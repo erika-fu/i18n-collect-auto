@@ -5,11 +5,16 @@ function json(value) {
   return `${JSON.stringify(value, null, 2)}\n`
 }
 
+function unchanged(fsImpl, file, content) {
+  return fsImpl.existsSync(file) && fsImpl.readFileSync(file, 'utf8') === content
+}
+
 async function writeOutputs(root, config, dictionary, sourceMap, fsImpl = fs) {
   const targets = [
     { file: path.resolve(root, config.outputPath), content: json(dictionary) },
     { file: path.resolve(root, config.sourceMapFilename), content: json(sourceMap) }
-  ]
+  ].filter(target => !unchanged(fsImpl, target.file, target.content))
+  if (targets.length === 0) return
   const stamp = `${process.pid}-${Date.now()}`
   const temp = targets.map(target => ({ ...target, temp: `${target.file}.tmp-${stamp}` }))
   const backups = targets.map(target => `${target.file}.bak-${stamp}`)
