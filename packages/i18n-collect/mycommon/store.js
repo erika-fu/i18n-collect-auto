@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const path = require('path')
+const { containsHan } = require('../myloader/resource')
 
 const SEMANTIC_KINDS = new Set([
   'script-string',
@@ -60,7 +61,7 @@ class CollectionStore {
     if (typeof resource !== 'string' || !resource) throw new Error('Resource identity is required')
     const snapshot = new Map()
     for (const entry of entries) {
-      if (!entry || typeof entry.value !== 'string' || !/[\u4e00-\u9fa5]/.test(entry.value)) continue
+      if (!entry || !containsHan(entry.value)) continue
       const key = keyFor(entry.value)
       const current = snapshot.get(key) || { value: entry.value, locations: [] }
       current.locations = uniqueLocations(current.locations.concat((entry.locations || []).map(normalizeLocation)))

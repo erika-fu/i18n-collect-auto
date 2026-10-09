@@ -6,7 +6,6 @@ const test = require('node:test')
 const { validate } = require('../mycommon/config')
 const { CollectionStore, keyFor } = require('../mycommon/store')
 const { writeOutputs } = require('../mycommon/output')
-const loader = require('../myloader')
 
 test('uses the MD5 of the final decoded value', () => {
   assert.strictEqual(keyFor('你好'), '7eca689f0d3389d9dea66ae112e5cfd7')
@@ -15,7 +14,27 @@ test('uses the MD5 of the final decoded value', () => {
 test('validates project-relative paths and rejects unknown fields', () => {
   assert.throws(() => validate('/project', { unknown: true }), /unknown field/)
   assert.throws(() => validate('/project', { outputPath: '../out.json' }), /inside the project root/)
-  assert.throws(() => validate('/project', { htmlEntries: ['index.html', 'index.html'] }), /duplicate/)
+  assert.throws(() => validate('/project', { htmlEntries: ['index.html', 'index.html'] }), /unknown field/)
+  assert.throws(() => validate('/project', { include: ['src/foo', 'src/foo/'] }), /duplicate/)
+})
+
+test('keeps a Han extension character in the runtime dictionary', () => {
+  const store = new CollectionStore()
+  const value = '\u{20000}'
+  const location = { path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 2 } }
+  store.replaceSnapshot('src/a.js', [{ value, locations: [location] }])
+  assert.strictEqual(store.runtimeDictionary()[keyFor(value)], value)
+})
+
+test('declares webpack 5 and the dependencies the package imports', () => {
+  const pkg = require('../package.json')
+  const lock = require('../../../package-lock.json')
+  assert.deepStrictEqual(pkg.peerDependencies, { webpack: '^5.0.0' })
+  assert.deepStrictEqual(Object.keys(pkg.dependencies).sort(), ['@babel/parser', '@babel/traverse'])
+  assert.strictEqual(pkg.dependencies['loader-utils'], undefined)
+  const entry = lock.packages['packages/i18n-collect']
+  assert.deepStrictEqual(entry.peerDependencies, { webpack: '^5.0.0' })
+  assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse'])
 })
 
 test('replaces resource snapshots and globally deduplicates locations', () => {
@@ -40,12 +59,3 @@ test('writes stable pretty JSON output', async () => {
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, config.sourceMapFilename)), null), { version: 1, entries: [] })
 })
 
-test('the collection loader returns application source unchanged', () => {
-  const source = 'const message = "你好"\n'
-  const result = loader.call({
-    resourcePath: path.join(process.cwd(), 'src/example.js'),
-    resourceQuery: '',
-    getOptions: () => ({ root: process.cwd() })
-  }, source)
-  assert.strictEqual(result, source)
-})

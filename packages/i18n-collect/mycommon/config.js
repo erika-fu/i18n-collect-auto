@@ -4,8 +4,7 @@ const crypto = require('crypto')
 
 const CONFIG_FILE = 'i18n-collect.config.js'
 const DEFAULTS = {
-  htmlEntries: ['public/index.html'],
-  styleExtensions: ['.css', '.scss', '.sass', '.less', '.styl'],
+  styleExtensions: ['.css'],
   include: [],
   exclude: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
@@ -42,30 +41,55 @@ function array(value, field, valid) {
   if (new Set(value).size !== value.length) fail(`${field} must not contain duplicates`)
 }
 
+function normalizeFilterPattern(root, pattern, field) {
+  if (typeof pattern !== 'string') {
+    throw new Error(`${field} must be an array of valid values`)
+  }
+  if (pattern.length === 0) {
+    throw new Error(`${field} must not be empty or the project root`)
+  }
+  const slashed = pattern.replace(/\\/g, '/')
+  if (slashed.startsWith('/') || /^[A-Za-z]:\//.test(slashed)) {
+    throw new Error(`${field} must be a project-relative path`)
+  }
+  const absolute = path.resolve(root, slashed)
+  const relative = path.relative(root, absolute)
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || relative.startsWith('../')) {
+    throw new Error(`${field} must stay inside the project root`)
+  }
+  if (!relative || relative === '.') {
+    throw new Error(`${field} must not be empty or the project root`)
+  }
+  return relative.split(path.sep).join('/')
+}
+
+function filterList(root, values, field) {
+  if (!Array.isArray(values)) fail(`${field} must be an array of valid values`)
+  const normalized = []
+  for (const value of values) {
+    try {
+      normalized.push(normalizeFilterPattern(root, value, field))
+    } catch (error) {
+      fail(error.message)
+    }
+  }
+  if (new Set(normalized).size !== normalized.length) fail(`${field} must not contain duplicates`)
+  return normalized
+}
+
 function validate(root, input) {
   if (!isObject(input)) fail('must export an object')
   Object.keys(input).forEach(key => {
     if (!FIELDS.has(key)) fail(`unknown field "${key}"`)
   })
   const config = { ...DEFAULTS, ...input }
-  array(config.htmlEntries, 'htmlEntries', value => typeof value === 'string' && value.length > 0)
-  config.htmlEntries = config.htmlEntries.map(value => projectPath(root, value, 'htmlEntries'))
-  if (new Set(config.htmlEntries).size !== config.htmlEntries.length) {
-    fail('htmlEntries must not contain duplicate paths')
-  }
   array(config.styleExtensions, 'styleExtensions', value => /^(\.[a-z0-9]+)+$/i.test(value))
-  for (const field of ['include', 'exclude', 'attributeAllowlist']) {
-    array(config[field], field, value => typeof value === 'string' && value.length > 0)
-  }
+  array(config.attributeAllowlist, 'attributeAllowlist', value => typeof value === 'string' && value.length > 0)
+  config.include = filterList(root, config.include, 'include')
+  config.exclude = filterList(root, config.exclude, 'exclude')
   config.outputPath = projectPath(root, config.outputPath, 'outputPath')
   config.sourceMapFilename = projectPath(root, config.sourceMapFilename, 'sourceMapFilename')
   if (config.outputPath === config.sourceMapFilename) fail('outputPath and sourceMapFilename must differ')
-  const outputs = [config.outputPath, config.sourceMapFilename].map(value => path.resolve(root, value))
-  for (const entry of config.htmlEntries) {
-    if (outputs.includes(path.resolve(root, entry))) {
-      fail('output files must not also be HTML inputs')
-    }
-  }
   return config
 }
 
@@ -88,7 +112,7 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
   }
   let config = validate(projectRoot, fileConfig)
   config = validate(projectRoot, merge(config, loaderOptions, new Set(['include', 'exclude', 'attributeAllowlist', 'styleExtensions'])))
-  config = validate(projectRoot, merge(config, pluginOptions, new Set(['htmlEntries', 'outputPath', 'sourceMapFilename'])))
+  config = validate(projectRoot, merge(config, pluginOptions, new Set(['outputPath', 'sourceMapFilename'])))
   return {
     ...config,
     root: projectRoot,
