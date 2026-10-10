@@ -79,7 +79,7 @@ function start(config) {
 
 function loaderResource(loaderContext, mod) {
   const resource = (mod && (mod.resource || mod.userRequest)) || (loaderContext && loaderContext.resourcePath) || ''
-  return String(resource).split('?')[0]
+  return String(resource).split('?')[0].replace(/\\/g, '/')
 }
 
 function countLoaders(compiler, counts) {
@@ -303,6 +303,127 @@ export default { data () { return { b:"我不好" } } }
   assert.strictEqual(line.slice(greeting.locations[0].start.column, greeting.locations[0].end.column), '这是')
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+function templateOutput(stats) {
+  return [...stats.compilation.modules].flatMap(mod => {
+    const resource = String(mod.resource || '')
+    if (!/[?&]type=template(?:&|$)/.test(resource)) return []
+    const original = typeof mod.originalSource === 'function' ? mod.originalSource() : null
+    if (!original) return []
+    return [{ code: original.source(), map: original.map() }]
+  })
+}
+
+test('vue template copy is collected while render output stays unchanged', { timeout: 30000 }, async () => {
+  const root = fs.mkdtempSync(path.join(__dirname, '.tmp-vue-html-'))
+  try {
+    fs.mkdirSync(path.join(root, 'src'))
+    const source = `<template>
+  <section>
+    <p>静态段落</p>
+    <input :placeholder="'请' + missing + '输入'" title="姓名提示">
+    <p>{{ \`欢迎\${name}回来\` }}</p>
+  </section>
+</template>
+<script>
+export default { name: 'App' }
+</script>
+`
+    fs.writeFileSync(path.join(root, 'src/App.vue'), source)
+    fs.writeFileSync(path.join(root, 'src/copy.html'), '<p>外部文案</p>\n')
+    fs.writeFileSync(path.join(root, 'src/External.vue'), '<template src="./copy.html">\n  <p>诱饵文案</p>\n</template>\n<script>export default {}</script>\n')
+    const collector = require.resolve('../myloader')
+    const vueLoader = require.resolve('@vue/vue-loader-v15')
+    const configFor = (entry, withCollector) => ({
+      ...project(root, entry),
+      plugins: [new VueLoaderPlugin(), ...(withCollector ? [new MyI18nPlugin()] : [])],
+      module: {
+        rules: [
+          { test: /\.vue$/, loader: vueLoader },
+          ...(withCollector ? [
+            { resourceQuery: /type=template/, loader: collector },
+            { test: /\.vue$/, resourceQuery: /type=script/, loader: collector }
+          ] : [])
+        ]
+      }
+    })
+    const plain = await compile(configFor(path.join(root, 'src/App.vue'), false))
+    assert.strictEqual(plain.hasErrors(), false, messages(plain))
+    const collected = await compile(configFor(path.join(root, 'src/App.vue'), true))
+    assert.strictEqual(collected.hasErrors(), false, messages(collected))
+    const renderOf = stats => templateOutput(stats).filter(item => item.code.includes('var render'))
+    const plainRender = renderOf(plain)
+    assert.ok(plainRender.length > 0)
+    assert.deepStrictEqual(renderOf(collected), plainRender)
+    const { dictionary, map } = readOutput(root)
+    const byValue = new Map(map.entries.map(entry => [entry.value, entry.locations.map(location => location.kind)]))
+    assert.deepStrictEqual(byValue.get('静态段落'), ['html-text'])
+    assert.deepStrictEqual(byValue.get('姓名提示'), ['html-attribute'])
+    assert.deepStrictEqual(byValue.get('请'), ['html-attribute'])
+    assert.deepStrictEqual(byValue.get('输入'), ['html-attribute'])
+    assert.deepStrictEqual(byValue.get('欢迎'), ['template-expression'])
+    assert.deepStrictEqual(byValue.get('回来'), ['template-expression'])
+    assert.ok(!Object.values(dictionary).includes('诱饵文案'))
+    const paragraph = map.entries.find(entry => entry.value === '静态段落')
+    const line = source.split('\n')[paragraph.locations[0].start.line - 1]
+    assert.strictEqual(line.slice(paragraph.locations[0].start.column, paragraph.locations[0].end.column), '静态段落')
+
+    const external = await compile(configFor(path.join(root, 'src/External.vue'), true))
+    assert.strictEqual(external.hasErrors(), false, messages(external))
+    const externalMap = readOutput(root).map
+    const outside = externalMap.entries.find(entry => entry.value === '外部文案')
+    assert.ok(outside)
+    assert.strictEqual(outside.locations[0].path, 'src/copy.html')
+    assert.strictEqual(outside.locations[0].kind, 'html-text')
+    assert.ok(!externalMap.entries.some(entry => entry.value === '诱饵文案'))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a Vue template parse error keeps the previous published output', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-vue-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vue = path.join(root, 'src/App.vue')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(vue, '<template><p>你好</p></template>\n')
+  fs.writeFileSync(entry, 'require("./App.vue?vue&type=template&lang=html")\n')
+  const pass = path.join(root, 'pass-loader.js')
+  fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
+  const collector = require.resolve('../myloader')
+  const handle = start({
+    ...project(root, entry),
+    plugins: [new MyI18nPlugin()],
+    module: {
+      rules: [
+        { test: /\.js$/, loader: collector },
+        { test: /\.vue$/, resourceQuery: /type=template/, use: [pass, collector] }
+      ]
+    }
+  })
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    fs.writeFileSync(vue, '<template>\n  <p>{{ \'你好\' + }}</p>\n</template>\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), true)
+    const text = messages(second)
+    assert.match(text, /src\/App\.vue/)
+    assert.match(text, /template/)
+    assert.match(text, /line 2/)
+    assert.match(text, /column 15/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(
+      fs.readdirSync(path.join(root, 'lang')).filter(name => name.includes('.tmp-') || name.includes('.bak-')),
+      []
+    )
+  } finally {
+    await handle.close()
   }
 })
 

@@ -7,7 +7,8 @@ const {
   moduleMetadata
 } = require('../mycommon/session')
 const { extractScript } = require('./extract-script')
-const { extractTemplateExpressions, extractVueScript } = require('./extract-vue-compat')
+const { extractHtml } = require('./extract-html')
+const { extractVueScript } = require('./extract-vue-compat')
 const { describeResource, isResourceIncluded } = require('./resource')
 
 function text(source) {
@@ -91,18 +92,19 @@ function record(loaderContext, config, included, snapshot) {
   else session.noteInvocation(loaderContext._compilation)
 }
 
-function entriesFor(resource, sourceText) {
+function entriesFor(resource, sourceText, config) {
   if (vueFile(resource.projectPath) && resource.block === 'script') {
     return extractVueScript({
       source: fs.readFileSync(resource.absolutePath, 'utf8'),
       resource
     })
   }
-  if (vueFile(resource.projectPath) && resource.block === 'template') {
-    return extractTemplateExpressions({
+  if (resource.block === 'template') {
+    return extractHtml({
       source: fs.readFileSync(resource.absolutePath, 'utf8'),
-      resource
-    })
+      resource,
+      config
+    }).entries
   }
   if (resource.block === 'script') return extractScript({ source: sourceText, resource })
   if (resource.block === 'style' || resource.block === 'html') return []
@@ -129,7 +131,7 @@ function runCollect(loaderContext, sourceText) {
   }
   let entries
   try {
-    entries = entriesFor(resource, text(sourceText))
+    entries = entriesFor(resource, text(sourceText), config)
   } catch (error) {
     throw collectionFailure(resource, error)
   }

@@ -30,11 +30,11 @@ test('declares webpack 5 and the dependencies the package imports', () => {
   const pkg = require('../package.json')
   const lock = require('../../../package-lock.json')
   assert.deepStrictEqual(pkg.peerDependencies, { webpack: '^5.0.0' })
-  assert.deepStrictEqual(Object.keys(pkg.dependencies).sort(), ['@babel/parser', '@babel/traverse'])
+  assert.deepStrictEqual(Object.keys(pkg.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5'])
   assert.strictEqual(pkg.dependencies['loader-utils'], undefined)
   const entry = lock.packages['packages/i18n-collect']
   assert.deepStrictEqual(entry.peerDependencies, { webpack: '^5.0.0' })
-  assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse'])
+  assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5'])
 })
 
 test('replaces resource snapshots and globally deduplicates locations', () => {

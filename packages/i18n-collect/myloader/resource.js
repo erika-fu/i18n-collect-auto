@@ -83,6 +83,9 @@ function describeResource({ root, resourcePath, resourceQuery = '' }) {
     block = 'style'
     styleIndex = styleIndexOf(params)
     lang = present(params, 'lang') || 'css'
+  } else if (params.has('vue') && type === 'template' && !SCRIPT_EXTENSIONS.has(extension)) {
+    block = 'template'
+    lang = present(params, 'lang') || 'html'
   } else if (SCRIPT_EXTENSIONS.has(extension)) {
     block = 'script'
   } else if (extension === '.html') {

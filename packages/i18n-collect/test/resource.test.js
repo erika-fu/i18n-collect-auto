@@ -20,7 +20,7 @@ test('identifies standalone script, HTML, and CSS resources', () => {
     resourcePath: '/project/src/utils/message.js',
     resourceQuery: '?id=1&scoped=true&prod=true'
   }), {
-    absolutePath: '/project/src/utils/message.js',
+    absolutePath: path.resolve('/project/src/utils/message.js'),
     projectPath: 'src/utils/message.js',
     query: '?id=1&scoped=true&prod=true',
     block: 'script',
@@ -38,6 +38,14 @@ test('identifies Vue script, template, and style blocks', () => {
   assert.strictEqual(identify(file, '?vue&type=script&lang=ts'), 'src/App.vue::script[lang=ts]')
   assert.strictEqual(identify(file, '?vue&type=template'), 'src/App.vue::template[lang=html]')
   assert.strictEqual(identify(file, '?vue&type=template&lang=html'), 'src/App.vue::template[lang=html]')
+  assert.strictEqual(
+    identify('/project/src/copy.html', '?vue&type=template&id=abc&scoped=true'),
+    'src/copy.html::template[lang=html]'
+  )
+  assert.notStrictEqual(
+    identify('/project/src/copy.html', '?vue&type=template'),
+    identify('/project/src/copy.html')
+  )
   assert.strictEqual(identify(file, '?vue&type=style'), 'src/App.vue::style[index=0;lang=css]')
   assert.strictEqual(identify(file, '?vue&type=style&index=0&lang=css'), 'src/App.vue::style[index=0;lang=css]')
   assert.strictEqual(identify(file, '?vue&type=style&index=1&lang=scss'), 'src/App.vue::style[index=1;lang=scss]')

@@ -71,7 +71,7 @@ test('passes Buffer source through unchanged', () => {
 test('commits an empty Vue template snapshot and skips excluded scripts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
   fs.mkdirSync(path.join(root, 'src'))
-  const template = '<template><p>你好</p></template>'
+  const template = '<template><p>hello</p></template>'
   const vuePath = path.join(root, 'src/App.vue')
   fs.writeFileSync(vuePath, template)
   const templateResult = runLoader({
@@ -140,6 +140,63 @@ test('a script parse error names the project path, block, and source location', 
   assert.match(thrown.message, /line 1/)
   assert.match(thrown.message, /column 16/)
   assert.match(thrown.message, /Unterminated string constant/)
+})
+
+test('a Vue template expression error names the project path, block, and source location', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const source = '<template>\n  <p>{{ \'你好\' + }}</p>\n</template>\n'
+  const vuePath = path.join(root, 'src/App.vue')
+  fs.writeFileSync(vuePath, source)
+  const { thrown } = runLoader({
+    root,
+    source,
+    sourceMap: null,
+    meta: null,
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=template&id=abc'
+  })
+  assert.ok(thrown)
+  assert.match(thrown.message, /src\/App\.vue/)
+  assert.match(thrown.message, /template/)
+  assert.match(thrown.message, /line 2/)
+  assert.match(thrown.message, /column 15/)
+})
+
+test('reads an external Vue template from the requested file and does not guess a source block', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vuePath = path.join(root, 'src/App.vue')
+  const htmlPath = path.join(root, 'src/copy.html')
+  fs.writeFileSync(vuePath, '<template src="./copy.html">\n  <p>诱饵文案</p>\n</template>\n')
+  fs.writeFileSync(htmlPath, '<p>外部文案</p>\n')
+  const external = runLoader({
+    root,
+    source: '<p>外部文案</p>\n',
+    sourceMap: { version: 3, mappings: 'AAAA' },
+    meta: { kind: 'template' },
+    resourcePath: htmlPath,
+    resourceQuery: '?vue&type=template&id=abc&scoped=true'
+  })
+  assert.strictEqual(external.nextSource, '<p>外部文案</p>\n')
+  assert.deepStrictEqual(external.nextMap, { version: 3, mappings: 'AAAA' })
+  assert.strictEqual(external.nextMeta.kind, 'template')
+  assert.strictEqual(external.metadata.snapshot.identity, 'src/copy.html::template[lang=html]')
+  assert.strictEqual(external.metadata.snapshot.entries[0].value, '外部文案')
+  assert.strictEqual(external.metadata.snapshot.entries[0].locations[0].path, 'src/copy.html')
+  assert.strictEqual(external.metadata.snapshot.entries[0].locations[0].kind, 'html-text')
+
+  const inline = runLoader({
+    root,
+    source: fs.readFileSync(vuePath, 'utf8'),
+    sourceMap: null,
+    meta: null,
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=template&id=abc'
+  })
+  assert.match(inline.thrown.message, /could not be located/)
+  assert.match(inline.thrown.message, /src\/App\.vue/)
+  assert.match(inline.thrown.message, /template/)
 })
 
 test('registers an existing configuration file and a missing one', () => {

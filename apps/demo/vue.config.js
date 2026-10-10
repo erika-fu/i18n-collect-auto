@@ -26,7 +26,6 @@ module.exports = {
 
     config.module
       .rule('vue-template')
-      .test(/\.vue$/)
       .resourceQuery(/type=template/)
       .use('i18n-auto-loader')
         .loader(loaderPath)
