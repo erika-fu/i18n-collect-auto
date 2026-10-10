@@ -3,6 +3,7 @@
     <h2>{{ title }}</h2>
     <p>{{ message }}</p>
     <p>{{ sharedCopy }}</p>
+    <p>{{ literalNote }}</p>
     <p>{{ hint }}</p>
     <button @click="save">{{ action }}</button>
     <p v-if="saved">{{ result }}</p>
@@ -10,7 +11,7 @@
 </template>
 
 <script>
-import { sharedCopy } from '../copy'
+import { literalNote, sharedCopy } from '../copy'
 
 export default {
   name: 'ScriptPage',
@@ -19,6 +20,7 @@ export default {
       title: '脚本字符串',
       message: '这是一段写在脚本里的中文',
       sharedCopy,
+      literalNote,
       hint: '同一句出现两次',
       action: '保存',
       result: '',

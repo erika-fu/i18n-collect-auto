@@ -55,7 +55,7 @@ A parsing or output error that invalidates the current collection round; it pres
 The stable, versioned shape of the collection result and its source map, including semantic kinds, source ranges, metadata, and entry ordering.
 
 **Source coordinate**:
-A position in original source using 1-based lines and UTF-16 code-unit columns; ranges are half-open and end-exclusive.
+A position in original source. Lines are 1-based. Columns are 0-based and count UTF-16 code units. A source range is half-open: the end coordinate is exclusive.
 
 **Static fragment**:
 A source text segment whose value can be determined without executing application code, including a segment around an interpolation; only fragments containing Chinese are collected.

@@ -11,11 +11,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 22,
+            "line": 24,
             "column": 12
           },
           "end": {
-            "line": 22,
+            "line": 24,
             "column": 21
           }
         },
@@ -23,11 +23,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 31,
+            "line": 33,
             "column": 20
           },
           "end": {
-            "line": 31,
+            "line": 33,
             "column": 29
           }
         }
@@ -46,6 +46,24 @@
           },
           "end": {
             "line": 24,
+            "column": 16
+          }
+        }
+      ]
+    },
+    {
+      "key": "1a2c609f4f9f408c8ed3c613c5834e5c",
+      "value": "独立样式",
+      "locations": [
+        {
+          "path": "src/base.css",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 2,
+            "column": 12
+          },
+          "end": {
+            "line": 2,
             "column": 16
           }
         }
@@ -89,11 +107,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 19,
+            "line": 20,
             "column": 13
           },
           "end": {
-            "line": 19,
+            "line": 20,
             "column": 20
           }
         }
@@ -131,6 +149,24 @@
           "end": {
             "line": 4,
             "column": 15
+          }
+        }
+      ]
+    },
+    {
+      "key": "45f8558a01888df9993a2e211b97df45",
+      "value": "页面文案",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-text",
+          "start": {
+            "line": 14,
+            "column": 20
+          },
+          "end": {
+            "line": 14,
+            "column": 24
           }
         }
       ]
@@ -311,11 +347,11 @@
           "path": "src/pages/MarkupPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 24,
+            "line": 25,
             "column": 13
           },
           "end": {
-            "line": 24,
+            "line": 25,
             "column": 20
           }
         }
@@ -329,12 +365,48 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 20,
+            "line": 21,
             "column": 15
           },
           "end": {
-            "line": 20,
+            "line": 21,
             "column": 29
+          }
+        }
+      ]
+    },
+    {
+      "key": "75d86ae2ea3caf3ec8c8813b4ef77a4d",
+      "value": "页面提示",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-attribute",
+          "start": {
+            "line": 14,
+            "column": 14
+          },
+          "end": {
+            "line": 14,
+            "column": 18
+          }
+        }
+      ]
+    },
+    {
+      "key": "77d3895a5a34ced583f0af761de5438b",
+      "value": "旁白",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 16,
+            "column": 29
+          },
+          "end": {
+            "line": 16,
+            "column": 31
           }
         }
       ]
@@ -401,6 +473,24 @@
           "end": {
             "line": 17,
             "column": 17
+          }
+        }
+      ]
+    },
+    {
+      "key": "8de94c27e8719ef18dd9d2923680d66b",
+      "value": "公共模板",
+      "locations": [
+        {
+          "path": "src/copy.js",
+          "kind": "template-literal",
+          "start": {
+            "line": 2,
+            "column": 28
+          },
+          "end": {
+            "line": 2,
+            "column": 32
           }
         }
       ]
@@ -503,11 +593,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 23,
+            "line": 25,
             "column": 14
           },
           "end": {
-            "line": 23,
+            "line": 25,
             "column": 18
           }
         }
@@ -605,11 +695,11 @@
           "path": "src/pages/MarkupPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 25,
+            "line": 26,
             "column": 12
           },
           "end": {
-            "line": 25,
+            "line": 26,
             "column": 16
           }
         }
@@ -629,6 +719,24 @@
           "end": {
             "line": 4,
             "column": 24
+          }
+        }
+      ]
+    },
+    {
+      "key": "f15261b960ab48421862616e1a53c25f",
+      "value": "片段",
+      "locations": [
+        {
+          "path": "src/copy.js",
+          "kind": "template-literal",
+          "start": {
+            "line": 2,
+            "column": 36
+          },
+          "end": {
+            "line": 2,
+            "column": 38
           }
         }
       ]

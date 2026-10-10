@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-本文记录经过设计访谈确认的目标架构和分阶段实施方案。它是后续实现与评审的依据，当前不表示这些能力已经实现。
+本文记录经过设计访谈确认的目标架构和分阶段实施方案。Phase 1 到 Phase 4 已经落地，本文继续作为设计记录。接入方式、配置、支持范围和故障说明见仓库 README 与 `docs/collection.md`。
 
 本次设计的主要目标是：
 
@@ -385,6 +385,8 @@ HTMLWebpackPlugin 在 child compiler 中编译模板，并可能复用缓存结�
 - 没有新的 child snapshot 替换它。
 
 模板移除、替换或不再作为依赖时，旧 snapshot 必须淘汰。
+
+新的 compiler 实例不继承上一实例的 session。文件系统缓存恢复 child compilation、且 Loader 不再执行时，Plugin 必须从该 child compilation 的 module metadata 读回 snapshot。只查看 main `compilation.modules` 会在跨 compiler 恢复时丢掉独立 HTML。metadata 中的 root 或配置哈希与当前 compiler 不一致时，该 snapshot 不进入 session，并且本轮失败，避免把别的构建的结果发布出来。
 
 ---
 

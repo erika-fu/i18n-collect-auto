@@ -13,6 +13,7 @@
     <img alt="示例图片" src="/favicon.ico">
     <input type="button" value="提交按钮">
     <button aria-label="关闭面板">关闭</button>
+    <span data-note="不要收集属性">旁白</span>
   </section>
 </template>
 

@@ -892,6 +892,14 @@ test('collects a raw HTMLWebpackPlugin template and retains it when the child ca
     const thirdHtml = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
     assert.ok(!thirdHtml.includes('<%'))
     assert.ok(thirdHtml.includes('<title>演示标题</title>'))
+
+    fs.writeFileSync(template, pageHtml('  <p>plain</p>'))
+    const fourth = await handle.run()
+    assert.strictEqual(fourth.hasErrors(), false, messages(fourth))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['脚本乙'])
+    const cleared = getSession(handle.compiler).committedSnapshots().find(snapshot => snapshot.identity === 'public/index.html::html')
+    assert.ok(cleared)
+    assert.deepStrictEqual(cleared.entries, [])
   } finally {
     await handle.close()
   }
@@ -974,6 +982,31 @@ test('a static HTML parse failure preserves the previous collection output', { t
     assert.match(text, /duplicate-attribute/)
     assert.match(text, /line1/)
     assert.match(text, /column18/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('deleting the HTML template preserves the published collection', { timeout: 30000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-html-delete-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  fs.mkdirSync(path.join(root, 'public'))
+  const template = path.join(root, 'public/index.html')
+  fs.writeFileSync(path.join(root, 'src/main.js'), 'module.exports = "脚本"\n')
+  fs.writeFileSync(template, pageHtml('  <p>页面文案</p>'))
+  const handle = start(htmlPage(root, template))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const committed = getSession(handle.compiler).committed.runtimeDictionary()
+    fs.rmSync(template)
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), true)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
     assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
@@ -1111,6 +1144,38 @@ test('a style index change evicts the previous identity', { timeout: 20000 }, as
   }
 })
 
+test('the demo scss fixture warns once and does not publish its stylesheet copy', { timeout: 20000 }, async () => {
+  const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/fixtures/UnsupportedStyle.vue'), 'utf8')
+  assert.match(fixture, /lang="scss"/)
+  assert.match(fixture, /预处理文案/)
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-scss-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vue = path.join(root, 'src/UnsupportedStyle.vue')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(vue, fixture)
+  fs.writeFileSync(entry, 'require("./UnsupportedStyle.vue?vue&type=style&index=0&lang=scss")\nrequire("./UnsupportedStyle.vue?vue&type=template&lang=html")\n')
+  const pass = path.join(root, 'pass-loader.js')
+  fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
+  const collector = require.resolve('../myloader')
+  const stats = await compile({
+    ...project(root, entry),
+    plugins: [new MyI18nPlugin()],
+    module: {
+      rules: [
+        { test: /\.js$/, loader: collector },
+        { test: /\.vue$/, resourceQuery: /type=template/, use: [pass, collector] },
+        { test: /\.vue$/, resourceQuery: /type=style/, use: [pass, collector] }
+      ]
+    }
+  })
+  assert.strictEqual(stats.hasErrors(), false, messages(stats))
+  assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['预处理器示例'])
+  const text = warningText(stats)
+  assert.match(text, /scss/)
+  assert.match(text, /src\/UnsupportedStyle\.vue::style\[index=0;lang=scss\]/)
+  assert.strictEqual(text.split('does not parse scss').length - 1, 1)
+})
+
 test('warns once for an unsupported style and still publishes an empty snapshot', { timeout: 20000 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-css-scss-'))
   fs.mkdirSync(path.join(root, 'src'))
@@ -1214,6 +1279,280 @@ test('css-loader output stays unchanged when collection runs on the original sou
   assert.ok(found)
   assert.strictEqual(found.locations[0].kind, 'css-generated-content')
   assert.strictEqual(found.locations[0].path, 'src/app.css')
+})
+
+function contractSources() {
+  return {
+    main: [
+      'require("./crlf.js")',
+      'require("./win/note.js")',
+      'require("./base.css")',
+      'require("./App.vue")',
+      'x="甲"; const later = "甲"',
+      'module.exports = "😀" + "好"',
+      ''
+    ].join('\n'),
+    crlf: 'const message = "你好"\r\nconst b = "世界"\r\n',
+    note: 'module.exports = "路径"\n',
+    css: '.a::before { content: "\\65B0"; }\r\n.c { content: none; /* 注释 */ --label: "内部"; }\r\n',
+    vue: [
+      '<template>',
+      '  <p title="提示" class="不收集">保存&nbsp;成功</p>',
+      '</template>',
+      '<script>',
+      'export default { name: "脚本" }',
+      '</script>',
+      '<style>',
+      '.a::before { content: "第一"; }',
+      '</style>',
+      '<style>',
+      '.b::before { content: "\\65B0"; }',
+      '</style>',
+      ''
+    ].join('\n'),
+    html: [
+      '<!DOCTYPE html>',
+      '<html><head>',
+      '  <link rel="icon" href="<%= BASE_URL %>favicon.ico">',
+      '  <title><%= htmlWebpackPlugin.options.title %></title>',
+      '</head><body>',
+      '  <p title="提示">页面&nbsp;文案</p>',
+      '</body></html>',
+      ''
+    ].join('\n')
+  }
+}
+
+function writeContract(root) {
+  const sources = contractSources()
+  fs.mkdirSync(path.join(root, 'src/win'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'public'))
+  fs.writeFileSync(path.join(root, 'src/main.js'), sources.main)
+  fs.writeFileSync(path.join(root, 'src/crlf.js'), sources.crlf)
+  fs.writeFileSync(path.join(root, 'src/win/note.js'), sources.note)
+  fs.writeFileSync(path.join(root, 'src/base.css'), sources.css)
+  fs.writeFileSync(path.join(root, 'src/App.vue'), sources.vue)
+  fs.writeFileSync(path.join(root, 'public/index.html'), sources.html)
+  return sources
+}
+
+function contractConfig(root, cache) {
+  const collector = require.resolve('../myloader')
+  const vueLoader = require.resolve('@vue/vue-loader-v15')
+  const cssLoader = require.resolve('css-loader')
+  const template = path.join(root, 'public/index.html')
+  return {
+    ...project(root, path.join(root, 'src/main.js')),
+    output: { path: path.join(root, 'dist'), filename: 'bundle.js', publicPath: '/' },
+    cache,
+    plugins: [
+      new VueLoaderPlugin(),
+      new HtmlWebpackPlugin({
+        template: htmlTemplateRequest(template),
+        filename: 'index.html',
+        title: '演示标题',
+        templateParameters: { BASE_URL: '/' },
+        inject: true
+      }),
+      new MyI18nPlugin()
+    ],
+    module: {
+      rules: [
+        { test: /\.vue$/, loader: vueLoader },
+        { test: /\.vue$/, resourceQuery: /type=script/, loader: collector },
+        { resourceQuery: /type=template/, loader: collector },
+        { resourceQuery: /type=style/, use: [cssLoader, collector] },
+        { test: /\.css$/, use: [cssLoader, collector] },
+        { test: /\.m?jsx?$/, exclude: /node_modules/, loader: collector }
+      ]
+    }
+  }
+}
+
+function sourceOffset(source, position) {
+  let line = 1
+  let column = 0
+  for (let index = 0; index < source.length; index++) {
+    if (line === position.line && column === position.column) return index
+    const char = source[index]
+    if (char === '\n' || char === '\r') {
+      if (char === '\r' && source[index + 1] === '\n') index += 1
+      line += 1
+      column = 0
+    } else {
+      column += 1
+    }
+  }
+  if (line === position.line && column === position.column) return source.length
+  return -1
+}
+
+function location(file, kind, startLine, startColumn, endLine, endColumn) {
+  return {
+    path: file,
+    kind,
+    start: { line: startLine, column: startColumn },
+    end: { line: endLine, column: endColumn }
+  }
+}
+
+test('a real module graph publishes script, HTML, and CSS with stable coordinates', { timeout: 40000 }, async () => {
+  const root = fs.mkdtempSync(path.join(__dirname, '.tmp-contract-'))
+  const sources = writeContract(root)
+  let first
+  try {
+  first = await compile(contractConfig(root, false))
+  assert.strictEqual(first.hasErrors(), false, messages(first))
+  const outputFile = path.join(root, 'lang/zh_hash.json')
+  const mapFile = path.join(root, 'lang/zh_hash.map.json')
+  const firstBytes = [fs.readFileSync(outputFile), fs.readFileSync(mapFile)]
+  const firstTimes = [fs.statSync(outputFile).mtimeMs, fs.statSync(mapFile).mtimeMs]
+  const page = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
+  assert.ok(!page.includes('<%'))
+  assert.ok(page.includes('<title>演示标题</title>'))
+  assert.ok(page.includes('href="/favicon.ico"'))
+
+  const { dictionary, map } = readOutput(root)
+  assert.strictEqual(map.version, 1)
+  assert.strictEqual(map.parserVersion, 'babel-7')
+  assert.deepStrictEqual(Object.keys(dictionary), Object.keys(dictionary).slice().sort((a, b) => a.localeCompare(b)))
+  assert.deepStrictEqual(map.entries.map(entry => entry.key), Object.keys(dictionary))
+  const values = new Set(Object.values(dictionary))
+  assert.deepStrictEqual(values, new Set([
+    '甲',
+    '好',
+    '你好',
+    '世界',
+    '路径',
+    '新',
+    '提示',
+    '保存\u00A0成功',
+    '脚本',
+    '页面\u00A0文案',
+    '第一'
+  ]))
+  assert.ok(!values.has('不收集'))
+  assert.ok(!values.has('注释'))
+  assert.ok(!values.has('内部'))
+  assert.ok(!values.has('演示标题'))
+
+  const byValue = new Map(map.entries.map(entry => [entry.value, entry.locations]))
+  const spelling = (file, text, loc) => {
+    const start = sourceOffset(text, loc.start)
+    const end = sourceOffset(text, loc.end)
+    return text.slice(start, end)
+  }
+  assert.deepStrictEqual(byValue.get('甲'), [
+    location('src/main.js', 'script-string', 5, 2, 5, 5),
+    location('src/main.js', 'script-string', 5, 21, 5, 24)
+  ])
+  assert.strictEqual(spelling('src/main.js', sources.main, byValue.get('甲')[0]), '"甲"')
+  assert.strictEqual(spelling('src/main.js', sources.main, byValue.get('好')[0]), '"好"')
+  assert.deepStrictEqual(byValue.get('好')[0], location('src/main.js', 'script-string', 6, 24, 6, 27))
+  assert.deepStrictEqual(byValue.get('你好')[0], location('src/crlf.js', 'script-string', 1, 16, 1, 20))
+  assert.deepStrictEqual(byValue.get('世界')[0], location('src/crlf.js', 'script-string', 2, 10, 2, 14))
+  assert.strictEqual(spelling('src/crlf.js', sources.crlf, byValue.get('世界')[0]), '"世界"')
+  assert.deepStrictEqual(byValue.get('路径')[0], location('src/win/note.js', 'script-string', 1, 17, 1, 21))
+  assert.ok(byValue.get('路径')[0].path.includes('/'))
+  assert.ok(!byValue.get('路径')[0].path.includes('\\'))
+  assert.deepStrictEqual(byValue.get('提示'), [
+    location('public/index.html', 'static-html-attribute', 6, 12, 6, 14),
+    location('src/App.vue', 'html-attribute', 2, 12, 2, 14)
+  ])
+  assert.strictEqual(spelling('public/index.html', sources.html, byValue.get('提示')[0]), '提示')
+  assert.strictEqual(spelling('src/App.vue', sources.vue, byValue.get('保存\u00A0成功')[0]), '保存&nbsp;成功')
+  assert.deepStrictEqual(byValue.get('保存\u00A0成功')[0], location('src/App.vue', 'html-text', 2, 28, 2, 38))
+  assert.deepStrictEqual(byValue.get('页面\u00A0文案')[0], location('public/index.html', 'static-html-text', 6, 16, 6, 26))
+  assert.strictEqual(spelling('public/index.html', sources.html, byValue.get('页面\u00A0文案')[0]), '页面&nbsp;文案')
+  assert.deepStrictEqual(byValue.get('脚本')[0], location('src/App.vue', 'script-string', 5, 23, 5, 27))
+  assert.strictEqual(spelling('src/App.vue', sources.vue, byValue.get('脚本')[0]), '"脚本"')
+  assert.deepStrictEqual(byValue.get('第一')[0], location('src/App.vue', 'css-generated-content', 8, 23, 8, 25))
+  assert.strictEqual(spelling('src/App.vue', sources.vue, byValue.get('第一')[0]), '第一')
+  assert.deepStrictEqual(byValue.get('新'), [
+    location('src/App.vue', 'css-generated-content', 11, 23, 11, 28),
+    location('src/base.css', 'css-generated-content', 1, 23, 1, 28)
+  ])
+  assert.strictEqual(spelling('src/base.css', sources.css, byValue.get('新')[1]), '\\65B0')
+  assert.strictEqual(spelling('src/App.vue', sources.vue, byValue.get('新')[0]), '\\65B0')
+  for (const locations of byValue.values()) {
+    assert.strictEqual(locations.length, new Set(locations.map(item => JSON.stringify(item))).size)
+  }
+  assert.deepStrictEqual(getSession(first.compilation.compiler).committedSnapshots().map(snapshot => snapshot.identity).sort(), [
+    'public/index.html::html',
+    'src/App.vue::script[lang=js]',
+    'src/App.vue::style[index=0;lang=css]',
+    'src/App.vue::style[index=1;lang=css]',
+    'src/App.vue::template[lang=html]',
+    'src/base.css::style[index=0;lang=css]',
+    'src/crlf.js::script',
+    'src/main.js::script',
+    'src/win/note.js::script'
+  ])
+
+  const second = await compile(contractConfig(root, false))
+  assert.strictEqual(second.hasErrors(), false, messages(second))
+  assert.deepStrictEqual(fs.readFileSync(outputFile), firstBytes[0])
+  assert.deepStrictEqual(fs.readFileSync(mapFile), firstBytes[1])
+  assert.deepStrictEqual([fs.statSync(outputFile).mtimeMs, fs.statSync(mapFile).mtimeMs], firstTimes)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('filesystem cache matches a clean build and does not cross sessions', { timeout: 40000 }, async () => {
+  const root = fs.mkdtempSync(path.join(__dirname, '.tmp-contract-cache-'))
+  const plainRoot = fs.mkdtempSync(path.join(__dirname, '.tmp-contract-plain-'))
+  try {
+  writeContract(root)
+  const cacheDirectory = path.join(root, '.cache')
+  const cached = contractConfig(root, { type: 'filesystem', cacheDirectory, name: 'i18n-contract' })
+  const first = await compile(cached)
+  assert.strictEqual(first.hasErrors(), false, messages(first))
+  const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+  const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+  const runs = { script: 0, html: 0, css: 0, vue: 0 }
+  const second = await compile(cached, compiler => {
+    const tap = compilation => {
+      NormalModule.getCompilationHooks(compilation).loader.tap('i18n-contract-count', (loaderContext, mod) => {
+        const resource = loaderResource(loaderContext, mod)
+        if (resource.endsWith('/src/main.js')) runs.script += 1
+        if (resource.endsWith('/public/index.html')) runs.html += 1
+        if (resource.endsWith('/src/base.css')) runs.css += 1
+        if (resource.endsWith('/src/App.vue')) runs.vue += 1
+      })
+    }
+    compiler.hooks.compilation.tap('i18n-contract-count', tap)
+    compiler.hooks.thisCompilation.tap('i18n-contract-count', compilation => {
+      compilation.hooks.childCompiler.tap('i18n-contract-count', child => {
+        child.hooks.compilation.tap('i18n-contract-count', tap)
+      })
+    })
+  })
+  assert.strictEqual(second.hasErrors(), false, messages(second))
+  assert.deepStrictEqual(runs, { script: 0, html: 0, css: 0, vue: 0 })
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+
+  writeContract(plainRoot)
+  const plain = await compile(contractConfig(plainRoot, false))
+  assert.strictEqual(plain.hasErrors(), false, messages(plain))
+  assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.json')), dictionary)
+  assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.map.json')), sourceMap)
+
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-other-'))
+  fs.mkdirSync(path.join(other, 'src'))
+  fs.writeFileSync(path.join(other, 'src/app.js'), 'module.exports = "世界"\n')
+  const foreign = await compile({
+    ...jsProject(other, path.join(other, 'src/app.js')),
+    cache: { type: 'filesystem', cacheDirectory, name: 'i18n-contract' }
+  })
+  assert.strictEqual(foreign.hasErrors(), false, messages(foreign))
+  assert.deepStrictEqual(Object.values(readOutput(other).dictionary), ['世界'])
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(plainRoot, { recursive: true, force: true })
+  }
 })
 
 test('vue style output stays unchanged and content keeps original block coordinates', { timeout: 30000 }, async () => {

@@ -1,48 +1,39 @@
-# 收集过程中的两次故障
+# Collection troubleshooting
 
-在 demo 的 watch 构建里发现。用语与 `CONTEXT.md` 一致。
+Vocabulary matches `CONTEXT.md`. The design record is `docs/collection-architecture.md`.
 
-## 词条内容没变也会再次触发 watch
+## Watch compiles again after a real collection change
 
-`npm run serve` 和 `vue-cli-service build --watch` 在一次成功构建之后会立刻再编。产物哈希不变，也没有人改过源码。
-
-`apps/demo/src/lang/index.js` 引用了运行时词条：
+`apps/demo/src/lang/index.js` imports the runtime dictionary:
 
 ```js
 require(`/lang/${locale}_hash.json`)
 ```
 
-Webpack 把它解析成 `apps/demo/lang/zh_hash.json`，因此这个词条文件和它的父目录 `lang/` 都在监听范围内。`MyI18nPlugin` 在 `compiler.hooks.done` 写出收集结果。原先的 `writeOutputs` 每次编译都会先写临时文件，再 `rename` 到目标路径，字节已经相同也会这样做。
+Webpack resolves that to `apps/demo/lang/zh_hash.json`, so the dictionary and its parent directory are watched. `MyI18nPlugin` writes both official outputs after a successful compilation.
 
-这次目录写入就足以排下一轮编译：
+`writeOutputs` compares bytes first. When both files already contain the bytes that would be written, it returns before creating a temporary file. An unchanged collection therefore does not schedule another compilation.
 
-| 写入了什么 | watch 报告的变更 | 结果 |
-| --- | --- | --- |
-| 两份输出，字节未变 | `lang/zh_hash.json` 和 `lang` | 持续重编 |
-| 什么都不写 | 无变更 | 只编一次 |
-| 字节相同则跳过 | 无变更 | 只编一次 |
-| 只写词条 | `lang/zh_hash.json` 和 `lang` | 持续重编 |
-| 只写 source map | `lang` | 持续重编 |
+A real dictionary change still writes. Watch then compiles once more so the bundle can import the new dictionary. The following compilation sees identical bytes, skips the write, and stays quiet. A real change adds at most that one follow-up compilation.
 
-每次构建都会重写 `dist/`。停掉词条写入后循环停止，说明触发源是 `lang/` 里的写入。
+Regression: `packages/i18n-collect/test/watch-loop.test.js`.
 
-`writeOutputs` 现在会先比较字节。两份输出都已经是将要写入的内容时，在创建临时文件之前直接返回。收集结果真有变化时仍会写盘，watch 再编一轮把新词条打进包，下一次 `done` 看到字节相同后停止。
+## A failed round keeps the previous output
 
-回归测试：`packages/i18n-collect/test/watch-loop.test.js`。
+A parse error or an output error abandons the candidate round. The committed in-memory snapshots stay as they were, and both official files stay at the last successful bytes. The build fails. The error names the project-relative path, semantic block, style index and language when they apply, the 1-based line, and the 0-based UTF-16 column.
 
-## 模板插值里的静态片段被丢掉
+An unsupported style language is not a parse error. SCSS, Sass, Less, and Stylus produce one warning per resource identity, submit an empty snapshot, and do not fail the build. `apps/demo/fixtures/UnsupportedStyle.vue` is an isolated example and is not part of the demo entry.
 
-`apps/demo/src/App.vue` 里的 `` {{ `这是${a}的名字呀` }} `` 没有把「这是」和「的名字呀」写入收集结果。脚本里的「我不好」在结果中。`${a}` 是插值表达式，不进入结果。
+## One production build can embed the previous dictionary
 
-收集结果就是 `MyI18nPlugin` 在 `done` 时提交的那一份。对 Vue 文件，它原先只读 `<script>`，并用这些条目替换该文件的资源快照。模板块没有进入收集。把同一段模板字符串放进脚本后，两段静态片段都能收到，说明解析本身没有问题。
+The application imports the dictionary, and the plugin can write the complete result only after loaders finish. The files written at the end of a one-shot production build are the latest collection. The bundle produced by that same compilation can still contain the dictionary from the start of the build. Watch is what pulls the new file into a later compilation. This repository does not add a second compilation to close that loop.
 
-如果脚本扫描保持原样，后面两步仍会丢掉这些片段：
+## Nothing was collected
 
-- loader 会忽略 query 里带 `type=template` 的模块，因此 vue-loader 交来的模板块不会收集它们。
-- `replaceSnapshot` 替换整个资源。`src/App.vue` 若只剩脚本快照，同一路径上先收进来的模板条目会被清掉。
+The plugin does not scan the project. A file is collected only when it enters `i18n-collect/myloader`.
 
-插件现在会解析 `<template>` 里的每个 `{{ }}`，把其中的静态中文记为 `template-expression`，并和脚本条目放进同一次资源快照。位置使用原文件坐标：当前 demo 里，「这是」在第 6 行第 13 列，「的名字呀」在第 6 行第 19 列。
+A build with no loader invocation and no restored loader metadata fails and asks for the ordinary module rules, the Vue script, template, and style rules, and the HTML template loader chain. An empty snapshot, an excluded file, and an unsupported style are still loader evidence. Restored module metadata from the webpack filesystem cache is also loader evidence. Metadata from another root compiler or another configuration hash stays out of the session and fails the round, so a foreign snapshot is not published.
 
-已经跑着的 `npm run serve` 用的是启动时加载的插件。这次修改之后需要重启，收集结果才会重新写盘。
+## Coordinates do not match the decoded text
 
-回归测试：`packages/i18n-collect/test/template-fragment.test.js`。
+Source coordinates are 1-based lines and 0-based UTF-16 columns. Ranges are half-open. HTML entity and CSS escape values are decoded for the dictionary, while the source range still covers the original spelling and excludes HTML or CSS string delimiters. Historical JavaScript ranges still include the JavaScript string delimiters. A column after an astral character counts that character as two UTF-16 code units. CRLF is one line break.

@@ -37,6 +37,44 @@ test('declares webpack 5 and the dependencies the package imports', () => {
   assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5', 'postcss'])
 })
 
+test('sorts locations by path, kind, and numeric line and column', () => {
+  const store = new CollectionStore()
+  const columnTen = {
+    path: 'src/a.js',
+    kind: 'script-string',
+    start: { line: 2, column: 10 },
+    end: { line: 2, column: 12 }
+  }
+  const columnTwo = {
+    path: 'src/a.js',
+    kind: 'script-string',
+    start: { line: 2, column: 2 },
+    end: { line: 2, column: 4 }
+  }
+  const lineTen = {
+    path: 'src/a.js',
+    kind: 'template-literal',
+    start: { line: 10, column: 0 },
+    end: { line: 10, column: 2 }
+  }
+  const otherFile = {
+    path: 'src/b.js',
+    kind: 'html-text',
+    start: { line: 1, column: 0 },
+    end: { line: 1, column: 2 }
+  }
+  store.replaceSnapshot('src/a.js::script', [{
+    value: '你好',
+    locations: [columnTen, otherFile, lineTen, columnTwo, columnTwo]
+  }])
+  assert.deepStrictEqual(store.sourceMap('hash').entries[0].locations, [
+    columnTwo,
+    columnTen,
+    lineTen,
+    otherFile
+  ])
+})
+
 test('replaces resource snapshots and globally deduplicates locations', () => {
   const store = new CollectionStore()
   const location = { path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 4 } }

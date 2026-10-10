@@ -53,6 +53,45 @@ function metadataContext(compiler) {
   }
 }
 
+function separatedModules(compilation) {
+  const main = [...(compilation.modules || [])]
+  const child = []
+  const seen = new Set([compilation])
+  const visit = current => {
+    for (const next of current.children || []) {
+      if (!next || seen.has(next)) continue
+      seen.add(next)
+      for (const mod of next.modules || []) child.push(mod)
+      visit(next)
+    }
+  }
+  visit(compilation)
+  return { main, child }
+}
+
+function isHtmlIdentity(snapshot) {
+  return Boolean(snapshot && typeof snapshot.identity === 'string' && snapshot.identity.endsWith('::html'))
+}
+
+function snapshotsForRelease(compilation, session, context) {
+  const { main, child } = separatedModules(compilation)
+  const live = assembleLiveSet(main, context)
+  const recovered = assembleLiveSet(child, context)
+  const submitted = new Map()
+  for (const snapshot of session.candidateSnapshots(compilation)) {
+    if (snapshot && snapshot.identity) submitted.set(snapshot.identity, snapshot)
+  }
+  for (const snapshot of recovered.snapshots) {
+    if (isHtmlIdentity(snapshot) && !submitted.has(snapshot.identity)) submitted.set(snapshot.identity, snapshot)
+  }
+  return {
+    live,
+    diagnostics: [...new Set([...live.diagnostics, ...recovered.diagnostics])],
+    integrated: live.integrated || recovered.integrated,
+    snapshots: [...submitted.values()]
+  }
+}
+
 class MyI18nPlugin {
   constructor(options = {}) {
     this.options = options
@@ -66,10 +105,10 @@ class MyI18nPlugin {
     compiler.hooks.thisCompilation.tap(PLUGIN, compilation => {
       session.begin(compilation)
       compilation.hooks.afterSeal.tap(PLUGIN, () => {
-        const live = assembleLiveSet(compilation.modules, metadataContext(compiler))
-        for (const diagnostic of live.diagnostics) compilation.errors.push(new Error(diagnostic))
-        if (live.diagnostics.length > 0 || (session.invocationCount(compilation) === 0 && !live.integrated)) {
-          if (live.diagnostics.length === 0) compilation.errors.push(new Error(NOT_INTEGRATED))
+        const round = snapshotsForRelease(compilation, session, metadataContext(compiler))
+        for (const diagnostic of round.diagnostics) compilation.errors.push(new Error(diagnostic))
+        if (round.diagnostics.length > 0 || (session.invocationCount(compilation) === 0 && !round.integrated)) {
+          if (round.diagnostics.length === 0) compilation.errors.push(new Error(NOT_INTEGRATED))
           session.abandon(compilation)
         }
       })
@@ -81,15 +120,15 @@ class MyI18nPlugin {
         session.abandon(compilation)
         return
       }
-      const live = assembleLiveSet(compilation.modules, metadataContext(compiler))
-      if (live.diagnostics.length > 0) {
+      const round = snapshotsForRelease(compilation, session, metadataContext(compiler))
+      if (round.diagnostics.length > 0) {
         session.abandon(compilation)
-        throw new Error(live.diagnostics.join('\n'))
+        throw new Error(round.diagnostics.join('\n'))
       }
       const config = loadConfig({ root: compiler.context, pluginOptions: this.options })
       const snapshots = retainStaticHtmlSnapshots({
-        live: live.snapshots,
-        submitted: session.candidateSnapshots(compilation),
+        live: round.live.snapshots,
+        submitted: round.snapshots,
         committed: session.committedSnapshots(),
         activeTemplates: activeHtmlTemplates(compiler, compilation, config)
       })

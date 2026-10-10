@@ -38,8 +38,17 @@ function locationId(location) {
   return JSON.stringify(location)
 }
 
+function compareNumber(left, right) {
+  return left - right
+}
+
 function sortLocations(a, b) {
-  return locationId(a).localeCompare(locationId(b))
+  return a.path.localeCompare(b.path) ||
+    a.kind.localeCompare(b.kind) ||
+    compareNumber(a.start.line, b.start.line) ||
+    compareNumber(a.start.column, b.start.column) ||
+    compareNumber(a.end.line, b.end.line) ||
+    compareNumber(a.end.column, b.end.column)
 }
 
 function uniqueLocations(locations) {

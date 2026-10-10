@@ -21,4 +21,9 @@ export default {
   content: "（新）";
   margin-left: 4px;
 }
+.badge {
+  color: #2c3e50; /* 注释不收集 */
+  --label: "变量不收集";
+  content: none;
+}
 </style>
