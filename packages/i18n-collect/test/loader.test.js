@@ -199,6 +199,51 @@ test('reads an external Vue template from the requested file and does not guess 
   assert.match(inline.thrown.message, /template/)
 })
 
+test('collects standalone HTML in place and returns the template bytes unchanged', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  fs.mkdirSync(path.join(root, 'public'))
+  const source = '<p title="说明">页面文案</p>\n<p><%= htmlWebpackPlugin.options.title %></p>\n'
+  const htmlPath = path.join(root, 'public/index.html')
+  fs.writeFileSync(htmlPath, source)
+  const result = runLoader({
+    root,
+    source,
+    sourceMap: { version: 3, mappings: 'AAAA' },
+    meta: { kind: 'html' },
+    resourcePath: htmlPath
+  })
+  assert.strictEqual(result.error, null)
+  assert.strictEqual(result.nextSource, source)
+  assert.deepStrictEqual(result.nextMap, { version: 3, mappings: 'AAAA' })
+  assert.strictEqual(result.nextMeta.kind, 'html')
+  assert.strictEqual(result.metadata.snapshot.identity, 'public/index.html::html')
+  assert.deepStrictEqual(result.metadata.snapshot.entries.map(entry => entry.value), ['说明', '页面文案'])
+  assert.deepStrictEqual(result.metadata.snapshot.entries.map(entry => entry.locations[0].kind), [
+    'static-html-attribute',
+    'static-html-text'
+  ])
+})
+
+test('a standalone HTML parse error names the project path and source location', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  fs.mkdirSync(path.join(root, 'public'))
+  const source = '<p title="甲" title="乙">文案</p>\n'
+  const htmlPath = path.join(root, 'public/index.html')
+  fs.writeFileSync(htmlPath, source)
+  const { thrown } = runLoader({
+    root,
+    source,
+    sourceMap: null,
+    meta: null,
+    resourcePath: htmlPath
+  })
+  assert.ok(thrown)
+  assert.match(thrown.message, /public\/index\.html/)
+  assert.match(thrown.message, /html/)
+  assert.match(thrown.message, /line 1/)
+  assert.match(thrown.message, /duplicate-attribute/)
+})
+
 test('registers an existing configuration file and a missing one', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
   fs.mkdirSync(path.join(root, 'src'))

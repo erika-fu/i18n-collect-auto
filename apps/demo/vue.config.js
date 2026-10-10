@@ -38,5 +38,20 @@ module.exports = {
       .use('i18n-auto-loader')
         .loader(loaderPath)
         .end()
+
+    // Webpack runs normal loaders from right to left. The collector must see
+    // the raw template, then HTMLWebpackPlugin's own loader must still run.
+    const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')
+    const htmlNames = []
+    config.plugins.store.forEach((plugin, name) => htmlNames.push(name))
+    for (const name of htmlNames) {
+      if (name !== 'html' && !String(name).startsWith('html-')) continue
+      config.plugin(name).tap(args => {
+        const options = args[0]
+        if (!options || typeof options.template !== 'string' || options.template.includes('!')) return args
+        const template = `!!${htmlLoader}?${JSON.stringify({ force: true })}!${loaderPath}!${options.template}`
+        return [{ ...options, template }, ...args.slice(1)]
+      })
+    }
   }
 }

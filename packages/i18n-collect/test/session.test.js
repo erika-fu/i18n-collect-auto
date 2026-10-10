@@ -1,7 +1,14 @@
 const assert = require('assert')
+const path = require('path')
 const { spawnSync } = require('child_process')
 const test = require('node:test')
-const { assembleLiveSet, getSession, moduleMetadata } = require('../mycommon/session')
+const {
+  assembleLiveSet,
+  getSession,
+  moduleMetadata,
+  retainStaticHtmlSnapshots,
+  selectActiveHtmlTemplates
+} = require('../mycommon/session')
 
 function compiler() {
   const root = {}
@@ -215,6 +222,96 @@ test('invalid metadata is diagnosed and stays out of the live set', () => {
   assert.match(live.diagnostics.join('\n'), /schema/)
   assert.match(live.diagnostics.join('\n'), /root compiler/)
   assert.match(live.diagnostics.join('\n'), /configuration/)
+})
+
+function htmlSnapshot(projectPath, value) {
+  return {
+    identity: `${projectPath}::html`,
+    projectPath,
+    entries: [{
+      value,
+      locations: [{
+        path: projectPath,
+        kind: 'static-html-text',
+        start: { line: 1, column: 0 },
+        end: { line: 1, column: value.length }
+      }]
+    }]
+  }
+}
+
+test('keeps a static HTML snapshot when a cached child submits nothing new', () => {
+  const retained = retainStaticHtmlSnapshots({
+    live: [helloSnapshot()],
+    submitted: [],
+    committed: [htmlSnapshot('public/index.html', '页面文案')],
+    activeTemplates: ['public/index.html']
+  })
+  assert.deepStrictEqual(retained.map(snapshot => snapshot.identity).sort(), [
+    'public/index.html::html',
+    'src/a.js::script'
+  ])
+  assert.strictEqual(retained.find(snapshot => snapshot.identity.endsWith('::html')).entries[0].value, '页面文案')
+})
+
+test('a new static HTML snapshot replaces the committed snapshot with the same identity', () => {
+  const retained = retainStaticHtmlSnapshots({
+    live: [],
+    submitted: [htmlSnapshot('public/index.html', '新文案')],
+    committed: [htmlSnapshot('public/index.html', '旧文案')],
+    activeTemplates: ['public/index.html']
+  })
+  assert.deepStrictEqual(retained.map(snapshot => snapshot.entries[0].value), ['新文案'])
+})
+
+test('an empty static HTML submission clears the previous copy', () => {
+  const retained = retainStaticHtmlSnapshots({
+    live: [],
+    submitted: [{ identity: 'public/index.html::html', projectPath: 'public/index.html', entries: [] }],
+    committed: [htmlSnapshot('public/index.html', '页面文案')],
+    activeTemplates: ['public/index.html']
+  })
+  assert.strictEqual(retained.length, 1)
+  assert.deepStrictEqual(retained[0].entries, [])
+})
+
+test('drops a static HTML snapshot that is deleted, replaced, or no longer configured', () => {
+  const retained = retainStaticHtmlSnapshots({
+    live: [helloSnapshot()],
+    submitted: [htmlSnapshot('public/gone.html', '将删除')],
+    committed: [htmlSnapshot('public/index.html', '页面文案'), htmlSnapshot('public/about.html', '关于')],
+    activeTemplates: ['public/about.html']
+  })
+  assert.deepStrictEqual(retained.map(snapshot => snapshot.identity).sort(), [
+    'public/about.html::html',
+    'src/a.js::script'
+  ])
+})
+
+test('keeps standalone HTML already present in the main module graph', () => {
+  const current = htmlSnapshot('src/page.html', '页面')
+  const retained = retainStaticHtmlSnapshots({
+    live: [current],
+    submitted: [],
+    committed: [htmlSnapshot('src/page.html', '旧页面')],
+    activeTemplates: []
+  })
+  assert.deepStrictEqual(retained.map(snapshot => snapshot.entries[0].value), ['页面'])
+})
+
+test('selects HTML templates that stay configured, depended on, and present', () => {
+  const root = path.resolve('/project')
+  const index = path.join(root, 'public/index.html')
+  const gone = path.join(root, 'public/gone.html')
+  const idle = path.join(root, 'public/other.html')
+  const active = selectActiveHtmlTemplates({
+    root,
+    templates: [index, gone, idle],
+    dependencies: [index, gone],
+    missing: [gone],
+    present: file => path.resolve(file) !== path.resolve(gone)
+  })
+  assert.deepStrictEqual(active, ['public/index.html'])
 })
 
 test('reclaims the session when its root compiler is collected', () => {

@@ -1,3 +1,4 @@
+const path = require('path')
 const { CollectionStore } = require('./store')
 
 const COLLECT_METADATA = 'i18nCollect'
@@ -99,6 +100,68 @@ function interpretMetadata(metadata, context) {
   return { integrated: true, snapshot, diagnostic: null }
 }
 
+function fileKey(file) {
+  const resolved = path.resolve(file).split(path.sep).join('/')
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function staticHtmlPath(snapshot) {
+  if (!snapshot || typeof snapshot.identity !== 'string' || !snapshot.identity.endsWith('::html')) return null
+  if (typeof snapshot.projectPath === 'string' && snapshot.projectPath) return snapshot.projectPath.split('\\').join('/')
+  return snapshot.identity.slice(0, -'::html'.length)
+}
+
+function indexStaticHtmlSnapshots(snapshots) {
+  const byIdentity = new Map()
+  for (const snapshot of snapshots || []) {
+    const projectPath = staticHtmlPath(snapshot)
+    if (projectPath) byIdentity.set(snapshot.identity, snapshot)
+  }
+  return byIdentity
+}
+
+function retainStaticHtmlSnapshots({ live, submitted, committed, activeTemplates }) {
+  const active = new Set(activeTemplates || [])
+  const liveIds = new Set()
+  const byIdentity = new Map()
+  for (const snapshot of live || []) {
+    if (!snapshot || !snapshot.identity) continue
+    liveIds.add(snapshot.identity)
+    byIdentity.set(snapshot.identity, snapshot)
+  }
+  const submittedHtml = indexStaticHtmlSnapshots(submitted)
+  const committedHtml = indexStaticHtmlSnapshots(committed)
+  for (const identity of new Set([...submittedHtml.keys(), ...committedHtml.keys()])) {
+    const snapshot = submittedHtml.get(identity) || committedHtml.get(identity)
+    const projectPath = staticHtmlPath(snapshot)
+    if (!active.has(projectPath)) {
+      if (!liveIds.has(identity)) byIdentity.delete(identity)
+      continue
+    }
+    if (submittedHtml.has(identity)) byIdentity.set(identity, submittedHtml.get(identity))
+    else if (!byIdentity.has(identity)) byIdentity.set(identity, committedHtml.get(identity))
+  }
+  return [...byIdentity.values()]
+}
+
+function selectActiveHtmlTemplates({ root, templates, dependencies, missing, present }) {
+  const depended = new Set((dependencies || []).map(fileKey))
+  const missingKeys = new Set((missing || []).map(fileKey))
+  const active = []
+  const seen = new Set()
+  for (const template of templates || []) {
+    const key = fileKey(template)
+    if (!depended.has(key) || missingKeys.has(key)) continue
+    if (typeof present === 'function' && !present(template)) continue
+    const relative = path.relative(root, path.resolve(template)).split(path.sep).join('/')
+    if (!relative || relative === '..' || relative.startsWith('../')) continue
+    if (seen.has(relative)) continue
+    seen.add(relative)
+    active.push(relative)
+  }
+  return active
+}
+
 function assembleLiveSet(modules, context) {
   const byIdentity = new Map()
   const diagnostics = []
@@ -164,8 +227,6 @@ class CollectionSession {
     return Boolean(round && round.abandoned)
   }
 
-  // Submissions normalized from child compilations. A later retention policy
-  // can merge these when a child module is absent from the main module graph.
   candidateSnapshots(compilation) {
     const round = this.rounds.get(mainCompilation(compilation))
     if (!round) return []
@@ -239,5 +300,7 @@ module.exports = {
   mainCompilation,
   storeFromSnapshots,
   moduleMetadata,
-  assembleLiveSet
+  assembleLiveSet,
+  retainStaticHtmlSnapshots,
+  selectActiveHtmlTemplates
 }

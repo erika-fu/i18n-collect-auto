@@ -99,7 +99,7 @@ function entriesFor(resource, sourceText, config) {
       resource
     })
   }
-  if (resource.block === 'template') {
+  if (resource.block === 'template' || resource.block === 'html') {
     return extractHtml({
       source: fs.readFileSync(resource.absolutePath, 'utf8'),
       resource,
@@ -107,7 +107,7 @@ function entriesFor(resource, sourceText, config) {
     }).entries
   }
   if (resource.block === 'script') return extractScript({ source: sourceText, resource })
-  if (resource.block === 'style' || resource.block === 'html') return []
+  if (resource.block === 'style') return []
   return null
 }
 

@@ -4,6 +4,7 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const webpack = require('webpack')
+const HtmlWebpackPlugin = require('html-webpack-plugin')
 const { NormalModule } = webpack
 const { VueLoaderPlugin } = require('@vue/vue-loader-v15')
 const { loadConfig } = require('../mycommon/config')
@@ -704,13 +705,27 @@ test('filesystem cache matches an uncached build without a loader rerun', { time
   assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.map.json')), sourceMap)
 })
 
-test('demo places the collector before thread-loader', () => {
+test('demo places the collector before thread-loader and the HTML template loader', () => {
   const Config = require('webpack-chain')
   const vueConfig = require('../../../apps/demo/vue.config')
   const config = new Config()
   const js = config.module.rule('js')
   js.use('thread-loader').loader('thread-loader')
   js.use('babel-loader').loader('babel-loader')
+  const indexTemplate = path.join('public', 'index.html')
+  const aboutTemplate = path.join('public', 'about.html')
+  config.plugin('html').use(class HtmlWebpackPlugin {}, [{
+    template: indexTemplate,
+    title: 'demo',
+    inject: true,
+    scriptLoading: 'defer'
+  }])
+  config.plugin('html-about').use(class HtmlWebpackPlugin {}, [{
+    template: aboutTemplate,
+    title: 'about',
+    inject: false
+  }])
+  config.plugin('define').use(class DefinePlugin {}, [{ 'process.env.NODE_ENV': '"test"' }])
   vueConfig.chainWebpack(config)
   const loaders = js.uses.values().map(use => use.get('loader'))
   const collector = fs.realpathSync(require.resolve('../myloader'))
@@ -726,4 +741,214 @@ test('demo places the collector before thread-loader', () => {
     fs.realpathSync(config.module.rule('vue-script-i18n-collect').uses.get('i18n-auto-loader').get('loader')),
     collector
   )
+  for (const [name, templatePath, title, inject] of [
+    ['html', indexTemplate, 'demo', true],
+    ['html-about', aboutTemplate, 'about', false]
+  ]) {
+    const options = config.plugin(name).get('args')[0]
+    assert.strictEqual(options.title, title)
+    assert.strictEqual(options.inject, inject)
+    assert.ok(options.template.startsWith('!!'))
+    assert.ok(options.template.endsWith(templatePath))
+    assert.match(options.template, /"force":true/)
+    assert.ok(options.template.indexOf('html-webpack-plugin') < options.template.indexOf('myloader'))
+    assert.ok(options.template.indexOf('myloader') < options.template.lastIndexOf(templatePath))
+  }
+  assert.strictEqual(config.plugins.has('define'), true)
+})
+
+function htmlTemplateRequest(template) {
+  const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')
+  const collector = require.resolve('../myloader')
+  return `!!${htmlLoader}?${JSON.stringify({ force: true })}!${collector}!${template}`
+}
+
+function countHtmlCollector(compiler, state) {
+  compiler.hooks.thisCompilation.tap('i18n-html-count', compilation => {
+    compilation.hooks.childCompiler.tap('i18n-html-count', childCompiler => {
+      childCompiler.hooks.compilation.tap('i18n-html-count', childCompilation => {
+        NormalModule.getCompilationHooks(childCompilation).loader.tap('i18n-html-count', (loaderContext, mod) => {
+          const resource = loaderResource(loaderContext, mod)
+          if (resource.endsWith('/public/index.html')) state.count += 1
+        })
+      })
+    })
+  })
+}
+
+function htmlPage(root, template) {
+  const entry = path.join(root, 'src/main.js')
+  return {
+    ...project(root, entry),
+    output: { path: path.join(root, 'dist'), filename: 'bundle.js', publicPath: '/' },
+    cache: { type: 'memory' },
+    plugins: [
+      new HtmlWebpackPlugin({
+        template: htmlTemplateRequest(template),
+        filename: 'index.html',
+        title: '演示标题',
+        templateParameters: { BASE_URL: '/' },
+        inject: true
+      }),
+      new MyI18nPlugin()
+    ],
+    module: { rules: [{ test: /\.js$/, loader: require.resolve('../myloader') }] }
+  }
+}
+
+function pageHtml(body) {
+  return [
+    '<!DOCTYPE html>',
+    '<html>',
+    '<head>',
+    '  <link rel="icon" href="<%= BASE_URL %>favicon.ico">',
+    '  <title><%= htmlWebpackPlugin.options.title %></title>',
+    '</head>',
+    '<body>',
+    body,
+    '</body>',
+    '</html>',
+    ''
+  ].join('\n')
+}
+
+test('collects a raw HTMLWebpackPlugin template and retains it when the child cache hits', { timeout: 30000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-html-plugin-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  fs.mkdirSync(path.join(root, 'public'))
+  const entry = path.join(root, 'src/main.js')
+  const template = path.join(root, 'public/index.html')
+  fs.writeFileSync(entry, 'module.exports = "脚本甲"\n')
+  fs.writeFileSync(template, pageHtml([
+    '  <p title="说明">页面文案</p>',
+    "  <p><%= '隐藏中文' %></p>"
+  ].join('\n')))
+  const state = { count: 0 }
+  const handle = start(htmlPage(root, template))
+  countHtmlCollector(handle.compiler, state)
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.ok(state.count > 0)
+    const htmlPlugin = handle.compiler.options.plugins.find(plugin => plugin.constructor.name === 'HtmlWebpackPlugin')
+    const request = htmlPlugin.options.template
+    assert.ok(request.startsWith('!!'))
+    assert.match(request, /"force":true/)
+    assert.ok(request.indexOf('html-webpack-plugin') < request.indexOf('myloader'))
+    const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
+    assert.ok(!html.includes('<%'))
+    assert.ok(html.includes('<title>演示标题</title>'))
+    assert.ok(html.includes('href="/favicon.ico"'))
+    assert.match(html, /src="\/bundle\.js"/)
+    assert.ok(html.includes('页面文案'))
+    const firstValues = Object.values(readOutput(root).dictionary)
+    assert.deepStrictEqual(new Set(firstValues), new Set(['说明', '页面文案', '脚本甲']))
+    assert.ok(!firstValues.includes('隐藏中文'))
+    assert.ok(!firstValues.includes('演示标题'))
+    const committed = getSession(handle.compiler).committedSnapshots().map(snapshot => snapshot.identity)
+    assert.ok(committed.includes('public/index.html::html'))
+    assert.ok(committed.includes('src/main.js::script'))
+
+    state.count = 0
+    fs.writeFileSync(entry, 'module.exports = "脚本乙"\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.strictEqual(state.count, 0)
+    assert.deepStrictEqual(new Set(Object.values(readOutput(root).dictionary)), new Set(['说明', '页面文案', '脚本乙']))
+
+    fs.writeFileSync(template, pageHtml('  <p title="新说明">新页面</p>'))
+    const third = await handle.run()
+    assert.strictEqual(third.hasErrors(), false, messages(third))
+    assert.deepStrictEqual(new Set(Object.values(readOutput(root).dictionary)), new Set(['新说明', '新页面', '脚本乙']))
+    const thirdHtml = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
+    assert.ok(!thirdHtml.includes('<%'))
+    assert.ok(thirdHtml.includes('<title>演示标题</title>'))
+  } finally {
+    await handle.close()
+  }
+})
+
+test('does not collect HTML that never enters the loader chain', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-html-orphan-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  fs.mkdirSync(path.join(root, 'public'))
+  fs.writeFileSync(path.join(root, 'src/main.js'), 'module.exports = "脚本"\n')
+  fs.writeFileSync(path.join(root, 'public/index.html'), '<p>孤儿页面</p>\n')
+  const stats = await compile({
+    ...project(root, path.join(root, 'src/main.js')),
+    plugins: [
+      new HtmlWebpackPlugin({ templateContent: '<p>模板内容中文</p>', title: '演示标题' }),
+      new MyI18nPlugin()
+    ],
+    module: { rules: [{ test: /\.js$/, loader: require.resolve('../myloader') }] }
+  })
+  assert.strictEqual(stats.hasErrors(), false, messages(stats))
+  assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['脚本'])
+})
+
+test('evicts a static HTML snapshot when the template is no longer a dependency', { timeout: 30000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-html-evict-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  fs.mkdirSync(path.join(root, 'public'))
+  const template = path.join(root, 'public/index.html')
+  fs.writeFileSync(path.join(root, 'src/main.js'), 'module.exports = "脚本"\n')
+  fs.writeFileSync(template, pageHtml('  <p>页面文案</p>'))
+  let drop = false
+  const config = htmlPage(root, template)
+  config.plugins.unshift({
+    apply(compiler) {
+      compiler.hooks.done.tap('drop-html-dependency', stats => {
+        if (!drop) return
+        for (const file of [...stats.compilation.fileDependencies]) {
+          if (String(file).replace(/\\/g, '/').endsWith('/public/index.html')) {
+            stats.compilation.fileDependencies.delete(file)
+          }
+        }
+      })
+    }
+  })
+  const handle = start(config)
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.ok(Object.values(readOutput(root).dictionary).includes('页面文案'))
+    drop = true
+    fs.writeFileSync(path.join(root, 'src/main.js'), 'module.exports = "脚本乙"\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['脚本乙'])
+    assert.ok(!getSession(handle.compiler).committedSnapshots().some(snapshot => snapshot.identity.endsWith('::html')))
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a static HTML parse failure preserves the previous collection output', { timeout: 30000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-html-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  fs.mkdirSync(path.join(root, 'public'))
+  const template = path.join(root, 'public/index.html')
+  fs.writeFileSync(path.join(root, 'src/main.js'), 'module.exports = "脚本"\n')
+  fs.writeFileSync(template, pageHtml('  <p>页面文案</p>'))
+  const handle = start(htmlPage(root, template))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const committed = getSession(handle.compiler).committed.runtimeDictionary()
+    fs.writeFileSync(template, '<p title="甲" title="乙">文案</p>\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), true)
+    const text = messages(second).replace(/\s+/g, '')
+    assert.match(text, /public\/index\.html/)
+    assert.match(text, /duplicate-attribute/)
+    assert.match(text, /line1/)
+    assert.match(text, /column18/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
+  } finally {
+    await handle.close()
+  }
 })

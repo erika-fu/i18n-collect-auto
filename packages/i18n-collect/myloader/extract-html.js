@@ -328,6 +328,32 @@ function scanExpressionEnd(source, start) {
   return -1
 }
 
+function ejsDelimiter(source, offset) {
+  if (!Number.isInteger(offset) || offset < 0) return false
+  if (source[offset] === '<' && source[offset + 1] === '%') return true
+  return source[offset] === '%' && source[offset - 1] === '<'
+}
+
+function ejsPieces(raw) {
+  const pieces = []
+  let cursor = 0
+  while (cursor < raw.length) {
+    const open = raw.indexOf('<%', cursor)
+    if (open === -1) {
+      pieces.push({ start: cursor, end: raw.length })
+      break
+    }
+    const close = raw.indexOf('%>', open + 2)
+    if (close === -1) {
+      pieces.push({ start: cursor, end: raw.length })
+      break
+    }
+    if (open > cursor) pieces.push({ start: cursor, end: open })
+    cursor = close + 2
+  }
+  return pieces
+}
+
 function interpolationSpans(raw) {
   const spans = []
   let cursor = 0
@@ -384,6 +410,9 @@ function extractHtml({ source, resource, config }) {
     throw new TypeError('HTML extractor requires a project path')
   }
   const projectPath = projectPathOf(resource)
+  const standalone = resource.block === 'html'
+  const textKind = standalone ? 'static-html-text' : 'html-text'
+  const attributeKind = standalone ? 'static-html-attribute' : 'html-attribute'
   const allowlist = new Set((config && config.attributeAllowlist) || DEFAULTS.attributeAllowlist)
   const span = templateSpan(source, resource)
   if (span.lang !== 'html') return { entries: [], warnings: [] }
@@ -394,6 +423,9 @@ function extractHtml({ source, resource, config }) {
     sourceCodeLocationInfo: true,
     onParseError(error) {
       if (IGNORED_PARSE_ERRORS.has(error.code)) warnings.push({ code: error.code })
+      else if (standalone && error.code === 'invalid-first-character-of-tag-name' && ejsDelimiter(fragment, error.startOffset)) {
+        warnings.push({ code: error.code })
+      }
       else fatal.push(error)
     }
   })
@@ -457,21 +489,25 @@ function extractHtml({ source, resource, config }) {
     const raw = fragment.slice(location.startOffset, location.endOffset)
     const decoded = decodeHtmlText(raw)
     if (decoded.value !== node.value) {
+      if (standalone && !containsHan(node.value)) return
       throw failAt(source, span.start + location.startOffset, 'HTML text location is untrustworthy')
     }
-    const found = interpolationSpans(raw)
-    if (found.errorOffset != null) {
-      throw failAt(source, span.start + location.startOffset + found.errorOffset, 'Unclosed Vue interpolation')
-    }
-    const spans = found.spans
-    let cursor = 0
     const pieces = []
-    for (const expression of spans) {
-      pieces.push({ kind: 'text', start: cursor, end: expression.start - 2 })
-      pieces.push({ kind: 'expression', start: expression.start, end: expression.end })
-      cursor = expression.end + 2
+    if (standalone) {
+      for (const piece of ejsPieces(raw)) pieces.push({ kind: 'text', start: piece.start, end: piece.end })
+    } else {
+      const found = interpolationSpans(raw)
+      if (found.errorOffset != null) {
+        throw failAt(source, span.start + location.startOffset + found.errorOffset, 'Unclosed Vue interpolation')
+      }
+      let cursor = 0
+      for (const expression of found.spans) {
+        pieces.push({ kind: 'text', start: cursor, end: expression.start - 2 })
+        pieces.push({ kind: 'expression', start: expression.start, end: expression.end })
+        cursor = expression.end + 2
+      }
+      pieces.push({ kind: 'text', start: cursor, end: raw.length })
     }
-    pieces.push({ kind: 'text', start: cursor, end: raw.length })
     for (const piece of pieces) {
       if (piece.end <= piece.start) continue
       const pieceOrigin = span.start + location.startOffset + piece.start
@@ -486,7 +522,7 @@ function extractHtml({ source, resource, config }) {
       if (!containsHan(value)) continue
       push(
         value,
-        'html-text',
+        textKind,
         pieceOrigin + segment.starts[bounds.start],
         pieceOrigin + segment.starts[bounds.end]
       )
@@ -500,14 +536,32 @@ function extractHtml({ source, resource, config }) {
       const classified = classifyAttribute(attr.name, allowlist)
       const location = locations[attr.name]
       if (!classified || !location) continue
+      if (standalone && classified.dynamic) continue
       const content = attributeContent(fragment, location)
       if (!content) continue
       const decoded = decodeHtmlText(content.raw)
-      if (decoded.value !== attr.value) {
-        throw failAt(source, span.start + content.start, 'HTML attribute location is untrustworthy')
+      if (!standalone || !content.raw.includes('<%')) {
+        if (decoded.value !== attr.value) {
+          throw failAt(source, span.start + content.start, 'HTML attribute location is untrustworthy')
+        }
       }
       if (!classified.dynamic) {
-        if (containsHan(attr.value)) push(attr.value, 'html-attribute', span.start + content.start, span.start + content.end)
+        if (standalone && content.raw.includes('<%')) {
+          for (const piece of ejsPieces(content.raw)) {
+            if (piece.end <= piece.start) continue
+            const segment = decodeHtmlText(content.raw.slice(piece.start, piece.end))
+            if (!containsHan(segment.value)) continue
+            const pieceOrigin = span.start + content.start + piece.start
+            push(
+              segment.value,
+              attributeKind,
+              pieceOrigin + segment.starts[0],
+              pieceOrigin + segment.starts[segment.value.length]
+            )
+          }
+          continue
+        }
+        if (containsHan(attr.value)) push(attr.value, attributeKind, span.start + content.start, span.start + content.end)
         continue
       }
       collectExpression(content.raw, span.start + content.start, 'html-attribute')

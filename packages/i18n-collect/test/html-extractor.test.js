@@ -219,6 +219,60 @@ test('does not choose the first template tag when several blocks or an external 
   assert.ok(external.entries.every(entry => entry.locations[0].path === 'src/copy.html'))
 })
 
+function extractStandalone(source, config) {
+  return extract(source, {
+    projectPath: 'public/index.html',
+    query: '',
+    lang: null,
+    block: 'html'
+  }, config)
+}
+
+test('collects standalone HTML text and allowlisted attributes without executing EJS', () => {
+  const source = [
+    '<!DOCTYPE html>',
+    '<html>',
+    '<head><title><%= htmlWebpackPlugin.options.title %></title></head>',
+    '<body>',
+    '  <p title="保存&nbsp;成功<%= name %>">',
+    '    页面文案',
+    '  </p>',
+    '  <img alt="示意图" class="不收集">',
+    '  <input :placeholder="\'请输入\'" title="字段">',
+    '  <p>欢迎 <%= user %> 回来</p>',
+    "  <p><%= '隐藏中文' %></p>",
+    '</body>',
+    '</html>'
+  ].join('\n')
+  const result = extractStandalone(source)
+  assert.deepStrictEqual(values(result), ['保存\u00A0成功', '页面文案', '示意图', '字段', '欢迎 ', ' 回来'])
+  assert.deepStrictEqual(result.entries.map(entry => entry.locations[0].kind), [
+    'static-html-attribute',
+    'static-html-text',
+    'static-html-attribute',
+    'static-html-attribute',
+    'static-html-text',
+    'static-html-text'
+  ])
+  assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '保存&nbsp;成功')
+  assert.strictEqual(sliceAt(source, result.entries[1].locations[0]), '页面文案')
+  assert.strictEqual(sliceAt(source, result.entries[4].locations[0]), '欢迎 ')
+  assert.ok(!values(result).some(value => value.includes('<%') || value.includes('隐藏中文') || value.includes('请输入')))
+  assert.ok(result.entries.every(entry => entry.locations[0].path === 'public/index.html'))
+})
+
+test('fails a standalone document when an invalid tag is not an EJS delimiter', () => {
+  assert.throws(() => extractStandalone('<p><1文案</p>'), /invalid-first-character-of-tag-name/)
+})
+
+test('keeps collecting a standalone document when trailing markup whitespace is not a location', () => {
+  const source = '<!DOCTYPE html>\r\n<html>\r\n<body>\r\n  <p>页面文案</p>\r\n</body>\r\n</html>\r\n'
+  const result = extractStandalone(source)
+  assert.deepStrictEqual(values(result), ['页面文案'])
+  assert.strictEqual(result.entries[0].locations[0].kind, 'static-html-text')
+  assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '页面文案')
+})
+
 test('ignores Vue self-closing tags and fails when a diagnostic makes the tree untrustworthy', () => {
   const compatible = extract('<my-button /><p>按钮文案</p>')
   assert.deepStrictEqual(values(compatible), ['按钮文案'])
