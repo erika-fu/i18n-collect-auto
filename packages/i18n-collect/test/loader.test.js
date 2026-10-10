@@ -326,3 +326,144 @@ test('webpack passes source, source map, and meta through the loader', { timeout
     .filter(meta => meta && meta.snapshot)
   assert.ok(collected.some(meta => meta.snapshot.entries.some(entry => entry.value === '你好')))
 })
+
+test('passes style source, source map, and meta through while collecting the original file', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-css-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const cssPath = path.join(root, 'src/base.css')
+  fs.writeFileSync(cssPath, '.a::before { content: "必填"; }\n')
+  const source = 'transformed { color: red; }\n'
+  const sourceMap = { version: 3, mappings: 'AAAA' }
+  const meta = { css: true }
+  const result = runLoader({ root, source, sourceMap, meta, resourcePath: cssPath })
+  assert.strictEqual(result.error, null)
+  assert.strictEqual(result.nextSource, source)
+  assert.strictEqual(result.nextMap, sourceMap)
+  assert.strictEqual(result.nextMeta, meta)
+  assert.strictEqual(result.metadata.snapshot.identity, 'src/base.css::style[index=0;lang=css]')
+  assert.strictEqual(result.metadata.snapshot.entries[0].value, '必填')
+  assert.strictEqual(result.metadata.snapshot.entries[0].locations[0].kind, 'css-generated-content')
+  const line = fs.readFileSync(cssPath, 'utf8').split('\n')[0]
+  const location = result.metadata.snapshot.entries[0].locations[0]
+  assert.strictEqual(line.slice(location.start.column, location.end.column), '必填')
+})
+
+test('keeps Vue style snapshots independent of padded loader input', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-vue-css-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vuePath = path.join(root, 'src/App.vue')
+  const source = [
+    '<template>',
+    '  <p>模板</p>',
+    '</template>',
+    '<style>',
+    '.a { content: "第一"; }',
+    '</style>',
+    '<style lang="css">',
+    '.b { content: "第二"; }',
+    '</style>',
+    ''
+  ].join('\n')
+  fs.writeFileSync(vuePath, source)
+  const padded = '\n\n\n\n.replaced { content: "替换"; }\n'
+  const sourceMap = { version: 3, mappings: 'AAAA' }
+  const meta = { css: true }
+  const first = runLoader({
+    root,
+    source: padded,
+    sourceMap,
+    meta,
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=style&index=0&lang=css&id=abc&scoped=true'
+  })
+  const second = runLoader({
+    root,
+    source: padded,
+    sourceMap,
+    meta,
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=style&index=1&lang=css&id=abc&scoped=true'
+  })
+  assert.strictEqual(first.nextSource, padded)
+  assert.strictEqual(first.nextMap, sourceMap)
+  assert.strictEqual(first.nextMeta, meta)
+  assert.strictEqual(first.metadata.snapshot.identity, 'src/App.vue::style[index=0;lang=css]')
+  assert.strictEqual(second.metadata.snapshot.identity, 'src/App.vue::style[index=1;lang=css]')
+  assert.strictEqual(first.metadata.snapshot.entries[0].value, '第一')
+  assert.strictEqual(second.metadata.snapshot.entries[0].value, '第二')
+  assert.strictEqual(source.split('\n')[first.metadata.snapshot.entries[0].locations[0].start.line - 1].includes('第一'), true)
+})
+
+test('a CSS syntax error names the project path, style index, lang, and source location', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-css-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const cssPath = path.join(root, 'src/base.css')
+  fs.writeFileSync(cssPath, '.a { content: "必填 }\n')
+  const standalone = runLoader({
+    root,
+    source: '.a { content: "必填 }\n',
+    sourceMap: null,
+    meta: null,
+    resourcePath: cssPath
+  })
+  assert.match(standalone.thrown.message, /src\/base\.css/)
+  assert.match(standalone.thrown.message, /style/)
+  assert.match(standalone.thrown.message, /index 0/)
+  assert.match(standalone.thrown.message, /lang css/)
+  assert.match(standalone.thrown.message, /line 1/)
+  assert.match(standalone.thrown.message, /column 14/)
+
+  const vuePath = path.join(root, 'src/App.vue')
+  fs.writeFileSync(vuePath, '<template><p>文案</p></template>\n<style>\n.a { content: "必填 }\n</style>\n')
+  const vue = runLoader({
+    root,
+    source: 'padded',
+    sourceMap: null,
+    meta: null,
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=style&index=0&lang=css'
+  })
+  assert.match(vue.thrown.message, /src\/App\.vue/)
+  assert.match(vue.thrown.message, /style/)
+  assert.match(vue.thrown.message, /index 0/)
+  assert.match(vue.thrown.message, /lang css/)
+  assert.match(vue.thrown.message, /line 3/)
+  assert.match(vue.thrown.message, /column 14/)
+})
+
+test('an unsupported style submits an empty snapshot and warns once per identity', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-scss-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vuePath = path.join(root, 'src/App.vue')
+  fs.writeFileSync(vuePath, '<style lang="scss">\n.a { content: "必填"; }\n</style>\n')
+  const warnings = []
+  const compiler = {}
+  compiler.root = compiler
+  const compilation = { compiler, warnings: [] }
+  const run = () => runLoader({
+    root,
+    source: 'padded scss',
+    sourceMap: { version: 3 },
+    meta: { css: true },
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=style&index=0&lang=scss&id=abc',
+    track: {
+      _compiler: compiler,
+      _compilation: compilation,
+      emitWarning(error) { warnings.push(error) }
+    }
+  })
+  const first = run()
+  const second = run()
+  assert.strictEqual(first.error, null)
+  assert.strictEqual(first.thrown, undefined)
+  assert.strictEqual(first.nextSource, 'padded scss')
+  assert.deepStrictEqual(first.nextMap, { version: 3 })
+  assert.strictEqual(first.nextMeta.css, true)
+  assert.strictEqual(first.metadata.snapshot.identity, 'src/App.vue::style[index=0;lang=scss]')
+  assert.deepStrictEqual(first.metadata.snapshot.entries, [])
+  assert.strictEqual(warnings.length, 1)
+  assert.match(warnings[0].message, /scss/)
+  assert.match(warnings[0].message, /src\/App\.vue::style\[index=0;lang=scss\]/)
+  assert.deepStrictEqual(second.metadata.snapshot.entries, [])
+})

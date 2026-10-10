@@ -49,6 +49,10 @@ function messages(stats) {
   return stats.toJson({ errors: true }).errors.map(error => error.message).join('\n')
 }
 
+function warningText(stats) {
+  return stats.toJson({ warnings: true }).warnings.map(warning => warning.message).join('\n')
+}
+
 function jsProject(root, entry) {
   return {
     ...project(root, entry),
@@ -726,6 +730,12 @@ test('demo places the collector before thread-loader and the HTML template loade
     inject: false
   }])
   config.plugin('define').use(class DefinePlugin {}, [{ 'process.env.NODE_ENV': '"test"' }])
+  const css = config.module.rule('css')
+  for (const name of ['vue-modules', 'vue', 'normal-modules', 'normal']) {
+    const oneOf = css.oneOf(name)
+    oneOf.use('css-loader').loader('css-loader')
+    oneOf.use('postcss-loader').loader('postcss-loader')
+  }
   vueConfig.chainWebpack(config)
   const loaders = js.uses.values().map(use => use.get('loader'))
   const collector = fs.realpathSync(require.resolve('../myloader'))
@@ -741,6 +751,25 @@ test('demo places the collector before thread-loader and the HTML template loade
     fs.realpathSync(config.module.rule('vue-script-i18n-collect').uses.get('i18n-auto-loader').get('loader')),
     collector
   )
+  assert.strictEqual(
+    fs.realpathSync(config.module.rule('vue-style-i18n-collect').uses.get('i18n-auto-loader').get('loader')),
+    collector
+  )
+  const loaderName = loader => {
+    try {
+      return fs.realpathSync(loader)
+    } catch (error) {
+      return loader
+    }
+  }
+  for (const name of ['normal', 'normal-modules']) {
+    const loaders = css.oneOf(name).uses.values().map(use => loaderName(use.get('loader')))
+    assert.ok(loaders.indexOf('postcss-loader') < loaders.indexOf(collector))
+  }
+  for (const name of ['vue', 'vue-modules']) {
+    const loaders = css.oneOf(name).uses.values().map(use => loaderName(use.get('loader')))
+    assert.ok(!loaders.includes(collector))
+  }
   for (const [name, templatePath, title, inject] of [
     ['html', indexTemplate, 'demo', true],
     ['html-about', aboutTemplate, 'about', false]
@@ -950,5 +979,316 @@ test('a static HTML parse failure preserves the previous collection output', { t
     assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
   } finally {
     await handle.close()
+  }
+})
+
+function styleProject(root, entry) {
+  const pass = path.join(root, 'pass-loader.js')
+  fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
+  const collector = require.resolve('../myloader')
+  return {
+    ...project(root, entry),
+    cache: { type: 'memory' },
+    plugins: [new MyI18nPlugin()],
+    module: {
+      rules: [
+        { test: /\.js$/, loader: collector },
+        { test: /\.css$/, use: [pass, collector] },
+        { test: /\.vue$/, resourceQuery: /type=style/, use: [pass, collector] }
+      ]
+    }
+  }
+}
+
+test('collects standalone CSS and each Vue style block, then drops only the deleted block', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-css-blocks-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vue = path.join(root, 'src/App.vue')
+  const css = path.join(root, 'src/base.css')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(css, '.badge::before { content: "独立"; }\n')
+  fs.writeFileSync(vue, [
+    '<template><p>模板</p></template>',
+    '<style>',
+    '.a { content: "第一"; }',
+    '</style>',
+    '<style>',
+    '.a { content: "第一"; }',
+    '</style>',
+    '<style lang="css">',
+    '.b { content: "第二"; }',
+    '</style>',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(entry, [
+    'require("./base.css")',
+    'require("./App.vue?vue&type=style&index=0&lang=css")',
+    'require("./App.vue?vue&type=style&index=1&lang=css")',
+    'require("./App.vue?vue&type=style&index=2&lang=css")',
+    ''
+  ].join('\n'))
+  const handle = start(styleProject(root, entry))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const { dictionary, map } = readOutput(root)
+    assert.deepStrictEqual(Object.values(dictionary).sort(), ['独立', '第一', '第二'])
+    const kinds = new Map(map.entries.map(item => [item.value, item.locations]))
+    assert.deepStrictEqual(kinds.get('独立').map(location => location.kind), ['css-generated-content'])
+    assert.strictEqual(kinds.get('独立')[0].path, 'src/base.css')
+    assert.strictEqual(kinds.get('第一').length, 2)
+    assert.ok(kinds.get('第一').every(location => location.kind === 'css-generated-content' && location.path === 'src/App.vue'))
+    assert.strictEqual(new Set(kinds.get('第一').map(location => location.start.line)).size, 2)
+    assert.deepStrictEqual(snapshotIdentities(first).filter(identity => identity.includes('::style')).sort(), [
+      'src/App.vue::style[index=0;lang=css]',
+      'src/App.vue::style[index=1;lang=css]',
+      'src/App.vue::style[index=2;lang=css]',
+      'src/base.css::style[index=0;lang=css]'
+    ])
+    fs.writeFileSync(vue, [
+      '<style>',
+      '.a { content: "第一"; }',
+      '</style>',
+      ''
+    ].join('\n'))
+    fs.writeFileSync(entry, [
+      'require("./base.css")',
+      'require("./App.vue?vue&type=style&index=0&lang=css")',
+      ''
+    ].join('\n'))
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    const after = readOutput(root)
+    assert.deepStrictEqual(Object.values(after.dictionary).sort(), ['独立', '第一'])
+    const remaining = after.map.entries.find(item => item.value === '第一')
+    assert.strictEqual(remaining.locations.length, 1)
+    assert.ok(!snapshotIdentities(second).includes('src/App.vue::style[index=1;lang=css]'))
+    assert.ok(!snapshotIdentities(second).includes('src/App.vue::style[index=2;lang=css]'))
+    assert.ok(snapshotIdentities(second).includes('src/App.vue::style[index=0;lang=css]'))
+    assert.ok(snapshotIdentities(second).includes('src/base.css::style[index=0;lang=css]'))
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a style index change evicts the previous identity', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-css-index-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vue = path.join(root, 'src/App.vue')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(vue, [
+    '<style>',
+    '.a { content: "第一"; }',
+    '</style>',
+    '<style>',
+    '.b { content: "第二"; }',
+    '</style>',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(entry, [
+    'require("./App.vue?vue&type=style&index=0&lang=css")',
+    'require("./App.vue?vue&type=style&index=1&lang=css")',
+    ''
+  ].join('\n'))
+  const handle = start(styleProject(root, entry))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.ok(snapshotIdentities(first).includes('src/App.vue::style[index=1;lang=css]'))
+    fs.writeFileSync(vue, '<style>\n.b { content: "第二"; }\n</style>\n')
+    fs.writeFileSync(entry, 'require("./App.vue?vue&type=style&index=0&lang=css")\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['第二'])
+    const identities = snapshotIdentities(second)
+    assert.ok(identities.includes('src/App.vue::style[index=0;lang=css]'))
+    assert.ok(!identities.includes('src/App.vue::style[index=1;lang=css]'))
+    const location = readOutput(root).map.entries[0].locations[0]
+    assert.strictEqual(location.kind, 'css-generated-content')
+    assert.strictEqual(fs.readFileSync(vue, 'utf8').split('\n')[location.start.line - 1].includes('第二'), true)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('warns once for an unsupported style and still publishes an empty snapshot', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-css-scss-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vue = path.join(root, 'src/App.vue')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(vue, '<style>\n.a { content: "样式文案"; }\n</style>\n')
+  fs.writeFileSync(entry, 'require("./App.vue?vue&type=style&index=0&lang=css")\n')
+  const handle = start(styleProject(root, entry))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['样式文案'])
+    fs.writeFileSync(vue, '<style lang="scss">\n$color: red;\n.a { content: "样式文案"; }\n</style>\n')
+    fs.writeFileSync(entry, 'require("./App.vue?vue&type=style&index=0&lang=scss")\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(readOutput(root).dictionary, {})
+    const text = warningText(second)
+    assert.match(text, /scss/)
+    assert.match(text, /src\/App\.vue::style\[index=0;lang=scss\]/)
+    assert.strictEqual(text.split('does not parse scss').length - 1, 1)
+    const snapshot = [...second.compilation.modules]
+      .map(mod => mod.buildInfo && mod.buildInfo.i18nCollect && mod.buildInfo.i18nCollect.snapshot)
+      .find(item => item && item.identity === 'src/App.vue::style[index=0;lang=scss]')
+    assert.ok(snapshot)
+    assert.deepStrictEqual(snapshot.entries, [])
+    assert.ok(!snapshotIdentities(second).includes('src/App.vue::style[index=0;lang=css]'))
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a CSS syntax error preserves the previous collection output', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-css-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const css = path.join(root, 'src/base.css')
+  fs.writeFileSync(css, '.a::before { content: "必填"; }\n')
+  const handle = start(styleProject(root, css))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const committed = getSession(handle.compiler).committed.runtimeDictionary()
+    fs.writeFileSync(css, '.a { content: "必填 }\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), true)
+    const text = messages(second)
+    assert.match(text, /src\/base\.css/)
+    assert.match(text, /style/)
+    assert.match(text, /index 0/)
+    assert.match(text, /lang css/)
+    assert.match(text, /line 1/)
+    assert.match(text, /column 14/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('css-loader output stays unchanged when collection runs on the original source', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-css-passthrough-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const css = path.join(root, 'src/app.css')
+  fs.writeFileSync(css, '.a::before {\n  content: "必填";\n  color: red;\n}\n')
+  const record = path.join(root, 'record-loader.js')
+  fs.writeFileSync(record, [
+    'const fs = require("fs")',
+    'module.exports = function (source, map, meta) {',
+    '  fs.writeFileSync(this.getOptions().record, JSON.stringify({ source, map }))',
+    '  this.callback(null, source, map, meta)',
+    '}',
+    ''
+  ].join('\n'))
+  const cssLoader = require.resolve('css-loader')
+  const collector = require.resolve('../myloader')
+  const compileCss = (withCollector, recordFile) => compile({
+    ...project(root, css),
+    plugins: withCollector ? [new MyI18nPlugin()] : [],
+    module: {
+      rules: [{
+        test: /\.css$/,
+        use: [
+          { loader: record, options: { record: recordFile } },
+          cssLoader,
+          ...(withCollector ? [collector] : [])
+        ]
+      }]
+    }
+  })
+  const plainFile = path.join(root, 'plain.json')
+  const collectedFile = path.join(root, 'collected.json')
+  const plain = await compileCss(false, plainFile)
+  assert.strictEqual(plain.hasErrors(), false, messages(plain))
+  const collected = await compileCss(true, collectedFile)
+  assert.strictEqual(collected.hasErrors(), false, messages(collected))
+  assert.deepStrictEqual(fs.readFileSync(collectedFile), fs.readFileSync(plainFile))
+  const found = readOutput(root).map.entries.find(entry => entry.value === '必填')
+  assert.ok(found)
+  assert.strictEqual(found.locations[0].kind, 'css-generated-content')
+  assert.strictEqual(found.locations[0].path, 'src/app.css')
+})
+
+test('vue style output stays unchanged and content keeps original block coordinates', { timeout: 30000 }, async () => {
+  const MiniCssExtractPlugin = require('mini-css-extract-plugin')
+  const root = fs.mkdtempSync(path.join(__dirname, '.tmp-vue-css-'))
+  try {
+    fs.mkdirSync(path.join(root, 'src'))
+    const source = [
+      '<template>',
+      '  <p class="badge">收件箱</p>',
+      '</template>',
+      '<script>',
+      'export default { name: "App" }',
+      '</script>',
+      '<style>',
+      '.badge::after {',
+      '  content: "（新）";',
+      '}',
+      '</style>',
+      '<style lang="css">',
+      '.badge::before { content: "必填"; }',
+      '</style>',
+      ''
+    ].join('\n')
+    fs.writeFileSync(path.join(root, 'src/App.vue'), source)
+    const collector = require.resolve('../myloader')
+    const vueLoader = require.resolve('@vue/vue-loader-v15')
+    const cssLoader = require.resolve('css-loader')
+    const configFor = withCollector => ({
+      ...project(root, path.join(root, 'src/App.vue')),
+      plugins: [
+        new VueLoaderPlugin(),
+        new MiniCssExtractPlugin({ filename: 'app.css' }),
+        ...(withCollector ? [new MyI18nPlugin()] : [])
+      ],
+      module: {
+        rules: [
+          { test: /\.vue$/, loader: vueLoader },
+          {
+            resourceQuery: /type=style/,
+            use: [
+              MiniCssExtractPlugin.loader,
+              cssLoader,
+              ...(withCollector ? [collector] : [])
+            ]
+          }
+        ]
+      }
+    })
+    const stylesheet = file => fs.readFileSync(file, 'utf8').replace(/\/\*![\s\S]*?\*\//g, '').trim()
+    const cssFiles = () => fs.readdirSync(path.join(root, 'dist')).filter(name => name.endsWith('.css')).sort()
+    const plain = await compile(configFor(false))
+    assert.strictEqual(plain.hasErrors(), false, messages(plain))
+    const plainCss = cssFiles().map(name => stylesheet(path.join(root, 'dist', name)))
+    const collected = await compile(configFor(true))
+    assert.strictEqual(collected.hasErrors(), false, messages(collected))
+    const collectedCss = cssFiles().map(name => stylesheet(path.join(root, 'dist', name)))
+    assert.deepStrictEqual(collectedCss, plainCss)
+    assert.ok(collectedCss.some(file => file.includes('content: "（新）"') && file.includes('content: "必填"')))
+    const map = readOutput(root).map
+    const fresh = map.entries.find(entry => entry.value === '（新）')
+    const required = map.entries.find(entry => entry.value === '必填')
+    assert.ok(fresh)
+    assert.ok(required)
+    assert.strictEqual(fresh.locations[0].kind, 'css-generated-content')
+    assert.strictEqual(required.locations[0].kind, 'css-generated-content')
+    const freshLine = source.split('\n')[fresh.locations[0].start.line - 1]
+    const requiredLine = source.split('\n')[required.locations[0].start.line - 1]
+    assert.strictEqual(freshLine.slice(fresh.locations[0].start.column, fresh.locations[0].end.column), '（新）')
+    assert.strictEqual(requiredLine.slice(required.locations[0].start.column, required.locations[0].end.column), '必填')
+    assert.notStrictEqual(fresh.locations[0].start.line, required.locations[0].start.line)
+    const identities = snapshotIdentities(collected)
+    assert.ok(identities.includes('src/App.vue::style[index=0;lang=css]'))
+    assert.ok(identities.includes('src/App.vue::style[index=1;lang=css]'))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
   }
 })

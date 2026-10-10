@@ -562,6 +562,24 @@
       ]
     },
     {
+      "key": "da8e96e7fb846977868150b1b3efd023",
+      "value": "（新）",
+      "locations": [
+        {
+          "path": "src/pages/StylePage.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 21,
+            "column": 12
+          },
+          "end": {
+            "line": 21,
+            "column": 15
+          }
+        }
+      ]
+    },
+    {
       "key": "dba2532ae92948933cda539ef740d073",
       "value": "我不好",
       "locations": [

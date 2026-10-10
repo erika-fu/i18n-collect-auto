@@ -15,6 +15,18 @@ test('identifies standalone script, HTML, and CSS resources', () => {
   assert.strictEqual(identify('/project/src/utils/message.ts'), 'src/utils/message.ts::script')
   assert.strictEqual(identify('/project/public/index.html'), 'public/index.html::html')
   assert.strictEqual(identify('/project/src/base.css'), 'src/base.css::style[index=0;lang=css]')
+  assert.strictEqual(
+    describeResource({
+      root: '/project',
+      resourcePath: '/project/src/theme.scss',
+      styleExtensions: ['.css', '.scss']
+    }).identity,
+    'src/theme.scss::style[index=0;lang=scss]'
+  )
+  assert.strictEqual(
+    identify('/project/src/extra.css', '?vue&type=style&index=1&lang=css&id=abc'),
+    'src/extra.css::style[index=1;lang=css]'
+  )
   assert.deepStrictEqual(describeResource({
     root: '/project',
     resourcePath: '/project/src/utils/message.js',

@@ -62,11 +62,12 @@ function formatIdentity({ projectPath, block, styleIndex, lang, vue }) {
   return null
 }
 
-function describeResource({ root, resourcePath, resourceQuery = '' }) {
+function describeResource({ root, resourcePath, resourceQuery = '', styleExtensions = ['.css'] }) {
   const absolutePath = path.resolve(root, queryFreePath(resourcePath))
   const projectPath = projectPathFrom(root, resourcePath)
   const { query, params } = parseQuery(resourceQuery)
   const extension = path.posix.extname(projectPath).toLowerCase()
+  const styleExtensionSet = new Set(styleExtensions.map(item => String(item).toLowerCase()))
   const vue = extension === '.vue'
   const type = present(params, 'type')
   let block = null
@@ -86,14 +87,18 @@ function describeResource({ root, resourcePath, resourceQuery = '' }) {
   } else if (params.has('vue') && type === 'template' && !SCRIPT_EXTENSIONS.has(extension)) {
     block = 'template'
     lang = present(params, 'lang') || 'html'
+  } else if (params.has('vue') && type === 'style' && !SCRIPT_EXTENSIONS.has(extension)) {
+    block = 'style'
+    styleIndex = styleIndexOf(params)
+    lang = (present(params, 'lang') || extension.slice(1) || 'css').toLowerCase()
   } else if (SCRIPT_EXTENSIONS.has(extension)) {
     block = 'script'
   } else if (extension === '.html') {
     block = 'html'
-  } else if (extension === '.css') {
+  } else if (styleExtensionSet.has(extension)) {
     block = 'style'
     styleIndex = 0
-    lang = 'css'
+    lang = extension.slice(1).toLowerCase()
   }
 
   return {

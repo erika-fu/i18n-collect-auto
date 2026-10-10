@@ -39,6 +39,22 @@ module.exports = {
         .loader(loaderPath)
         .end()
 
+    config.module
+      .rule('vue-style-i18n-collect')
+      .resourceQuery(/type=style/)
+      .use('i18n-auto-loader')
+        .loader(loaderPath)
+        .end()
+
+    const cssRule = config.module.rule('css')
+    for (const name of ['normal-modules', 'normal']) {
+      if (!cssRule.oneOfs.has(name)) continue
+      const oneOf = cssRule.oneOf(name)
+      const use = oneOf.use('i18n-auto-loader').loader(loaderPath)
+      if (oneOf.uses.has('postcss-loader')) use.after('postcss-loader')
+      else use.after('css-loader')
+    }
+
     // Webpack runs normal loaders from right to left. The collector must see
     // the raw template, then HTMLWebpackPlugin's own loader must still run.
     const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')

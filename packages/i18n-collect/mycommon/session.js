@@ -215,7 +215,14 @@ class CollectionSession {
   }
 
   warn(compilation, warning) {
-    this.round(compilation).warnings.add(JSON.stringify(warning))
+    const round = this.round(compilation)
+    const key = JSON.stringify({
+      code: warning && warning.code,
+      identity: warning && warning.identity
+    })
+    if (round.warnings.has(key)) return false
+    round.warnings.add(key)
+    return true
   }
 
   invocationCount(compilation) {
