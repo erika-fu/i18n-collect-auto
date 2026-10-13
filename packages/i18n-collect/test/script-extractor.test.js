@@ -95,3 +95,20 @@ test('keeps JavaScript columns on the next line after CRLF', () => {
   assert.deepStrictEqual(entry.locations[0].start, { line: 2, column: 10 })
   assert.deepStrictEqual(entry.locations[0].end, { line: 2, column: 14 })
 })
+
+test('collects JavaScript literals from a JSX-containing module', () => {
+  const source = [
+    "const title = 'React 标题'",
+    'const message = `你有${count}条任务`',
+    'export const App = () => <main><h1>{title}</h1><p>{message}</p></main>',
+    ''
+  ].join('\n')
+  const entries = extract(source, 'src/App.jsx')
+  assert.deepStrictEqual(entries.map(entry => entry.value).sort(), ['React 标题', '你有', '条任务'].sort())
+  const title = entries.find(entry => entry.value === 'React 标题')
+  const prefix = entries.find(entry => entry.value === '你有')
+  assert.strictEqual(title.locations[0].kind, 'script-string')
+  assert.strictEqual(prefix.locations[0].kind, 'template-literal')
+  assert.strictEqual(title.locations[0].path, 'src/App.jsx')
+  assert.strictEqual(source.slice(title.locations[0].start.column, title.locations[0].end.column), "'React 标题'")
+})

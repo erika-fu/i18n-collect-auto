@@ -9,6 +9,8 @@
     "serve": "npm run serve -w i18n-auto-webpack-demo",
     "build": "npm run build -w i18n-auto-webpack-demo",
     "update-demo-collection": "npm run build -w i18n-auto-webpack-demo",
+    "build-react-demo": "npm run build -w i18n-auto-webpack-react-demo",
+    "update-react-demo-collection": "npm run build -w i18n-auto-webpack-react-demo",
     "lint": "npm run lint -w i18n-auto-webpack-demo",
     "test": "npm test -w i18n-collect",
     "inspect": "npm run inspect -w i18n-auto-webpack-demo",

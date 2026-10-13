@@ -33,6 +33,10 @@ function loaderPath(loader) {
   }
 }
 
+function sameLoader(left, right) {
+  return loaderPath(left) === loaderPath(right)
+}
+
 function usesOf(rule) {
   if (Array.isArray(rule.use)) return rule.use.map(loaderPath)
   if (rule.loader) return [loaderPath(rule.loader)]
@@ -180,4 +184,33 @@ test('the demo production config runs the collector ahead of later transforms', 
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('the React demo wires the collector before Babel, before CSS transforms, and into its HTML template', () => {
+  const config = require('../../../apps/react-demo/webpack.config')
+  const collector = fs.realpathSync(require.resolve('../myloader'))
+  const collectorRules = []
+  for (const rule of config.module.rules) {
+    const loaders = usesOf(rule)
+    if (loaders.some(loader => sameLoader(loader, collector))) collectorRules.push({ rule, loaders })
+  }
+  const script = collectorRules.find(({ rule }) => rule.test.test('App.jsx'))
+  const css = collectorRules.find(({ rule }) => rule.test.test('base.css'))
+  assert.ok(script)
+  assert.ok(css)
+  assert.strictEqual(sameLoader(script.loaders[0], collector), true)
+  assert.ok(script.loaders.some(loader => loader.includes('/babel-loader/')))
+  assert.strictEqual(sameLoader(css.loaders.at(-1), collector), true)
+  assert.ok(css.loaders.some(loader => loader.includes('/css-loader/')))
+
+  const collectors = config.plugins.filter(plugin => plugin.constructor.name === 'MyI18nPlugin')
+  assert.strictEqual(collectors.length, 1)
+  const html = config.plugins.find(plugin => plugin.constructor.name === 'HtmlWebpackPlugin')
+  assert.ok(html)
+  const options = html.options || html.userOptions
+  const template = String(options.template).replace(/\\/g, '/')
+  assert.ok(template.startsWith('!!'))
+  assert.match(template, /"force":true/)
+  assert.ok(template.indexOf('/html-webpack-plugin/') < template.indexOf('/myloader/'))
+  assert.ok(template.indexOf('/myloader/') < template.lastIndexOf('/public/index.html'))
 })

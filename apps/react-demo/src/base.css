@@ -1,0 +1,3 @@
+.page::before {
+  content: 'React 样式文案';
+}

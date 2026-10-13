@@ -1369,6 +1369,94 @@ function contractConfig(root, cache) {
   }
 }
 
+test('collects JavaScript literals from a JSX Webpack module alongside HTML and CSS resources', { timeout: 30000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-react-webpack-'))
+  try {
+    fs.mkdirSync(path.join(root, 'src'))
+    fs.mkdirSync(path.join(root, 'public'))
+    fs.writeFileSync(path.join(root, 'src/main.jsx'), [
+      "import './base.css'",
+      "const title = 'React 脚本文案'",
+      'const message = `你有${3}条任务`',
+      'const view = <main><h1>{title}</h1><p>{message}</p></main>',
+      'document.body.dataset.view = Boolean(view)',
+      ''
+    ].join('\n'))
+    fs.writeFileSync(path.join(root, 'src/base.css'), '.page::before { content: "React 样式文案"; }\n')
+    const template = path.join(root, 'public/index.html')
+    fs.writeFileSync(template, [
+      '<!doctype html>',
+      '<html><head><title><%= htmlWebpackPlugin.options.title %></title></head>',
+      '<body><p title="React 静态属性">React 静态页面文案</p></body></html>',
+      ''
+    ].join('\n'))
+    const collector = require.resolve('../myloader')
+    const stats = await compile({
+      ...project(root, path.join(root, 'src/main.jsx')),
+      output: { path: path.join(root, 'dist'), filename: 'bundle.js', publicPath: '/' },
+      resolve: {
+        alias: {
+          react: path.dirname(require.resolve('react/package.json'))
+        }
+      },
+      plugins: [
+        new HtmlWebpackPlugin({
+          template: htmlTemplateRequest(template),
+          title: 'React 集成测试',
+          inject: true
+        }),
+        new MyI18nPlugin()
+      ],
+      module: {
+        rules: [
+          {
+            test: /\.jsx$/,
+            exclude: /node_modules/,
+            use: [
+              collector,
+              {
+                loader: require.resolve('babel-loader'),
+                options: {
+                  presets: [
+                    [require.resolve('@babel/preset-env'), { targets: 'defaults' }],
+                    [require.resolve('@babel/preset-react'), { runtime: 'automatic' }]
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            test: /\.css$/,
+            use: [require.resolve('style-loader'), require.resolve('css-loader'), collector]
+          }
+        ]
+      }
+    })
+    assert.strictEqual(stats.hasErrors(), false, messages(stats))
+    const { dictionary, map } = readOutput(root)
+    assert.deepStrictEqual(new Set(Object.values(dictionary)), new Set([
+      'React 脚本文案',
+      '你有',
+      '条任务',
+      'React 样式文案',
+      'React 静态属性',
+      'React 静态页面文案'
+    ]))
+    const kinds = new Map(map.entries.map(entry => [entry.value, entry.locations.map(location => location.kind)]))
+    assert.deepStrictEqual(kinds.get('React 脚本文案'), ['script-string'])
+    assert.deepStrictEqual(kinds.get('你有'), ['template-literal'])
+    assert.deepStrictEqual(kinds.get('React 样式文案'), ['css-generated-content'])
+    assert.deepStrictEqual(kinds.get('React 静态属性'), ['static-html-attribute'])
+    assert.deepStrictEqual(kinds.get('React 静态页面文案'), ['static-html-text'])
+    const page = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
+    assert.ok(!page.includes('<%'))
+    assert.ok(page.includes('<title>React 集成测试</title>'))
+    assert.match(page, /src="\/bundle\.js"/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 function sourceOffset(source, position) {
   let line = 1
   let column = 0

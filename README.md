@@ -1,9 +1,10 @@
 # i18n-collect
 
-This repository collects Chinese user-facing copy during a webpack 5 build. It is a Vue CLI demo plus the `i18n-collect` package. Collection does not rewrite application source.
+This repository collects Chinese user-facing copy during a webpack 5 build. It contains Vue 2 and React demos alongside the `i18n-collect` package. Collection does not rewrite application source.
 
 - `packages/i18n-collect` exports `myloader` and `myplugin`.
-- `apps/demo` is the Vue 2 demo. It uses vue-loader 15 and vue-i18n 8.
+- `apps/demo` is the Vue 2 / Vue CLI demo. It uses vue-loader 15 and vue-i18n 8.
+- `apps/react-demo` is the React / standalone Webpack 5 demo.
 
 The loader owns collection. The plugin owns the collection session, aggregation, and output. The plugin does not read business source and does not scan the project. A resource that never enters the loader is absent from the result. A failed round does not publish a partial result.
 
@@ -18,30 +19,33 @@ npm install
 ```
 npm run serve
 npm run build
+npm run build-react-demo
 ```
 
-`npm test` runs the package tests. Those tests use temporary directories and do not rewrite `apps/demo/lang`.
+`npm test` runs the package tests. Those tests use temporary directories and do not rewrite either demo's `lang` directory.
 
-Refresh the checked-in demo dictionary and source map with the production build:
+Refresh checked-in dictionaries and source maps with the appropriate production build:
 
 ```
 npm run update-demo-collection
+npm run update-react-demo-collection
 ```
 
-That command is `vue-cli-service build` for the demo. It is the only workflow that updates the committed collection files.
+The first command runs `vue-cli-service build` for the Vue demo; the second runs the React demo's Webpack production build. These are the only workflows that update their respective committed collection files.
 
 ## Webpack 5 integration
 
 The package peer dependency is webpack 5. Webpack 4, Vite, and Rollup are not supported.
 
-`apps/demo/vue.config.js` is the integration used by the demo:
+`apps/demo/vue.config.js` and `apps/react-demo/webpack.config.js` show the supported integration shapes:
 
-- The collector is placed before `thread-loader` on script rules, so its pitch runs in the main process and reads the original file.
-- Vue `type=template`, `type=script`, and `type=style` queries each run the collector.
-- Standalone CSS runs the collector before `postcss-loader` and `css-loader`.
-- The HTMLWebpackPlugin template request is explicit. See below.
+- Instantiate the collector plugin exactly once per compiler.
+- Place the collector before later script transforms, so its pitch runs in the main process and reads original source. The Vue demo places it before `thread-loader`; the React demo places it before Babel.
+- Vue `type=template`, `type=script`, and `type=style` queries each run the collector where applicable.
+- Put the collector at the right-most end of a plain CSS `use` array, so it receives raw CSS before `css-loader` processing.
+- Use an explicit HTMLWebpackPlugin template request. See below.
 
-Loader order is enforced by the final webpack configuration and covered by `packages/i18n-collect/test/loader-order.test.js`.
+The React demo exercises JavaScript string and template-literal extraction in `.jsx` modules. JSX text-child and JSX-attribute collection semantics are not documented as supported. Loader order is enforced by final webpack configuration tests in `packages/i18n-collect/test/loader-order.test.js`.
 
 ## What is collected
 

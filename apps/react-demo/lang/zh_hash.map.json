@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "parserVersion": "babel-7",
+  "configHash": "c0c00efc1e8c69732bf3c06a3a60079a",
+  "entries": [
+    {
+      "key": "11e73ceb0ded21acb285563bcbf11888",
+      "value": "你有",
+      "locations": [
+        {
+          "path": "src/App.jsx",
+          "kind": "template-literal",
+          "start": {
+            "line": 3,
+            "column": 17
+          },
+          "end": {
+            "line": 3,
+            "column": 19
+          }
+        }
+      ]
+    },
+    {
+      "key": "2cbfc6b677c82658d3fda4fc08bbfce6",
+      "value": "React 静态页面文案",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-text",
+          "start": {
+            "line": 8,
+            "column": 26
+          },
+          "end": {
+            "line": 8,
+            "column": 38
+          }
+        }
+      ]
+    },
+    {
+      "key": "35d6f51912bbf6ca83a47ac93a02ece1",
+      "value": "React 样式文案",
+      "locations": [
+        {
+          "path": "src/base.css",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 2,
+            "column": 12
+          },
+          "end": {
+            "line": 2,
+            "column": 22
+          }
+        }
+      ]
+    },
+    {
+      "key": "84e90b0c45fc34e14cd843f176fc9936",
+      "value": "React 静态属性",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-attribute",
+          "start": {
+            "line": 8,
+            "column": 14
+          },
+          "end": {
+            "line": 8,
+            "column": 24
+          }
+        }
+      ]
+    },
+    {
+      "key": "927452f00b0677135efe65c7e3c9c06d",
+      "value": "React 脚本文案",
+      "locations": [
+        {
+          "path": "src/App.jsx",
+          "kind": "script-string",
+          "start": {
+            "line": 1,
+            "column": 14
+          },
+          "end": {
+            "line": 1,
+            "column": 26
+          }
+        }
+      ]
+    },
+    {
+      "key": "d760e28b48034d2a5456d62175c58051",
+      "value": "条待处理任务",
+      "locations": [
+        {
+          "path": "src/App.jsx",
+          "kind": "template-literal",
+          "start": {
+            "line": 3,
+            "column": 27
+          },
+          "end": {
+            "line": 3,
+            "column": 33
+          }
+        }
+      ]
+    }
+  ]
+}
