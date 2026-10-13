@@ -3,6 +3,8 @@ const COLLECT_HELP = `i18n-collect collect
 Run collection once through the project's existing webpack integration.
 The webpack configuration must already use i18n-collect/myloader and i18n-collect/myplugin.
 This command does not translate, does not rewrite application source, and does not make network requests.
+It writes the hash dictionary, its source map, and the keyed source-locale catalog with its metadata,
+then reports which localization keys were added, removed, changed, or unchanged.
 
 Usage:
   i18n-collect collect [options]
@@ -20,7 +22,7 @@ Options:
 Exit codes:
   0  collection finished
   1  configuration failure
-  2  collection failure
+  2  collection failure, including a malformed i18n-key directive or a localization key conflict
   3  build failure
 `
 

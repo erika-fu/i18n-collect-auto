@@ -88,7 +88,9 @@ test('collect writes a compatible dictionary through webpack and leaves applicat
   const result = run(['collect', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   assert.strictEqual(result.stderr, '')
-  const report = JSON.parse(result.stdout)
+  const { catalog, ...report } = JSON.parse(result.stdout)
+  assert.strictEqual(catalog.keys, 1)
+  assert.strictEqual(catalog.added.length, 1)
   assert.deepStrictEqual(report, {
     command: 'collect',
     contextFilters: [],
@@ -119,7 +121,9 @@ test('collect writes a compatible dictionary through webpack and leaves applicat
   const mapBytes = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
   const again = run(['collect', '--json'], root)
   assert.strictEqual(again.status, 0, again.stderr)
-  assert.strictEqual(again.stdout, result.stdout)
+  const { catalog: againCatalog, ...againReport } = JSON.parse(again.stdout)
+  assert.deepStrictEqual(againReport, report)
+  assert.deepStrictEqual(againCatalog.unchanged, catalog.added)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionaryBytes)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), mapBytes)
 })
@@ -187,6 +191,8 @@ test('collect prints a stable human report', { timeout: 20000 }, () => {
     'Collected 1 entry.',
     'Dictionary: lang/zh_hash.json',
     'Source map: lang/zh_hash.map.json',
+    'Catalog: lang/catalog/zh.json (1 key: 1 added, 0 removed, 0 changed, 0 unchanged)',
+    'Catalog metadata: lang/catalog/catalog.meta.json',
     'Scope include: (all resources that enter the loader)',
     'Scope exclude: (none)',
     'Context filters: (none)',
@@ -328,6 +334,136 @@ module.exports = function () {
   const result = run(['collect', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   assert.deepStrictEqual(values(root), ['你好'])
+})
+
+const DEFAULT_CONFIG_HASH = '0b45581a318d9c09078e6de75d2a4cc5'
+
+function md5(value) {
+  return require('crypto').createHash('md5').update(value, 'utf8').digest('hex')
+}
+
+function readJson(root, file) {
+  return JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'))
+}
+
+function derivedKeyFor(catalog, source) {
+  const keys = Object.keys(catalog).filter(key => catalog[key] === source && /^src\.app\.[0-9a-f]{8}$/.test(key))
+  assert.strictEqual(keys.length, 1, `one derived key for ${source}`)
+  return keys[0]
+}
+
+test('collect exports a keyed source catalog beside unchanged hash outputs and reports key changes', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-catalog-'))
+  writeWebpackProject(root, {
+    source: 'const title = /* i18n-key: home.title */ "首页"\nconst hello = "你好"\nmodule.exports = [title, hello]\n'
+  })
+  const first = run(['collect', '--json'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+
+  assert.deepStrictEqual(readJson(root, 'lang/zh_hash.json'), { [md5('你好')]: '你好', [md5('首页')]: '首页' })
+  const sourceMap = readJson(root, 'lang/zh_hash.map.json')
+  assert.deepStrictEqual(Object.keys(sourceMap), ['version', 'parserVersion', 'configHash', 'entries'])
+  assert.strictEqual(sourceMap.configHash, DEFAULT_CONFIG_HASH)
+  for (const entry of sourceMap.entries) assert.deepStrictEqual(Object.keys(entry), ['key', 'value', 'locations'])
+
+  const catalog = readJson(root, 'lang/catalog/zh.json')
+  const helloKey = derivedKeyFor(catalog, '你好')
+  assert.deepStrictEqual(catalog, { [helloKey]: '你好', 'home.title': '首页' })
+  const metadata = readJson(root, 'lang/catalog/catalog.meta.json')
+  assert.strictEqual(metadata.version, 1)
+  assert.strictEqual(metadata.sourceLocale, 'zh')
+  assert.strictEqual(metadata.format, 'json')
+  assert.strictEqual(metadata.entries['home.title'].origin, 'explicit')
+  assert.strictEqual(metadata.entries[helloKey].origin, 'derived')
+  assert.deepStrictEqual(metadata.entries['home.title'].locations, [{
+    path: 'src/app.js',
+    kind: 'script-string',
+    start: { line: 1, column: 41 },
+    end: { line: 1, column: 45 }
+  }])
+
+  assert.deepStrictEqual(JSON.parse(first.stdout).catalog, {
+    format: 'json',
+    keys: 2,
+    messages: 'lang/catalog/zh.json',
+    metadata: 'lang/catalog/catalog.meta.json',
+    sourceLocale: 'zh',
+    added: ['home.title', helloKey],
+    removed: [],
+    changed: [],
+    unchanged: []
+  })
+
+  const catalogBytes = fs.readFileSync(path.join(root, 'lang/catalog/zh.json'))
+  const metadataBytes = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+  const again = run(['collect', '--json'], root)
+  assert.strictEqual(again.status, 0, again.stderr)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), catalogBytes)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), metadataBytes)
+  assert.deepStrictEqual(JSON.parse(again.stdout).catalog.unchanged, ['home.title', helloKey])
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), '\n\nconst title = /* i18n-key: home.title */ "主页"\nconst hello = "您好"\nmodule.exports = [title, hello]\n')
+  const edited = run(['collect', '--json'], root)
+  assert.strictEqual(edited.status, 0, edited.stderr)
+  const next = readJson(root, 'lang/catalog/zh.json')
+  const greetingKey = derivedKeyFor(next, '您好')
+  const report = JSON.parse(edited.stdout).catalog
+  assert.deepStrictEqual(
+    { added: report.added, removed: report.removed, changed: report.changed, unchanged: report.unchanged },
+    { added: [greetingKey], removed: [helloKey], changed: ['home.title'], unchanged: [] }
+  )
+
+  const human = run(['collect'], root)
+  assert.strictEqual(human.status, 0, human.stderr)
+  assert.match(human.stdout, /Catalog: lang\/catalog\/zh\.json \(2 keys: 0 added, 0 removed, 0 changed, 2 unchanged\)/)
+  assert.match(human.stdout, /Catalog metadata: lang\/catalog\/catalog\.meta\.json/)
+})
+
+test('collect writes the catalog where the configuration puts it', { timeout: 20000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-catalog-config-'))
+  writeWebpackProject(root, {
+    source: 'module.exports = "你好"\n',
+    configSource: 'module.exports = { catalogDir: "locales", sourceLocale: "zh-CN" }\n'
+  })
+  const result = run(['collect', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.deepStrictEqual(Object.values(readJson(root, 'locales/zh-CN.json')), ['你好'])
+  assert.strictEqual(readJson(root, 'locales/catalog.meta.json').sourceLocale, 'zh-CN')
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog')), false)
+  assert.strictEqual(readJson(root, 'lang/zh_hash.map.json').configHash, DEFAULT_CONFIG_HASH)
+
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = { catalogFormat: "yaml" }\n')
+  const unknown = run(['collect'], root)
+  assert.strictEqual(unknown.status, 1)
+  assert.match(unknown.stderr, /configuration: .*catalogFormat/)
+})
+
+test('collect fails on a localization key conflict and keeps every previous output', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-conflict-'))
+  writeWebpackProject(root, {
+    source: 'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n',
+    files: { 'src/other.js': 'module.exports = "其他"\n' }
+  })
+  const first = run(['collect'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const outputs = ['lang/zh_hash.json', 'lang/zh_hash.map.json', 'lang/catalog/zh.json', 'lang/catalog/catalog.meta.json']
+  const before = outputs.map(file => fs.readFileSync(path.join(root, file)))
+
+  fs.writeFileSync(path.join(root, 'src/other.js'), 'module.exports = /* i18n-key: shared.title */ "主页"\n')
+  const conflict = run(['collect', '--json'], root)
+  assert.strictEqual(conflict.status, 2, conflict.stderr)
+  assert.strictEqual(JSON.parse(conflict.stdout).failure, 'collection')
+  assert.match(conflict.stderr, /localization key conflict/)
+  assert.match(conflict.stderr, /"shared\.title" names different source text/)
+  assert.match(conflict.stderr, /"首页" \(explicit\) at src\/app\.js:2:\d+ \(script-string\)/)
+  assert.match(conflict.stderr, /"主页" \(explicit\) at src\/other\.js:1:\d+ \(script-string\)/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+
+  fs.writeFileSync(path.join(root, 'src/other.js'), 'module.exports = /* i18n-key: Bad Key */ "主页"\n')
+  const malformed = run(['collect'], root)
+  assert.strictEqual(malformed.status, 2, malformed.stderr)
+  assert.match(malformed.stderr, /i18n-collect failed for src\/other\.js, script, line 1, column 17: malformed i18n-key directive/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
 })
 
 test('collect writes the dictionary configured on the webpack plugin', { timeout: 20000 }, () => {

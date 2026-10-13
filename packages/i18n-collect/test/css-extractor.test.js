@@ -289,6 +289,51 @@ test('a Vue style block exclusion keeps the following content string', () => {
   assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '保留')
 })
 
+function keys(result) {
+  return Object.fromEntries(result.entries.map(entry => [entry.value, entry.key]))
+}
+
+test('an i18n-key directive keys the first string of a declaration or the string it precedes', () => {
+  const source = [
+    '.a {',
+    '  /* i18n-key: badge.required */',
+    '  content: "必填" "其后";',
+    '}',
+    '.b { content: "前" /* i18n-key: badge.after */ "后"; }',
+    '/* i18n-key: rule.ignored */',
+    '.c { content: "规则旁"; }',
+    '.d {',
+    '  /* no-i18n-auto */',
+    '  /* i18n-key: badge.gone */',
+    '  content: "排除" "留下";',
+    '}',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(keys(extract(source)), {
+    必填: 'badge.required',
+    其后: undefined,
+    前: undefined,
+    后: 'badge.after',
+    规则旁: undefined,
+    留下: undefined
+  })
+})
+
+test('malformed and conflicting CSS key directives fail at their original position', () => {
+  assert.throws(
+    () => extract('.a {\n  /* i18n-key */\n  content: "甲";\n}\n'),
+    error => /malformed i18n-key directive/.test(error.message) && error.loc.line === 2 && error.loc.column === 2
+  )
+  assert.throws(
+    () => extract('.a { content: /* i18n-key: x..y */ "甲"; }'),
+    /malformed i18n-key directive/
+  )
+  assert.throws(
+    () => extract('.a {\n  /* i18n-key: a.one */\n  content: /* i18n-key: a.two */ "甲";\n}\n'),
+    error => /conflicting i18n-key directives "a.one" and "a.two"/.test(error.message) && error.loc.line === 3
+  )
+})
+
 test('fails a standard CSS syntax error at the original position', () => {
   assert.throws(
     () => extract('.a { content: "必填 }\n'),

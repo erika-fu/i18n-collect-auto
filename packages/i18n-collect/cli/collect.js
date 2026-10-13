@@ -2,7 +2,8 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
+const { diffCatalog } = require('../mycommon/catalog')
+const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 
 const EXIT = {
   ok: 0,
@@ -222,10 +223,14 @@ function humanReport(report) {
   const include = report.include.length ? report.include.join(', ') : '(all resources that enter the loader)'
   const exclude = report.exclude.length ? report.exclude.join(', ') : '(none)'
   const filters = report.contextFilters.length ? report.contextFilters.join(', ') : '(none)'
+  const catalog = report.catalog
+  const keyNoun = catalog.keys === 1 ? 'key' : 'keys'
   return [
     `Collected ${report.entries} ${noun}.`,
     `Dictionary: ${report.dictionary}`,
     `Source map: ${report.sourceMap}`,
+    `Catalog: ${catalog.messages} (${catalog.keys} ${keyNoun}: ${catalog.added.length} added, ${catalog.removed.length} removed, ${catalog.changed.length} changed, ${catalog.unchanged.length} unchanged)`,
+    `Catalog metadata: ${catalog.metadata}`,
     `Scope include: ${include}`,
     `Scope exclude: ${exclude}`,
     `Context filters: ${filters}`,
@@ -233,9 +238,30 @@ function humanReport(report) {
   ].join('\n')
 }
 
-function reportFrom(config, dictionaryFile) {
+function readCatalogMetadata(root, config) {
+  const file = path.join(root, catalogFiles(config).metadata)
+  if (!fs.existsSync(file)) return null
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    return null
+  }
+}
+
+function reportFrom(config, dictionaryFile, previousCatalog) {
   const dictionary = JSON.parse(fs.readFileSync(dictionaryFile, 'utf8'))
+  const files = catalogFiles(config)
+  const nextCatalog = readCatalogMetadata(config.root, config)
+  if (!nextCatalog) throw commandError('collection', 'collection finished without a catalog')
   return {
+    catalog: {
+      format: config.catalogFormat,
+      keys: Object.keys(nextCatalog.entries || {}).length,
+      messages: files.messages,
+      metadata: files.metadata,
+      sourceLocale: config.sourceLocale,
+      ...diffCatalog(previousCatalog, nextCatalog)
+    },
     command: 'collect',
     contextFilters: config.contextFilters,
     dictionary: config.outputPath,
@@ -278,6 +304,12 @@ async function execute(parsed) {
       throw commandError('configuration', 'collect accepts one webpack configuration object')
     }
     const pluginOptions = pluginOptionsFrom(webpackConfig)
+    let previousCatalog
+    try {
+      previousCatalog = readCatalogMetadata(root, loadConfig({ root, pluginOptions }))
+    } catch (error) {
+      throw commandError('configuration', error.message)
+    }
     emitDir = redirectEmit(webpackConfig)
     const { error, stats } = await runCompiler(webpackConfig)
     const failed = classifyBuild(error, stats)
@@ -286,7 +318,7 @@ async function execute(parsed) {
     const config = loadConfig({ root, pluginOptions })
     const dictionaryFile = path.join(root, config.outputPath)
     if (!fs.existsSync(dictionaryFile)) throw commandError('collection', 'collection finished without a dictionary')
-    return reportFrom(config, dictionaryFile)
+    return reportFrom(config, dictionaryFile, previousCatalog)
   } finally {
     if (restoreNetwork) restoreNetwork()
     clearCollectionOverrides()

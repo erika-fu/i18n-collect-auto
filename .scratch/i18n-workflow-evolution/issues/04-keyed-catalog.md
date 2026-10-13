@@ -4,11 +4,11 @@
 
 **Blocked by:** 03 — Provide the collection CLI workflow.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Every eligible collected text can obtain either a validated explicit localization key or a deterministic derived key.
-- [ ] Key collisions, malformed key directives, and incompatible duplicate declarations fail or report with actionable source locations.
-- [ ] The default catalog representation is a flat locale JSON mapping, while export format is isolated behind an adapter contract.
-- [ ] Current hash collection outputs and source maps continue to be produced unchanged during the transition.
-- [ ] Catalog metadata records enough source identity/fingerprint information to distinguish unchanged, added, removed, and source-changed keys.
-- [ ] Unit and CLI integration tests cover explicit keys, derived keys, collisions, stable output, and compatibility outputs.
+- [x] Every eligible collected text can obtain either a validated explicit localization key or a deterministic derived key.
+- [x] Key collisions, malformed key directives, and incompatible duplicate declarations fail or report with actionable source locations.
+- [x] The default catalog representation is a flat locale JSON mapping, while export format is isolated behind an adapter contract.
+- [x] Current hash collection outputs and source maps continue to be produced unchanged during the transition.
+- [x] Catalog metadata records enough source identity/fingerprint information to distinguish unchanged, added, removed, and source-changed keys.
+- [x] Unit and CLI integration tests cover explicit keys, derived keys, collisions, stable output, and compatibility outputs.

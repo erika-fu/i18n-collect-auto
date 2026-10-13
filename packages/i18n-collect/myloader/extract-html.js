@@ -3,7 +3,7 @@ const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
 const { DEFAULTS } = require('../mycommon/config')
 const { contextSuppresses } = require('./context-filter')
-const { directiveEnds, followsDirective, isExclusionDirective, whitespaceGap } = require('./exclusion')
+const { babelComments, directivesBefore, keyConflict, scanDirectives } = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const IGNORED_PARSE_ERRORS = new Set([
@@ -401,31 +401,26 @@ function isHtmlConstruct(node) {
   return node.nodeName[0] !== '#'
 }
 
-function constructsPrecededByDirective(fragment, root) {
+function constructDirectives(fragment, root, fail) {
   const comments = []
   const constructs = []
   eachHtmlNode(root, node => {
     const location = node.sourceCodeLocation
     if (!location) return
     if (node.nodeName === '#comment') {
-      if (isExclusionDirective(node.data)) comments.push(location.endOffset)
+      comments.push({ start: location.startOffset, end: location.endOffset, text: node.data })
       return
     }
     if (isHtmlConstruct(node)) constructs.push(node)
   })
-  const marked = new Set()
-  for (const end of comments) {
-    let chosen = null
-    let chosenStart = Infinity
-    for (const construct of constructs) {
-      const start = construct.sourceCodeLocation.startOffset
-      if (start < end || !whitespaceGap(fragment, end, start) || start >= chosenStart) continue
-      chosen = construct
-      chosenStart = start
-    }
-    if (chosen) marked.add(chosen)
+  const directives = scanDirectives(comments, fail)
+  const found = new Map()
+  if (directives.length === 0) return found
+  for (const construct of constructs) {
+    const directive = directivesBefore(fragment, directives, construct.sourceCodeLocation.startOffset, fail)
+    if (directive.exclude || directive.key) found.set(construct, directive)
   }
-  return marked
+  return found
 }
 
 function attachedComments(ast) {
@@ -495,7 +490,7 @@ function extractHtml({ source, resource, config }) {
   const entries = []
   const ownerStack = []
 
-  function push(value, kind, start, end, suppress) {
+  function push(value, kind, start, end, suppress, key) {
     entries.push({
       value,
       locations: [{
@@ -506,7 +501,8 @@ function extractHtml({ source, resource, config }) {
       }],
       owners: ownerStack.slice(),
       start,
-      suppress: suppress === true
+      suppress: suppress === true,
+      key: key || null
     })
   }
 
@@ -529,13 +525,17 @@ function extractHtml({ source, resource, config }) {
         body: [{ type: 'ExpressionStatement', expression }]
       }
     }
-    const directiveEndOffsets = directiveEnds(attachedComments(ast))
+    const fail = (offset, message) => {
+      throw failAt(source, origin + decoded.starts[Math.max(0, Math.min(offset, decoded.starts.length - 1))], message)
+    }
+    const directives = scanDirectives(babelComments(attachedComments(ast)), fail)
     const excludeStringDelimiters = kind === 'html-attribute'
     traverse(ast, {
       StringLiteral(nodePath) {
         const value = nodePath.node.value
         if (!containsHan(value)) return
         if (contextSuppresses(nodePath, contextFilters)) return
+        const directive = directivesBefore(decoded.value, directives, nodePath.node.start, fail)
         const startIndex = excludeStringDelimiters ? nodePath.node.start + 1 : nodePath.node.start
         const endIndex = excludeStringDelimiters ? nodePath.node.end - 1 : nodePath.node.end
         push(
@@ -543,18 +543,26 @@ function extractHtml({ source, resource, config }) {
           kind,
           origin + decoded.starts[startIndex],
           origin + decoded.starts[endIndex],
-          followsDirective(decoded.value, directiveEndOffsets, nodePath.node.start)
+          directive.exclude,
+          directive.key
         )
       },
       TemplateLiteral(nodePath) {
         if (contextSuppresses(nodePath, contextFilters)) return
-        let skipNext = followsDirective(decoded.value, directiveEndOffsets, nodePath.node.start)
+        let pending = directivesBefore(decoded.value, directives, nodePath.node.start, fail)
         for (const quasi of nodePath.node.quasis) {
           const value = quasi.value.cooked
           if (!value || !containsHan(value)) continue
-          const suppress = skipNext
-          if (skipNext) skipNext = false
-          push(value, kind, origin + decoded.starts[quasi.start], origin + decoded.starts[quasi.end], suppress)
+          const applied = pending
+          pending = null
+          push(
+            value,
+            kind,
+            origin + decoded.starts[quasi.start],
+            origin + decoded.starts[quasi.end],
+            Boolean(applied && applied.exclude),
+            applied && applied.key
+          )
         }
       }
     })
@@ -663,22 +671,29 @@ function extractHtml({ source, resource, config }) {
     ownerStack.pop()
   }
 
-  const marked = constructsPrecededByDirective(fragment, root)
+  const marked = constructDirectives(fragment, root, (offset, message) => {
+    throw failAt(source, span.start + offset, message)
+  })
   walk(root)
   const dropped = new Set()
-  for (const construct of marked) {
+  for (const [construct, directive] of marked) {
     let earliest = null
     for (const entry of entries) {
       if (!entry.owners.includes(construct)) continue
       if (!earliest || entry.start < earliest.start) earliest = entry
     }
-    if (earliest) dropped.add(earliest)
+    if (!earliest) continue
+    if (directive.exclude) dropped.add(earliest)
+    if (!directive.key || directive.exclude || earliest.suppress) continue
+    if (earliest.key && earliest.key !== directive.key) {
+      throw failAt(source, earliest.start, keyConflict(directive.key, earliest.key))
+    }
+    earliest.key = directive.key
   }
   return {
-    entries: entries.filter(entry => !entry.suppress && !dropped.has(entry)).map(entry => ({
-      value: entry.value,
-      locations: entry.locations
-    })),
+    entries: entries.filter(entry => !entry.suppress && !dropped.has(entry)).map(entry => (entry.key
+      ? { value: entry.value, key: entry.key, locations: entry.locations }
+      : { value: entry.value, locations: entry.locations })),
     warnings
   }
 }

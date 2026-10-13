@@ -38,6 +38,12 @@ A build with no loader invocation and no restored loader metadata fails and asks
 
 An exclusion directive is a syntax-valid comment whose text is exactly `no-i18n-auto`. It removes the next collected fragment of the construct it immediately precedes: a script string or template literal, a Vue or static HTML element or text node, or a CSS `content` declaration or string. Ordinary comments are not collected and do not exclude copy. The association rules are in the README. Kept fragments keep their source coordinates. A parse error still fails the round and keeps the previous output.
 
+## A localization key conflict failed the round
+
+A key conflict means one localization key names two different source texts, for example the same `i18n-key: home.title` on `"首页"` in one file and `"主页"` in another. The error lists each text with its origin and every `path:line:column (kind)` location. Give each text its own key, or make the texts agree. The round keeps the previous dictionary, source map, and catalog.
+
+A malformed key directive fails in the loader instead. The message names the path, block, line, and column of the comment. Use `i18n-key: <key>`, where the key starts with a letter and uses dot-separated segments of letters, digits, `_`, and `-`.
+
 ## Coordinates do not match the decoded text
 
 Source coordinates are 1-based lines and 0-based UTF-16 columns. Ranges are half-open. HTML entity and CSS escape values are decoded for the dictionary, while the source range still covers the original spelling and excludes HTML or CSS string delimiters. Historical JavaScript ranges still include the JavaScript string delimiters. A column after an astral character counts that character as two UTF-16 code units. CRLF is one line break.

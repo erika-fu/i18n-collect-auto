@@ -1,10 +1,13 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { CATALOG_FORMATS, catalogFormat } = require('./catalog-format')
 const { isGlobPattern, normalizeGlobPattern } = require('./scope-pattern')
 
 const CONFIG_FILE = 'i18n-collect.config.js'
 const CONTEXT_FILTERS = new Set(['logging', 'tests', 'analytics'])
+const CATALOG_METADATA_FILE = 'catalog.meta.json'
+const LOCALE = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$/
 
 const DEFAULTS = {
   styleExtensions: ['.css'],
@@ -13,12 +16,16 @@ const DEFAULTS = {
   contextFilters: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
-  sourceMapFilename: 'lang/zh_hash.map.json'
+  sourceMapFilename: 'lang/zh_hash.map.json',
+  catalogDir: 'lang/catalog',
+  sourceLocale: 'zh',
+  catalogFormat: 'json'
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
 const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])
-const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename'])
+const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat']
+const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
 const SCOPE_OVERRIDE_FIELDS = ['include', 'exclude', 'contextFilters']
 let scopeOverrides = null
 
@@ -113,7 +120,26 @@ function validate(root, input) {
   config.outputPath = projectPath(root, config.outputPath, 'outputPath')
   config.sourceMapFilename = projectPath(root, config.sourceMapFilename, 'sourceMapFilename')
   if (config.outputPath === config.sourceMapFilename) fail('outputPath and sourceMapFilename must differ')
+  config.catalogDir = projectPath(root, config.catalogDir, 'catalogDir').replace(/\/+$/, '')
+  if (typeof config.sourceLocale !== 'string' || !LOCALE.test(config.sourceLocale)) {
+    fail('sourceLocale must be a locale tag such as "zh" or "zh-CN"')
+  }
+  if (!CATALOG_FORMATS.includes(config.catalogFormat)) {
+    fail(`catalogFormat must be one of ${CATALOG_FORMATS.map(name => `"${name}"`).join(', ')}`)
+  }
+  const files = catalogFiles(config)
+  if ([files.messages, files.metadata].some(file => file === config.outputPath || file === config.sourceMapFilename)) {
+    fail('catalog files must differ from outputPath and sourceMapFilename')
+  }
   return config
+}
+
+function catalogFiles(config) {
+  const extension = catalogFormat(config.catalogFormat).extension
+  return {
+    messages: path.posix.join(config.catalogDir, `${config.sourceLocale}${extension}`),
+    metadata: path.posix.join(config.catalogDir, CATALOG_METADATA_FILE)
+  }
 }
 
 function merge(base, options, allowed) {
@@ -127,6 +153,13 @@ function merge(base, options, allowed) {
 
 function hashConfig(config) {
   return crypto.createHash('md5').update(JSON.stringify(config)).digest('hex')
+}
+
+// Catalog fields stay out of both hashes so the source map and cached module metadata keep their values.
+function collectionHash(config) {
+  const collection = { ...config }
+  for (const field of CATALOG_FIELDS) delete collection[field]
+  return hashConfig(collection)
 }
 
 function canonicalRoot(root) {
@@ -157,14 +190,14 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
     fileConfig = require(file)
   }
   let config = validate(projectRoot, fileConfig)
-  const fileConfigHash = hashConfig(config)
+  const fileConfigHash = collectionHash(config)
   config = validate(projectRoot, merge(config, loaderOptions, LOADER_FIELDS))
   config = validate(projectRoot, merge(config, pluginOptions, PLUGIN_FIELDS))
   config = applyScopeOverrides(projectRoot, config)
   return {
     ...config,
     root: projectRoot,
-    configHash: hashConfig(config),
+    configHash: collectionHash(config),
     fileConfigHash
   }
 }
@@ -173,6 +206,7 @@ module.exports = {
   CONFIG_FILE,
   DEFAULTS,
   canonicalRoot,
+  catalogFiles,
   clearCollectionOverrides,
   loadConfig,
   setCollectionOverrides,

@@ -1,5 +1,5 @@
 const postcss = require('postcss')
-const { followsDirective, isExclusionDirective, whitespaceGap } = require('./exclusion')
+const { directivesBefore, keyConflict, scanDirectives } = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const UNSUPPORTED_STYLE = 'unsupported-style-preprocessor'
@@ -267,16 +267,18 @@ function readString(source, quoteIndex) {
   return { value, start, end: source.length, next: source.length }
 }
 
-function declarationSkipsFirst(css, decl) {
-  const previous = decl.prev()
-  if (!previous || previous.type !== 'comment' || !isExclusionDirective(previous.text)) return false
-  if (!previous.source || !previous.source.end || !decl.source || !decl.source.start) return false
-  return whitespaceGap(css, previous.source.end.offset + 1, decl.source.start.offset)
+function nodeComments(root) {
+  const comments = []
+  root.walkComments(comment => {
+    if (!comment.source || !comment.source.start || !comment.source.end) return
+    comments.push({ start: comment.source.start.offset, end: comment.source.end.offset + 1, text: comment.text })
+  })
+  return comments
 }
 
 function scanStrings(value) {
   const strings = []
-  const directiveEnds = []
+  const comments = []
   let index = 0
   while (index < value.length) {
     if (value[index] === '/' && value[index + 1] === '*') {
@@ -285,7 +287,7 @@ function scanStrings(value) {
         index = value.length
         continue
       }
-      if (isExclusionDirective(value.slice(index + 2, close))) directiveEnds.push(close + 2)
+      comments.push({ start: index, end: close + 2, text: value.slice(index + 2, close) })
       index = close + 2
       continue
     }
@@ -299,7 +301,7 @@ function scanStrings(value) {
     }
     index += 1
   }
-  return { strings, directiveEnds }
+  return { strings, comments }
 }
 
 function extractCss({ source, resource, config }) {
@@ -324,32 +326,38 @@ function extractCss({ source, resource, config }) {
   }
   const projectPath = projectPathOf(resource)
   const entries = []
+  const failInCss = (offset, message) => {
+    throw failAt(source, located.start + offset, message)
+  }
+  const declarationDirectives = scanDirectives(nodeComments(root), failInCss)
   root.walkDecls(decl => {
     if (String(decl.prop).toLowerCase() !== 'content') return
     if (!decl.source || !decl.source.start || !decl.source.end) return
     const value = declarationValue(css, decl)
-    if (isNoneOrNormal(value.text)) return
+    const failInValue = (offset, message) => failInCss(value.offset + offset, message)
     const scanned = scanStrings(value.text)
+    const valueDirectives = scanDirectives(scanned.comments, failInValue)
+    if (isNoneOrNormal(value.text)) return
+    const declaration = directivesBefore(css, declarationDirectives, decl.source.start.offset, failInCss)
     const collectable = scanned.strings.filter(string => string.value.trim() && containsHan(string.value))
-    const suppressed = new Set()
-    if (declarationSkipsFirst(css, decl) && collectable[0]) suppressed.add(collectable[0])
-    for (const string of collectable) {
-      if (followsDirective(value.text, scanned.directiveEnds, string.quote)) suppressed.add(string)
-    }
-    for (const string of collectable) {
-      if (suppressed.has(string)) continue
+    collectable.forEach((string, index) => {
+      const own = directivesBefore(value.text, valueDirectives, string.quote, failInValue)
+      const inherited = index === 0 ? declaration : { exclude: false, key: null }
+      if (own.exclude || inherited.exclude) return
+      if (own.key && inherited.key && own.key !== inherited.key) {
+        failInValue(string.quote, keyConflict(inherited.key, own.key))
+      }
+      const key = own.key || inherited.key
       const start = located.start + value.offset + string.start
       const end = located.start + value.offset + string.end
-      entries.push({
-        value: string.value,
-        locations: [{
-          path: projectPath,
-          kind: 'css-generated-content',
-          start: offsetToPosition(source, start),
-          end: offsetToPosition(source, end)
-        }]
-      })
-    }
+      const loc = {
+        path: projectPath,
+        kind: 'css-generated-content',
+        start: offsetToPosition(source, start),
+        end: offsetToPosition(source, end)
+      }
+      entries.push(key ? { value: string.value, key, locations: [loc] } : { value: string.value, locations: [loc] })
+    })
   })
   return { entries, warnings: [] }
 }

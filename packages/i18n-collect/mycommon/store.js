@@ -105,4 +105,4 @@ class CollectionStore {
   }
 }
 
-module.exports = { CollectionStore, SEMANTIC_KINDS, keyFor }
+module.exports = { CollectionStore, SEMANTIC_KINDS, keyFor, normalizeLocation, sortLocations, uniqueLocations }

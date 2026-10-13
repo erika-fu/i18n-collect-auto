@@ -9,10 +9,12 @@ function unchanged(fsImpl, file, content) {
   return fsImpl.existsSync(file) && fsImpl.readFileSync(file, 'utf8') === content
 }
 
-async function writeOutputs(root, config, dictionary, sourceMap, fsImpl = fs) {
+// extraFiles: [{ path, content }] with project-relative paths, written in the same transaction.
+async function writeOutputs(root, config, dictionary, sourceMap, fsImpl = fs, extraFiles = []) {
   const targets = [
     { file: path.resolve(root, config.outputPath), content: json(dictionary) },
-    { file: path.resolve(root, config.sourceMapFilename), content: json(sourceMap) }
+    { file: path.resolve(root, config.sourceMapFilename), content: json(sourceMap) },
+    ...extraFiles.map(extra => ({ file: path.resolve(root, extra.path), content: extra.content }))
   ].filter(target => !unchanged(fsImpl, target.file, target.content))
   if (targets.length === 0) return
   const stamp = `${process.pid}-${Date.now()}`
@@ -47,4 +49,4 @@ async function writeOutputs(root, config, dictionary, sourceMap, fsImpl = fs) {
   }
 }
 
-module.exports = { writeOutputs }
+module.exports = { json, writeOutputs }

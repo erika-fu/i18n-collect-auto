@@ -60,6 +60,21 @@ A project-supplied integration that produces translation drafts for requested so
 **Localization key**:
 The stable runtime identifier used by source replacements and translation catalogs. A location-derived key is generated when no adjacent key directive explicitly supplies one.
 
+**Key directive**:
+A syntax-valid comment `i18n-key: <key>` that gives the next associated collected fragment an explicit localization key. It associates by the same rules as the exclusion directive. A comment that starts with `i18n-key` but is not well formed fails the collection round.
+
+**Derived key**:
+A localization key computed from the resource path, the semantic kind, and the collected text. It does not depend on line or column.
+
+**Key conflict**:
+One localization key that names two different source texts. It fails the collection round and reports every location of each text.
+
+**Source fingerprint**:
+A hash of a key's source text recorded in catalog metadata. A key whose fingerprint differs between two catalogs has source-changed text.
+
+**Catalog metadata**:
+The per-key record next to the source-locale catalog: source text, source fingerprint, explicit or derived origin, and source locations.
+
 **Resource identity**:
 The normalized project resource path plus its semantic block or resource query, used to replace one resource snapshot without overwriting another block from the same file.
 

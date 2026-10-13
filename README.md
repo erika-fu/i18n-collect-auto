@@ -35,7 +35,9 @@ The first command runs `vue-cli-service build` for the Vue demo; the second runs
 
 ## Collection command
 
-`i18n-collect collect` runs that same webpack integration once, without a prompt. The configuration must already include `i18n-collect/myloader` and `i18n-collect/myplugin`. The command reads `i18n-collect.config.js` and can replace `include`, `exclude`, and `contextFilters` with `--include`, `--exclude`, and `--context-filter`. It writes the hash dictionary and source map, prints a collection report, and leaves application source unchanged. It does not translate or make network requests. The webpack bundle is emitted outside the project.
+`i18n-collect collect` runs that same webpack integration once, without a prompt. The configuration must already include `i18n-collect/myloader` and `i18n-collect/myplugin`. The command reads `i18n-collect.config.js` and can replace `include`, `exclude`, and `contextFilters` with `--include`, `--exclude`, and `--context-filter`. It writes the hash dictionary, the source map, and the keyed translation catalog, prints a collection report, and leaves application source unchanged. It does not translate or make network requests. The webpack bundle is emitted outside the project.
+
+The report's `catalog` section names the catalog and metadata files and lists the localization keys that were added, removed, source-changed, or unchanged compared with the metadata present before the run. The human report prints the counts.
 
 ```
 npx i18n-collect collect --webpack-config webpack.config.js
@@ -43,7 +45,7 @@ npx i18n-collect collect --json
 npx i18n-collect collect --help
 ```
 
-Exit 0 means collection finished. Exit 1 is a configuration failure, exit 2 is a collection failure, and exit 3 is a build failure. A collection failure keeps the previous dictionary and source map. The Vue demo is wired through Vue CLI, so its checked-in dictionary still comes from `npm run update-demo-collection`.
+Exit 0 means collection finished. Exit 1 is a configuration failure, exit 2 is a collection failure, and exit 3 is a build failure. A malformed `i18n-key` directive and a localization key conflict are collection failures. A collection failure keeps the previous dictionary, source map, and catalog. The Vue demo is wired through Vue CLI, so its checked-in dictionary still comes from `npm run update-demo-collection`.
 
 ## Webpack 5 integration
 
@@ -101,11 +103,43 @@ CSS:
 
 Two directives that select the same fragment remove it once. They do not also remove the following fragment.
 
+Directive comments that are separated only by whitespace form one group in front of the construct, so `/* no-i18n-auto */ /* i18n-key: a.b */ "文案"` applies both directives to `"文案"`. An ordinary comment or code between two directives ends the group.
+
+## Localization keys
+
+Every collected location receives a localization key. The keyed translation catalog is the shared boundary for translation and source replacement; the hash dictionary stays alongside it during the migration.
+
+An explicit key comes from an `i18n-key` directive: a syntax-valid comment whose text is `i18n-key: <key>`. The key starts with a letter and is made of dot-separated segments of letters, digits, `_`, and `-`, such as `home.title` or `order.list-empty`. The directive associates with the same fragment that `no-i18n-auto` would remove in that position, using the rules above for script, Vue template, static HTML, and CSS. A comment whose text starts with `i18n-key` but does not have that shape is a malformed directive. It fails the round at the comment's position. A directive group that names two different keys for one fragment also fails. When a fragment is excluded, its key directive has no effect.
+
+```js
+const title = /* i18n-key: home.title */ '首页'
+```
+
+```html
+<!-- i18n-key: home.welcome -->
+<p>欢迎使用</p>
+```
+
+A location without an explicit key gets a derived key. It is built from the project-relative path without its extension, written as dot-separated segments with other characters replaced by `_` and a `k` prefix when the path does not start with a letter, plus 8 hex characters of a SHA-256 hash over the path, the semantic kind, and the collected text. For example, `欢迎` in Vue template text of `src/pages/Home.vue` gets `src.pages.Home.<hash>`. Line and column are not part of the key, so moving text inside a file keeps its key. The same text with the same kind in the same file shares one key.
+
+One key may appear at several locations when they all name the same source text. A key that names two different source texts is a key conflict. An explicit key that equals another text's derived key is also a conflict. A conflict fails the round, keeps every previous output, and lists each conflicting text with all of its locations.
+
+## Translation catalog
+
+After each successful round the plugin writes two catalog files in the same transaction as the hash dictionary and source map:
+
+- `<catalogDir>/<sourceLocale>.json`: the source-locale catalog, a flat `{ "<localization key>": "<source text>" }` mapping with sorted keys.
+- `<catalogDir>/catalog.meta.json`: catalog metadata, `{ version: 1, sourceLocale, format, entries }`. Each entry records the source text, a `fingerprint` (the first 16 hex characters of the SHA-256 of the source text), its `origin` (`explicit` or `derived`), and its sorted source locations.
+
+Comparing two metadata files tells which keys were added, removed, or source-changed: a key that remains with a different fingerprint has changed source text. Target-locale catalogs are not written by collection.
+
+The catalog's external representation goes through a format adapter. An adapter has a `name`, a file `extension`, `serialize(messages)` that returns identical text for identical messages, and `parse(text)`. `json` is the only adapter and the default.
+
 The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app.
 
 ## Configuration
 
-One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `contextFilters`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath` and `sourceMapFilename`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
+One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `contextFilters`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath`, `sourceMapFilename`, `catalogDir`, `sourceLocale`, and `catalogFormat`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
 
 ```js
 {
@@ -115,9 +149,14 @@ One `i18n-collect.config.js` at the project root supplies the defaults below. Lo
   contextFilters: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
-  sourceMapFilename: 'lang/zh_hash.map.json'
+  sourceMapFilename: 'lang/zh_hash.map.json',
+  catalogDir: 'lang/catalog',
+  sourceLocale: 'zh',
+  catalogFormat: 'json'
 }
 ```
+
+`catalogDir` is a project-relative directory. `sourceLocale` is a locale tag such as `zh` or `zh-CN` and names the source-locale catalog file. `catalogFormat` names the format adapter. The catalog files must not coincide with `outputPath` or `sourceMapFilename`. The catalog fields do not take part in the source map's `configHash`.
 
 `include` and `exclude` are project-relative scope patterns. A pattern with no `*`, `?`, `[`, or `{` is a file or directory boundary: `src/foo` matches `src/foo` and `src/foo/bar.js`, and does not match `src/foobar.js`. A pattern with those characters is a glob. `*` and `?` stay inside one path segment. `**` matches any number of segments, including zero, and must be a whole segment. `[abc]`, `[a-z]`, `[!abc]`, and `[^abc]` match one character in that segment; a `]` placed first in the class is literal. Backslash is a separator, not an escape. An empty `include` allows every resource that enters the loader. `exclude` then vetoes a match, whether the overlapping rules are boundaries, globs, or one of each. The plugin does not apply these filters again.
 
@@ -135,7 +174,7 @@ These filters apply to script and to script expressions in Vue interpolations an
 
 ## Output
 
-The runtime dictionary is `{ "<md5>": "<value>" }`. The source map stays at `version: 1` and uses the semantic kinds above. `parserVersion` remains `"babel-7"` as a historical JavaScript parser marker. Keys, entries, and locations are sorted; locations are ordered by path, kind, and numeric line and column. Identical bytes are not written. The two files are written as a pair and restored together if the write fails.
+The runtime dictionary is `{ "<md5>": "<value>" }`. The source map stays at `version: 1` and uses the semantic kinds above. `parserVersion` remains `"babel-7"` as a historical JavaScript parser marker. Keys, entries, and locations are sorted; locations are ordered by path, kind, and numeric line and column. Localization keys do not change either file. Identical bytes are not written. The dictionary, source map, and catalog files are written as one set and restored together if the write fails.
 
 ## HTMLWebpackPlugin
 
@@ -166,7 +205,8 @@ Each loader call submits a complete replacement snapshot for that identity, incl
 ## Limits
 
 - SCSS, Sass, Less, and Stylus are warning and skip only. There is no parser for them.
-- A parse error fails the round and keeps the previous official output.
+- A parse error, a malformed `i18n-key` directive, or a localization key conflict fails the round and keeps the previous official output.
+- A key directive that does not associate with a collected fragment is ignored, like an unattached `no-i18n-auto`.
 - Watch may compile one extra time after a real dictionary change, then become quiet.
 - A one-shot production build writes the latest dictionary, but that same bundle can still embed the previous dictionary.
 - Source rewriting, final-bundle scanning, webpack 4, Vite, Rollup, and evaluating dynamic expressions are not supported.

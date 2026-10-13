@@ -248,3 +248,50 @@ test('collects JavaScript literals from a JSX-containing module', () => {
   assert.strictEqual(title.locations[0].path, 'src/App.jsx')
   assert.strictEqual(source.slice(title.locations[0].start.column, title.locations[0].end.column), "'React 标题'")
 })
+
+function keysByValue(entries) {
+  return Object.fromEntries(entries.map(entry => [entry.value, entry.key]))
+}
+
+test('an adjacent i18n-key directive gives the next collected fragment an explicit key', () => {
+  const source = [
+    'const title = /* i18n-key: home.title */ "首页"',
+    'const plain = "普通"',
+    'const greet = /* i18n-key: home.greet */ `你好${name}世界`',
+    '// i18n-key: home.ignored',
+    'const away = "隔开"',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(keysByValue(extract(source)), {
+    首页: 'home.title',
+    普通: undefined,
+    你好: 'home.greet',
+    世界: undefined,
+    隔开: undefined
+  })
+})
+
+test('stacked directives combine exclusion and key, and agreeing duplicate keys are one key', () => {
+  const source = [
+    'const a = /* i18n-key: same.key */ /* i18n-key: same.key */ "同键"',
+    'const b = /* no-i18n-auto */ /* i18n-key: gone.key */ "排除"',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(keysByValue(extract(source)), { 同键: 'same.key' })
+})
+
+test('a malformed or conflicting i18n-key directive fails at its source position', () => {
+  assert.throws(
+    () => extract('const a = 1\nconst t = /* i18n-key home.title */ "首页"\n'),
+    error => /malformed i18n-key directive/.test(error.message) && error.loc.line === 2 && error.loc.column === 10
+  )
+  assert.throws(
+    () => extract('const t = /* i18n-key: 1bad */ "首页"\n'),
+    /malformed i18n-key directive/
+  )
+  assert.throws(
+    () => extract('const t = /* i18n-key: a.one */ /* i18n-key: a.two */ "首页"\n'),
+    error => /conflicting i18n-key directives "a.one" and "a.two"/.test(error.message) && error.loc.line === 1
+  )
+  assert.doesNotThrow(() => extract('// i18n-keys are documented elsewhere\nconst t = "首页"\n'))
+})

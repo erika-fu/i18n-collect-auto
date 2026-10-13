@@ -1,7 +1,9 @@
 const fs = require('fs')
 const path = require('path')
-const { canonicalRoot, loadConfig } = require('../mycommon/config')
-const { writeOutputs } = require('../mycommon/output')
+const { buildCatalog, catalogMetadata, conflictMessage } = require('../mycommon/catalog')
+const { catalogFormat } = require('../mycommon/catalog-format')
+const { canonicalRoot, catalogFiles, loadConfig } = require('../mycommon/config')
+const { json, writeOutputs } = require('../mycommon/output')
 const {
   assembleLiveSet,
   getSession,
@@ -69,6 +71,18 @@ function separatedModules(compilation) {
   return { main, child }
 }
 
+function catalogOutputs(config, catalog) {
+  const files = catalogFiles(config)
+  const format = catalogFormat(config.catalogFormat)
+  return [
+    { path: files.messages, content: format.serialize(catalog.messages) },
+    {
+      path: files.metadata,
+      content: json(catalogMetadata(catalog, { sourceLocale: config.sourceLocale, format: format.name }))
+    }
+  ]
+}
+
 function isHtmlIdentity(snapshot) {
   return Boolean(snapshot && typeof snapshot.identity === 'string' && snapshot.identity.endsWith('::html'))
 }
@@ -132,12 +146,19 @@ class MyI18nPlugin {
         committed: session.committedSnapshots(),
         activeTemplates: activeHtmlTemplates(compiler, compilation, config)
       })
+      const catalog = buildCatalog(snapshots)
+      if (catalog.conflicts.length > 0) {
+        session.abandon(compilation)
+        throw new Error(conflictMessage(catalog.conflicts))
+      }
       await session.release(compilation, snapshots, config.configHash, () =>
         writeOutputs(
           config.root,
           config,
           session.committed.runtimeDictionary(),
-          session.committed.sourceMap(config.configHash)
+          session.committed.sourceMap(config.configHash),
+          undefined,
+          catalogOutputs(config, catalog)
         )
       )
     })

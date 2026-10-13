@@ -340,6 +340,59 @@ test('a static HTML exclusion directive excludes the next fragment only', () => 
   ])
 })
 
+function keys(result) {
+  return Object.fromEntries(result.entries.map(entry => [entry.value, entry.key]))
+}
+
+test('an i18n-key directive keys the next fragment of a Vue element, text node, or expression', () => {
+  const source = [
+    '<!-- i18n-key: page.heading -->',
+    '<h1 title="标题">正文</h1>',
+    '<p>前文<!-- i18n-key: page.after -->后文</p>',
+    '<p :title="/* i18n-key: page.bound */ \'绑定\' + \'其余\'">旁白</p>',
+    '<p>{{ /* i18n-key: page.slot */ \'插值\' }}</p>',
+    '<!-- no-i18n-auto -->',
+    '<!-- i18n-key: page.dropped -->',
+    '<p>排除</p>'
+  ].join('\n')
+  assert.deepStrictEqual(keys(extract(source)), {
+    标题: 'page.heading',
+    正文: undefined,
+    前文: undefined,
+    后文: 'page.after',
+    绑定: 'page.bound',
+    其余: undefined,
+    旁白: undefined,
+    插值: 'page.slot'
+  })
+})
+
+test('a static HTML i18n-key directive keys the next fragment', () => {
+  const source = '<!-- i18n-key: doc.heading -->\n<p title="提示">正文</p>'
+  assert.deepStrictEqual(keys(extractStandalone(source)), { 提示: 'doc.heading', 正文: undefined })
+})
+
+test('malformed and conflicting HTML key directives fail at their original position', () => {
+  assert.throws(
+    () => extract('<p>甲</p>\n<!-- i18n-key bad -->\n<p>乙</p>'),
+    error => /malformed i18n-key directive/.test(error.message) && error.loc.line === 2 && error.loc.column === 0
+  )
+  assert.throws(
+    () => extract('<template>\n  <!-- i18n-key: -->\n  <p>甲</p>\n</template>', { projectPath: 'src/App.vue' }),
+    error => /malformed i18n-key directive/.test(error.message) && error.loc.line === 2 && error.loc.column === 2
+  )
+  assert.throws(
+    () => extract('<!-- i18n-key: a.one -->\n<!-- i18n-key: a.two -->\n<p>甲</p>'),
+    error => /conflicting i18n-key directives "a.one" and "a.two"/.test(error.message) && error.loc.line === 3
+  )
+  assert.throws(() => extract('<p :title="/* i18n-key */ \'甲\'"></p>'), /malformed i18n-key directive/)
+})
+
+test('a key directive on an excluded HTML fragment has no effect and does not conflict', () => {
+  const source = '<!-- no-i18n-auto -->\n<!-- i18n-key: outer.key -->\n<p :title="/* i18n-key: inner.key */ \'甲\' + \'乙\'">正文</p>'
+  assert.deepStrictEqual(keys(extract(source)), { 乙: undefined, 正文: undefined })
+})
+
 test('fails a standalone document when an invalid tag is not an EJS delimiter', () => {
   assert.throws(() => extractStandalone('<p><1文案</p>'), /invalid-first-character-of-tag-name/)
 })
