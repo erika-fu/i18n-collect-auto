@@ -93,20 +93,33 @@ The demo pages show script strings, template literals, Vue interpolation, Vue te
 
 ## Configuration
 
-One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath` and `sourceMapFilename`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
+One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `contextFilters`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath` and `sourceMapFilename`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
 
 ```js
 {
   styleExtensions: ['.css'],
   include: [],
   exclude: [],
+  contextFilters: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
   sourceMapFilename: 'lang/zh_hash.map.json'
 }
 ```
 
-`include` and `exclude` are project-relative file or directory prefixes, not globs. An empty `include` allows every resource that enters the loader. `exclude` then vetoes matches. The plugin does not apply these filters again.
+`include` and `exclude` are project-relative scope patterns. A pattern with no `*`, `?`, `[`, or `{` is a file or directory boundary: `src/foo` matches `src/foo` and `src/foo/bar.js`, and does not match `src/foobar.js`. A pattern with those characters is a glob. `*` and `?` stay inside one path segment. `**` matches any number of segments, including zero, and must be a whole segment. `[abc]`, `[a-z]`, `[!abc]`, and `[^abc]` match one character in that segment; a `]` placed first in the class is literal. Backslash is a separator, not an escape. An empty `include` allows every resource that enters the loader. `exclude` then vetoes a match, whether the overlapping rules are boundaries, globs, or one of each. The plugin does not apply these filters again.
+
+These patterns are configuration errors: an absolute path, a pattern that leaves the project root, an empty pattern or the project root itself, a duplicate after normalization, a glob that ends with `/`, brace expansion, `**` glued to other characters, `..` after a glob segment, or an unclosed, empty, or stray character class. A `..` segment before any glob is normalized, so `src/../kept/**/*.js` is `kept/**/*.js`.
+
+`contextFilters` lists optional policies for candidates a project does not treat as user-facing copy. The allowed names are `logging`, `tests`, and `analytics`. The default `[]` selects none of them. Collection does not drop text by guessing; a category is omitted only after the configuration selects it. Each name can be selected on its own. Unknown names and duplicates are configuration errors. This field belongs to the loader.
+
+The policies are:
+
+- `logging` omits a script string or template literal when the nearest call is `console.log`, `console.info`, `console.warn`, `console.error`, `console.debug`, `console.trace`, `log`, or `logger` with those same method names, and the literal is inside that call's arguments. `console.log(format("界面"))` keeps `界面`, because the nearest call is `format`.
+- `tests` omits a candidate that sits lexically inside `describe`, `it`, `test`, `beforeEach`, `afterEach`, `beforeAll`, `afterAll`, `expect`, or the `.only`, `.skip`, `.each`, and `.todo` forms of `describe`, `it`, and `test`. A string in the same file, outside those calls, stays. This filter does not exclude a test file; use an `exclude` glob for that.
+- `analytics` omits a candidate when the nearest call is `gtag`, `track`, `analytics.track`, `analytics.page`, `analytics.identify`, `analytics.screen`, or `dataLayer.push`, and the literal is inside that call's arguments, including a string property of an object argument.
+
+These filters apply to script and to script expressions in Vue interpolations and dynamic attributes. They do not remove HTML text or CSS generated content. A callee written with a computed property, optional call, or tagged template is not one of these calls, so its text stays.
 
 ## Output
 

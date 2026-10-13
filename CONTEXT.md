@@ -45,6 +45,12 @@ The source HTML document at an explicitly configured path, collected from its or
 **Collection configuration**:
 The local configuration for collection inputs, semantic attribute rules, output files, resource filtering, and optional collection-context filters; it is separate from the dependency package's translation configuration.
 
+**Scope pattern**:
+A project-relative file or directory boundary, or a project-relative glob, listed in `include` or `exclude`. An `exclude` pattern vetoes a resource even when an `include` pattern also matches.
+
+**Collection-context filter**:
+An optional category in collection configuration: `logging`, `tests`, or `analytics`. Each filter is off unless the project selects it. A selected filter omits candidates in that context. It is a project policy, and collection stays inclusive when no filter is selected.
+
 **Translation catalog**:
 A locale-specific mapping from localization keys to translated text, derived from collected text and maintained separately for each locale. The default external representation is a flat JSON mapping, while format adapters may emit other consumer formats.
 

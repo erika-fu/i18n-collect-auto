@@ -672,6 +672,34 @@ test('a configuration file change invalidates filtering and configHash', { timeo
   }
 })
 
+test('glob rules and context filters apply in a build and follow config changes', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-glob-'))
+  fs.mkdirSync(path.join(root, 'src/kept'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'src/other'), { recursive: true })
+  const configFile = path.join(root, 'i18n-collect.config.js')
+  fs.writeFileSync(configFile, 'module.exports = { include: ["src/**/*.js"], exclude: ["src/**/*.skip.js"] }\n')
+  fs.writeFileSync(path.join(root, 'src/kept/app.js'), 'const label = "界面文案"\nconsole.log("日志文案")\nmodule.exports = label\n')
+  fs.writeFileSync(path.join(root, 'src/kept/note.skip.js'), 'module.exports = "跳过文案"\n')
+  fs.writeFileSync(path.join(root, 'src/other/out.js'), 'module.exports = "外部文案"\n')
+  fs.writeFileSync(path.join(root, 'src/main.js'), 'require("./kept/app")\nrequire("./kept/note.skip")\nrequire("./other/out")\n')
+  const handle = start(jsProject(root, path.join(root, 'src/main.js')))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), ['界面文案', '外部文案', '日志文案'].sort())
+    const firstHash = readOutput(root).map.configHash
+    fs.writeFileSync(configFile, 'module.exports = { include: ["src/**/*.js"], exclude: ["src/**/*.skip.js"], contextFilters: ["logging"] }\n')
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), ['界面文案', '外部文案'].sort())
+    const secondHash = readOutput(root).map.configHash
+    assert.notStrictEqual(secondHash, firstHash)
+    assert.strictEqual(secondHash, loadConfig({ root }).configHash)
+  } finally {
+    await handle.close()
+  }
+})
+
 test('filesystem cache matches an uncached build without a loader rerun', { timeout: 40000 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-fscache-'))
   fs.mkdirSync(path.join(root, 'src'))

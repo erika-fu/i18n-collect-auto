@@ -1,12 +1,16 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { isGlobPattern, normalizeGlobPattern } = require('./scope-pattern')
 
 const CONFIG_FILE = 'i18n-collect.config.js'
+const CONTEXT_FILTERS = new Set(['logging', 'tests', 'analytics'])
+
 const DEFAULTS = {
   styleExtensions: ['.css'],
   include: [],
   exclude: [],
+  contextFilters: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
   sourceMapFilename: 'lang/zh_hash.map.json'
@@ -34,9 +38,9 @@ function projectPath(root, value, field) {
   return value.split(path.sep).join('/')
 }
 
-function array(value, field, valid) {
+function array(value, field, valid, invalidMessage) {
   if (!Array.isArray(value) || value.some(item => !valid(item))) {
-    fail(`${field} must be an array of valid values`)
+    fail(invalidMessage || `${field} must be an array of valid values`)
   }
   if (new Set(value).size !== value.length) fail(`${field} must not contain duplicates`)
 }
@@ -52,6 +56,7 @@ function normalizeFilterPattern(root, pattern, field) {
   if (slashed.startsWith('/') || /^[A-Za-z]:\//.test(slashed)) {
     throw new Error(`${field} must be a project-relative path`)
   }
+  if (isGlobPattern(slashed)) return normalizeGlobPattern(slashed, field)
   const absolute = path.resolve(root, slashed)
   const relative = path.relative(root, absolute)
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || relative.startsWith('../')) {
@@ -85,6 +90,12 @@ function validate(root, input) {
   const config = { ...DEFAULTS, ...input }
   array(config.styleExtensions, 'styleExtensions', value => /^(\.[a-z0-9]+)+$/i.test(value))
   array(config.attributeAllowlist, 'attributeAllowlist', value => typeof value === 'string' && value.length > 0)
+  array(
+    config.contextFilters,
+    'contextFilters',
+    value => CONTEXT_FILTERS.has(value),
+    'contextFilters must be an array of "logging", "tests", and "analytics"'
+  )
   config.include = filterList(root, config.include, 'include')
   config.exclude = filterList(root, config.exclude, 'exclude')
   config.outputPath = projectPath(root, config.outputPath, 'outputPath')
@@ -125,7 +136,7 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
   }
   let config = validate(projectRoot, fileConfig)
   const fileConfigHash = hashConfig(config)
-  config = validate(projectRoot, merge(config, loaderOptions, new Set(['include', 'exclude', 'attributeAllowlist', 'styleExtensions'])))
+  config = validate(projectRoot, merge(config, loaderOptions, new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])))
   config = validate(projectRoot, merge(config, pluginOptions, new Set(['outputPath', 'sourceMapFilename'])))
   return {
     ...config,

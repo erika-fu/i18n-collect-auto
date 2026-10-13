@@ -110,7 +110,8 @@ function collectedFor(resource, sourceText, config) {
     return {
       entries: extractVueScript({
         source: fs.readFileSync(resource.absolutePath, 'utf8'),
-        resource
+        resource,
+        config
       }),
       warnings: []
     }
@@ -125,7 +126,7 @@ function collectedFor(resource, sourceText, config) {
       warnings: []
     }
   }
-  if (resource.block === 'script') return { entries: extractScript({ source: sourceText, resource }), warnings: [] }
+  if (resource.block === 'script') return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
   if (resource.block === 'style') {
     return extractCss({
       source: fs.readFileSync(resource.absolutePath, 'utf8'),

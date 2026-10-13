@@ -261,6 +261,15 @@ test('collects standalone HTML text and allowlisted attributes without executing
   assert.ok(result.entries.every(entry => entry.locations[0].path === 'public/index.html'))
 })
 
+test('a selected context filter omits a Vue expression candidate and leaves surrounding text', () => {
+  const source = '<p>界面文案</p><p>{{ console.log("日志文案") }}</p><p>{{ track("埋点文案") }}</p>'
+  assert.deepStrictEqual(values(extract(source)).sort(), ['界面文案', '日志文案', '埋点文案'].sort())
+  assert.deepStrictEqual(
+    values(extract(source, {}, { attributeAllowlist: ALLOWLIST, contextFilters: ['logging'] })).sort(),
+    ['界面文案', '埋点文案'].sort()
+  )
+})
+
 test('an exclusion directive before a Vue element excludes only that element\'s next fragment', () => {
   const source = [
     '<!-- no-i18n-auto -->',

@@ -541,6 +541,7 @@ module.exports = {
   styleExtensions: ['.css'],
   include: [],
   exclude: [],
+  contextFilters: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
   sourceMapFilename: 'lang/zh_hash.map.json'
@@ -553,8 +554,9 @@ module.exports = {
 
 | 字段 | 归属 | 用途 |
 | --- | --- | --- |
-| `include` | Loader | 允许收集的项目内文件或目录前缀 |
-| `exclude` | Loader | 拒绝收集的项目内文件或目录前缀 |
+| `include` | Loader | 允许收集的项目内边界或 glob |
+| `exclude` | Loader | 拒绝收集的项目内边界或 glob，拥有最终否决权 |
+| `contextFilters` | Loader | 可选的收集上下文策略：`logging`、`tests`、`analytics` |
 | `attributeAllowlist` | Loader | 允许收集的 HTML 用户可见属性名 |
 | `styleExtensions` | Loader | 被当作样式资源识别的扩展名 |
 | `outputPath` | Plugin | 运行时词典输出路径 |
@@ -564,24 +566,31 @@ module.exports = {
 
 ### `include` 与 `exclude`
 
-这两个字段是**项目相对路径的文件或目录前缀**，不是 glob。
+这两个字段是项目相对的范围模式。没有 `*`、`?`、`[`、`{` 时，它仍是文件或目录边界。出现这些字符时，它是 glob。
 
 ```js
 module.exports = {
-  include: ['src', 'public/index.html'],
-  exclude: ['src/legacy']
+  include: ['src/**/*.vue', 'public/*.html'],
+  exclude: ['src/legacy', 'src/**/*.spec.js'],
+  contextFilters: ['logging']
 }
 ```
 
 匹配规则：
 
 - `include: []` 表示允许所有已进入 Loader 的资源；
-- 非空 `include` 时，资源至少要命中一个前缀；
-- `exclude` 在 `include` 之后执行，拥有最终否决权；
-- `src/foo` 匹配 `src/foo` 和 `src/foo/**`，不匹配 `src/foobar`；
-- 不接受绝对路径、越过项目根目录的 `..`、空或项目根目录本身作为模式；
+- 非空 `include` 时，资源至少要命中一个模式；
+- `exclude` 在 `include` 之后执行，拥有最终否决权，边界和 glob 重叠时也一样；
+- 边界 `src/foo` 匹配 `src/foo` 和 `src/foo/bar.js`，不匹配 `src/foobar`；
+- `*` 与 `?` 不跨越路径段；`**` 必须独占一段，并匹配零段或多段；
+- 不接受绝对路径、越过项目根目录的 `..`、空或项目根目录、规范化后的重复项；
+- glob 还不接受结尾 `/`、花括号、粘连的 `**`、glob 之后的 `..`，以及不合法的字符类；
 - 不会对 query string 匹配；
 - Plugin 不会再次应用过滤规则。
+
+### `contextFilters`
+
+默认是 `[]`，三个策略都关闭。收集不会因为启发式猜测而静默丢文案。可选值是 `logging`、`tests`、`analytics`，可以只选其中一个。它们是项目策略，不是写死的排除规则。调用名单、最近调用和词法包含的具体约定见 [README.md](README.md)。这些策略只作用于 script，以及 Vue 插值和动态属性中的表达式；HTML 文本和 CSS 生成内容仍会收集。测试文件本身要用 `exclude` glob 排除。
 
 完整安装与配置参考可见 [README.md](README.md)。
 

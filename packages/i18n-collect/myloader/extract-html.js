@@ -2,6 +2,7 @@ const parse5 = require('parse5')
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
 const { DEFAULTS } = require('../mycommon/config')
+const { contextSuppresses } = require('./context-filter')
 const { directiveEnds, followsDirective, isExclusionDirective, whitespaceGap } = require('./exclusion')
 const { containsHan, offsetToPosition } = require('./resource')
 
@@ -473,6 +474,7 @@ function extractHtml({ source, resource, config }) {
   const textKind = standalone ? 'static-html-text' : 'html-text'
   const attributeKind = standalone ? 'static-html-attribute' : 'html-attribute'
   const allowlist = new Set((config && config.attributeAllowlist) || DEFAULTS.attributeAllowlist)
+  const contextFilters = config && config.contextFilters
   const span = templateSpan(source, resource)
   if (span.lang !== 'html') return { entries: [], warnings: [] }
   const fragment = source.slice(span.start, span.end)
@@ -533,6 +535,7 @@ function extractHtml({ source, resource, config }) {
       StringLiteral(nodePath) {
         const value = nodePath.node.value
         if (!containsHan(value)) return
+        if (contextSuppresses(nodePath, contextFilters)) return
         const startIndex = excludeStringDelimiters ? nodePath.node.start + 1 : nodePath.node.start
         const endIndex = excludeStringDelimiters ? nodePath.node.end - 1 : nodePath.node.end
         push(
@@ -544,6 +547,7 @@ function extractHtml({ source, resource, config }) {
         )
       },
       TemplateLiteral(nodePath) {
+        if (contextSuppresses(nodePath, contextFilters)) return
         let skipNext = followsDirective(decoded.value, directiveEndOffsets, nodePath.node.start)
         for (const quasi of nodePath.node.quasis) {
           const value = quasi.value.cooked

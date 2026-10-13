@@ -30,7 +30,7 @@ The application imports the dictionary, and the plugin can write the complete re
 
 ## Nothing was collected
 
-The plugin does not scan the project. A file is collected only when it enters `i18n-collect/myloader`.
+The plugin does not scan the project. A file is collected only when it enters `i18n-collect/myloader`. An `exclude` scope pattern removes that resource after `include`. A selected collection-context filter removes only the candidates in that policy; with `contextFilters: []`, logging, test, and analytics copy stays in the result.
 
 A build with no loader invocation and no restored loader metadata fails and asks for the ordinary module rules, the Vue script, template, and style rules, and the HTML template loader chain. An empty snapshot, an excluded file, and an unsupported style are still loader evidence. Restored module metadata from the webpack filesystem cache is also loader evidence. Metadata from another root compiler or another configuration hash stays out of the session and fails the round, so a foreign snapshot is not published.
 

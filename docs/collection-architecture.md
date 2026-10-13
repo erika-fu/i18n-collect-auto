@@ -113,6 +113,7 @@ packages/i18n-collect/
 ├── myloader/
 │   ├── index.js                   # webpack Loader adapter
 │   ├── resource.js                # 类型、query、identity、过滤和坐标
+│   ├── context-filter.js          # 可选的 logging / tests / analytics 策略
 │   ├── extract.js                 # 三类 extractor 的简单分派
 │   ├── extract-script.js          # JavaScript/TypeScript/表达式
 │   ├── extract-html.js            # HTML 和 Vue template
@@ -120,6 +121,7 @@ packages/i18n-collect/
 ├── myplugin/
 │   └── index.js                   # compilation 生命周期与输出
 └── mycommon/
+    ├── scope-pattern.js           # 目录边界与 glob 范围
     ├── session.js                 # 候选 round、提交、放弃和淘汰
     ├── store.js                   # 聚合、去重和稳定排序
     ├── config.js                  # 配置加载、校验和字段归属
@@ -678,6 +680,7 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
   styleExtensions: ['.css'],
   include: [],
   exclude: [],
+  contextFilters: [],
   attributeAllowlist: [
     'title',
     'placeholder',
@@ -693,7 +696,7 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
 修改：
 
 - 删除 `htmlEntries`；
-- Loader 使用 `include`、`exclude`、`attributeAllowlist`、`styleExtensions`；
+- Loader 使用 `include`、`exclude`、`contextFilters`、`attributeAllowlist`、`styleExtensions`；
 - Plugin 使用 `outputPath`、`sourceMapFilename`；
 - 显式 options 只能覆盖调用方拥有的字段；
 - 未知字段和跨职责字段继续报错；
@@ -704,29 +707,19 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
 
 ## 16.1 Include/exclude
 
-不引入 glob。
-
-模式表示项目相对文件或目录边界。例如 `src/foo` 匹配：
-
-```text
-src/foo
-src/foo/**
-```
-
-但不匹配：
-
-```text
-src/foobar
-```
+`include` 和 `exclude` 接受项目相对的文件或目录边界，也接受 glob。不含 `*`、`?`、`[`、`{` 的模式仍是边界：`src/foo` 匹配 `src/foo` 与 `src/foo/bar.js`，不匹配 `src/foobar.js`。含这些字符的模式是 glob。`*` 与 `?` 不跨越路径段；`**` 必须独占一个路径段，并匹配零个或多个路径段；`[abc]`、`[a-z]`、`[!abc]`、`[^abc]` 匹配该段中的一个字符。
 
 规则：
 
-1. 路径分隔符规范化为 `/`。
+1. 路径分隔符规范化为 `/`。反斜杠是分隔符，不是转义。
 2. 匹配时忽略 resource query。
 3. `include` 为空则默认允许，否则必须至少命中一个模式。
-4. `exclude` 在 include 之后应用，并拥有最终否决权。
-5. 拒绝绝对路径、越过根目录的 `..`、空/root-only 模式及规范化后的重复项。
-6. Plugin 不再次应用过滤规则。
+4. `exclude` 在 include 之后应用，并拥有最终否决权；边界与 glob 重叠时同样由 exclude 否决。
+5. 拒绝绝对路径、越过根目录的 `..`、空或项目根目录本身，以及规范化后的重复项。
+6. glob 另外拒绝：以 `/` 结尾、花括号展开、`**` 与其他字符写在同一段、glob 段之后的 `..`、未闭合、空或多余的字符类。glob 段之前的 `..` 会先做词法折叠，且必须留在项目内。
+7. Plugin 不再次应用过滤规则。
+
+`contextFilters` 默认是 `[]`。可选值只有 `logging`、`tests`、`analytics`，可以单独选择。未选择时，收集不会按启发式丢掉文案。选择之后，只去掉该策略所描述的 script 候选，以及 Vue 插值和动态属性里的同类表达式；HTML 文本和 CSS 生成内容不在这些策略里。具体调用名单见 README。未知名称和重复项是配置错误。该字段属于 Loader。
 
 ---
 

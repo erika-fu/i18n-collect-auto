@@ -1,4 +1,5 @@
 const path = require('path')
+const { scopeMatches } = require('../mycommon/scope-pattern')
 
 const SCRIPT_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'])
 
@@ -113,15 +114,11 @@ function describeResource({ root, resourcePath, resourceQuery = '', styleExtensi
   }
 }
 
-function boundaryMatch(candidate, pattern) {
-  return candidate === pattern || candidate.startsWith(`${pattern}/`)
-}
-
 function isResourceIncluded(projectPath, { include = [], exclude = [] } = {}) {
   const candidate = queryFreePath(projectPath)
-  const included = include.length === 0 || include.some(pattern => boundaryMatch(candidate, pattern))
+  const included = include.length === 0 || include.some(pattern => scopeMatches(candidate, pattern))
   if (!included) return false
-  return !exclude.some(pattern => boundaryMatch(candidate, pattern))
+  return !exclude.some(pattern => scopeMatches(candidate, pattern))
 }
 
 module.exports = {

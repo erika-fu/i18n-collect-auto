@@ -4,10 +4,10 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Existing valid file/directory include and exclude configurations retain their behavior.
-- [ ] Project-relative glob rules work across supported resources; invalid, absolute, escaping, or ambiguous patterns fail with actionable configuration errors.
-- [ ] Exclusion wins whenever rules overlap, regardless of whether rules are boundaries or globs.
-- [ ] Context filters are disabled by default, individually selectable by configuration, and documented as policy choices rather than hard-coded exclusions.
-- [ ] Configuration changes remain visible to watch mode and have unit plus real Webpack integration coverage.
+- [x] Existing valid file/directory include and exclude configurations retain their behavior.
+- [x] Project-relative glob rules work across supported resources; invalid, absolute, escaping, or ambiguous patterns fail with actionable configuration errors.
+- [x] Exclusion wins whenever rules overlap, regardless of whether rules are boundaries or globs.
+- [x] Context filters are disabled by default, individually selectable by configuration, and documented as policy choices rather than hard-coded exclusions.
+- [x] Configuration changes remain visible to watch mode and have unit plus real Webpack integration coverage.

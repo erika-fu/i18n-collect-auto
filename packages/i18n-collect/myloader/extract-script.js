@@ -1,5 +1,6 @@
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
+const { contextSuppresses } = require('./context-filter')
 const { directiveEnds, followsDirective } = require('./exclusion')
 const { containsHan, offsetToPosition } = require('./resource')
 
@@ -18,7 +19,7 @@ function location(source, projectPath, node, kind) {
   }
 }
 
-function extractScript({ source, resource }) {
+function extractScript({ source, resource, config }) {
   if (typeof source !== 'string') throw new TypeError('Script extractor requires source text')
   if (!resource || typeof resource.projectPath !== 'string' || !resource.projectPath) {
     throw new TypeError('Script extractor requires a project path')
@@ -30,6 +31,7 @@ function extractScript({ source, resource }) {
     StringLiteral(nodePath) {
       if (MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)) return
       if (followsDirective(source, directiveEndOffsets, nodePath.node.start)) return
+      if (contextSuppresses(nodePath, config && config.contextFilters)) return
       const value = nodePath.node.value
       if (!containsHan(value)) return
       entries.push({
@@ -38,6 +40,7 @@ function extractScript({ source, resource }) {
       })
     },
     TemplateLiteral(nodePath) {
+      if (contextSuppresses(nodePath, config && config.contextFilters)) return
       let skipNext = followsDirective(source, directiveEndOffsets, nodePath.node.start)
       for (const node of nodePath.node.quasis) {
         const value = node.value.cooked

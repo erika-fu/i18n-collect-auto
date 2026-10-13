@@ -2,8 +2,8 @@ const assert = require('assert')
 const test = require('node:test')
 const { extractScript } = require('../myloader/extract-script')
 
-function extract(source, projectPath = 'src/example.js') {
-  return extractScript({ source, resource: { projectPath } })
+function extract(source, projectPath = 'src/example.js', config) {
+  return extractScript({ source, resource: { projectPath }, config })
 }
 
 test('collects an ordinary string without executing or concatenating expressions', () => {
@@ -157,6 +157,79 @@ test('malformed comments and a directive separated by code do not exclude', () =
     ''
   ].join('\n')
   assert.deepStrictEqual(extract(source).map(entry => entry.value), ['仍收集', '带多余文字', '拼写不对', '大小写不对'])
+})
+
+test('keeps logging, test, and analytics copy unless that context filter is selected', () => {
+  const source = [
+    'const label = "界面文案"',
+    'console.log("日志文案")',
+    'console.info(`日志前缀${name}日志后缀`)',
+    'logger.warn({ message: "警告文案" })',
+    'console.log(format("仍是界面"))',
+    'it("用例标题", () => { const sample = "断言文案" })',
+    'expect(node).toBe("期望文案")',
+    'const outside = "测试文件里的界面"',
+    'gtag("event", "埋点文案")',
+    'analytics.track({ name: "分析文案" })',
+    'dataLayer.push({ event: "数据层文案" })',
+    ''
+  ].join('\n')
+  const all = [
+    '界面文案',
+    '日志文案',
+    '日志前缀',
+    '日志后缀',
+    '警告文案',
+    '仍是界面',
+    '用例标题',
+    '断言文案',
+    '期望文案',
+    '测试文件里的界面',
+    '埋点文案',
+    '分析文案',
+    '数据层文案'
+  ]
+  assert.deepStrictEqual(extract(source).map(entry => entry.value).sort(), all.sort())
+  assert.deepStrictEqual(
+    extract(source, 'src/example.js', { contextFilters: ['logging'] }).map(entry => entry.value).sort(),
+    ['界面文案', '仍是界面', '用例标题', '断言文案', '期望文案', '测试文件里的界面', '埋点文案', '分析文案', '数据层文案'].sort()
+  )
+})
+
+test('selects test and analytics context filters independently', () => {
+  const source = [
+    'const label = "界面文案"',
+    'console.log("日志文案")',
+    'it.only("用例标题", () => { const sample = "断言文案" })',
+    'const outside = "测试文件里的界面"',
+    'track("埋点文案")',
+    'analytics.page("分析文案")',
+    'dataLayer.push({ event: "数据层文案" })',
+    'report({ event: "仍是界面" })',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(
+    extract(source, 'src/example.js', { contextFilters: ['tests'] }).map(entry => entry.value).sort(),
+    ['界面文案', '日志文案', '测试文件里的界面', '埋点文案', '分析文案', '数据层文案', '仍是界面'].sort()
+  )
+  assert.deepStrictEqual(
+    extract(source, 'src/example.js', { contextFilters: ['analytics'] }).map(entry => entry.value).sort(),
+    ['界面文案', '日志文案', '用例标题', '断言文案', '测试文件里的界面', '仍是界面'].sort()
+  )
+})
+
+test('leaves optional calls collected and omits todo test titles when tests are selected', () => {
+  const source = [
+    'console.log?.("可选日志")',
+    'describe.todo("待写套件")',
+    'it.todo("待写用例")',
+    'const label = "界面文案"',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(
+    extract(source, 'src/example.js', { contextFilters: ['logging', 'tests'] }).map(entry => entry.value).sort(),
+    ['可选日志', '界面文案'].sort()
+  )
 })
 
 test('collects JavaScript literals from a JSX-containing module', () => {

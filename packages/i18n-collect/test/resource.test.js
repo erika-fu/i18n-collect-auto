@@ -104,6 +104,63 @@ test('matches include and exclude on directory boundaries', () => {
   assert.strictEqual(isResourceIncluded('src/kept.js', { include: [], exclude: [] }), true)
 })
 
+test('matches project-relative globs and lets exclude veto either kind of rule', () => {
+  const config = validate('/project', {
+    include: ['src/**/*.vue', 'public/*.html'],
+    exclude: ['src/legacy', 'src/**/*.spec.js']
+  })
+  assert.strictEqual(isResourceIncluded('src/App.vue', config), true)
+  assert.strictEqual(isResourceIncluded('src/views/Home.vue', config), true)
+  assert.strictEqual(isResourceIncluded('src/App.js', config), false)
+  assert.strictEqual(isResourceIncluded('public/index.html', config), true)
+  assert.strictEqual(isResourceIncluded('public/nested/index.html', config), false)
+  assert.strictEqual(isResourceIncluded('src/legacy/Old.vue', config), false)
+  assert.strictEqual(isResourceIncluded('src/components/Button.spec.js', config), false)
+  assert.strictEqual(isResourceIncluded('src/App.vue?vue&type=template&id=1', config), true)
+
+  const mixed = validate('/project', {
+    include: ['src/components'],
+    exclude: ['src/components/**/*.spec.js']
+  })
+  assert.strictEqual(isResourceIncluded('src/components/Button.vue', mixed), true)
+  assert.strictEqual(isResourceIncluded('src/components/forms/Button.spec.js', mixed), false)
+  assert.strictEqual(isResourceIncluded('src/componentsExtra/Button.vue', mixed), false)
+
+  const globInclude = validate('/project', {
+    include: ['**/*.css'],
+    exclude: ['src/vendor']
+  })
+  assert.strictEqual(isResourceIncluded('src/base.css', globInclude), true)
+  assert.strictEqual(isResourceIncluded('src/theme/a.css', globInclude), true)
+  assert.strictEqual(isResourceIncluded('src/vendor/a.css', globInclude), false)
+  assert.strictEqual(isResourceIncluded('src/app.js', { include: [], exclude: ['**/*.test.js'] }), true)
+  assert.strictEqual(isResourceIncluded('src/app.test.js', { include: [], exclude: ['**/*.test.js'] }), false)
+})
+
+test('rejects invalid, absolute, escaping, and ambiguous scope patterns', () => {
+  assert.throws(() => validate('/project', { include: ['/src/**/*.vue'] }), /project-relative/)
+  assert.throws(() => validate('/project', { exclude: ['C:/src/**/*.js'] }), /project-relative/)
+  assert.throws(() => validate('/project', { include: ['../**/*.js'] }), /inside the project root/)
+  assert.throws(() => validate('/project', { exclude: ['src/../../**/*.vue'] }), /inside the project root/)
+  assert.throws(() => validate('/project', { include: ['src/**.js'] }), /ambiguous/)
+  assert.throws(() => validate('/project', { include: ['src/**/../secret.js'] }), /ambiguous/)
+  assert.throws(() => validate('/project', { exclude: ['src/{a,b}.js'] }), /ambiguous/)
+  assert.throws(() => validate('/project', { include: ['src/**/'] }), /ambiguous/)
+  assert.throws(() => validate('/project', { include: ['src/[.js'] }), /invalid/)
+  assert.throws(() => validate('/project', { include: ['src/[]'] }), /invalid/)
+  assert.deepStrictEqual(validate('/project', { include: ['src\\**\\*.vue'] }).include, ['src/**/*.vue'])
+  assert.deepStrictEqual(validate('/project', { include: ['src/../kept/**/*.js'] }).include, ['kept/**/*.js'])
+  assert.throws(() => validate('/project', { include: ['src/**/*.js', 'src/**/**/*.js'] }), /duplicate/)
+  const classes = validate('/project', { include: ['src/file?.js', 'src/page-[ab].vue'] })
+  assert.strictEqual(isResourceIncluded('src/file1.js', classes), true)
+  assert.strictEqual(isResourceIncluded('src/file10.js', classes), false)
+  assert.strictEqual(isResourceIncluded('src/page-a.vue', classes), true)
+  assert.strictEqual(isResourceIncluded('src/page-c.vue', classes), false)
+  const bracket = validate('/project', { include: ['src/page-[' + ']]' + '.vue'] })
+  assert.strictEqual(isResourceIncluded('src/page-].vue', bracket), true)
+  assert.strictEqual(isResourceIncluded('src/page-a.vue', bracket), false)
+})
+
 test('rejects include and exclude paths that are absolute, escaping, empty, root-only, or duplicate', () => {
   assert.throws(() => validate('/project', { include: ['/etc/passwd'] }), /project-relative/)
   assert.throws(() => validate('/project', { exclude: ['C:/Windows'] }), /project-relative/)
@@ -115,6 +172,29 @@ test('rejects include and exclude paths that are absolute, escaping, empty, root
   assert.throws(() => validate('/project', { include: ['src/foo', 'src/foo/'] }), /duplicate/)
   assert.throws(() => validate('/project', { exclude: ['src/foo', 'src/bar/../foo'] }), /duplicate/)
   assert.deepStrictEqual(validate('/project', { include: ['src\\foo\\bar\\..\\'] }).include, ['src/foo'])
+})
+
+test('context filters are off by default and only accept the named categories', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-context-'))
+  assert.deepStrictEqual(loadConfig({ root }).contextFilters, [])
+  assert.deepStrictEqual(
+    validate('/project', { contextFilters: ['analytics', 'logging'] }).contextFilters,
+    ['analytics', 'logging']
+  )
+  assert.throws(() => validate('/project', { contextFilters: ['comments'] }), /contextFilters/)
+  assert.throws(() => validate('/project', { contextFilters: ['tests', 'tests'] }), /duplicate/)
+  assert.deepStrictEqual(
+    loadConfig({ root, loaderOptions: { contextFilters: ['tests'] } }).contextFilters,
+    ['tests']
+  )
+  assert.throws(() => loadConfig({ root, pluginOptions: { contextFilters: ['logging'] } }), /unknown explicit option "contextFilters"/)
+  const file = path.join(root, 'i18n-collect.config.js')
+  fs.writeFileSync(file, 'module.exports = { contextFilters: [] }\n')
+  const disabled = loadConfig({ root })
+  fs.writeFileSync(file, 'module.exports = { contextFilters: ["logging"] }\n')
+  const enabled = loadConfig({ root })
+  assert.notStrictEqual(enabled.configHash, disabled.configHash)
+  assert.notStrictEqual(enabled.fileConfigHash, disabled.fileConfigHash)
 })
 
 test('keeps loader and plugin options on their own fields and drops htmlEntries', () => {
