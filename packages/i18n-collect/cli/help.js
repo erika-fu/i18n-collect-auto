@@ -69,6 +69,56 @@ Exit codes:
   6  translation catalogs could not be saved
 `
 
+const REPLACE_HELP = `i18n-collect replace
+
+Preview safe source replacements backed by the keyed catalog.
+This command is a dry-run: it does not write source files or catalog files, does not install dependencies, and does not rewrite application bootstrap.
+
+Usage:
+  i18n-collect replace --adapter <name> [options]
+
+Options:
+  --adapter <name>   Runtime adapter. Names: vue2, vue3, js.
+  --cwd <dir>        Project root. Defaults to the current directory.
+  --strict           Fail when any candidate is skipped.
+  --json             Print the replacement preview as JSON on stdout.
+  -h, --help         Show this help.
+
+Adapters:
+  vue2  Vue 2 templates and Options API instance methods.
+        Template text becomes {{ $t('key') }}.
+        A static allowlisted attribute becomes :name="$t('key')".
+        A template expression or dynamic attribute string becomes $t('key').
+        A string in an Options API instance method becomes this.$t('key').
+        Requires vue-i18n 8 and an existing Vue.use(VueI18n) or new VueI18n(...) call.
+  vue3  Vue 3 templates, script setup, and Options API instance methods.
+        Templates use the same $t calls as vue2.
+        script setup uses t('key') where t is already in scope.
+        Options API instance methods use this.$t('key').
+        Requires vue-i18n 9 or newer and an existing createI18n(...) call.
+  js    Framework-neutral JavaScript and TypeScript.
+        A supported expression string or template literal becomes t('key') where t is already in scope.
+        Requires an existing module that exports a function named t.
+        This command does not insert imports.
+
+Supported script positions:
+  variable initializers, assignments, returns, throws, call and constructor arguments,
+  array elements, object values, conditionals, logical and binary operands,
+  sequence expressions, expression statements, arrow function bodies, default exports,
+  and template literals in those positions.
+
+Skipped:
+  React JSX, standalone HTML, and CSS generated content are outside replacement scope.
+  Object keys, switch cases, and other unsupported positions are skipped with a source location and a reason.
+  An already localized t(), $t(), or this.$t() call is left unchanged, so a repeated run does not nest it.
+  --strict turns skipped candidates into failure. Already localized calls are not skipped.
+
+Exit codes:
+  0  dry-run finished
+  1  configuration failure, including a missing runtime integration
+  7  strict mode found a skipped candidate
+`
+
 const ROOT_HELP = `i18n-collect
 
 Automation-friendly commands for this workspace.
@@ -79,6 +129,7 @@ Usage:
 Commands:
   collect    Collect Chinese user-facing copy through the project's webpack integration.
   translate  Fill target-locale catalogs through a project translation provider.
+  replace    Preview safe source replacements. This command does not write files.
 
 Run i18n-collect <command> --help for command options.
 `
@@ -86,7 +137,8 @@ Run i18n-collect <command> --help for command options.
 function helpFor(command) {
   if (command === 'collect') return COLLECT_HELP
   if (command === 'translate') return TRANSLATE_HELP
+  if (command === 'replace') return REPLACE_HELP
   return ROOT_HELP
 }
 
-module.exports = { COLLECT_HELP, ROOT_HELP, TRANSLATE_HELP, helpFor }
+module.exports = { COLLECT_HELP, REPLACE_HELP, ROOT_HELP, TRANSLATE_HELP, helpFor }
