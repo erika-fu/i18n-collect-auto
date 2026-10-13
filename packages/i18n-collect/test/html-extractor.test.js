@@ -261,6 +261,76 @@ test('collects standalone HTML text and allowlisted attributes without executing
   assert.ok(result.entries.every(entry => entry.locations[0].path === 'public/index.html'))
 })
 
+test('an exclusion directive before a Vue element excludes only that element\'s next fragment', () => {
+  const source = [
+    '<!-- no-i18n-auto -->',
+    '<p title="标题">正文</p>',
+    '<p>相邻</p>',
+    '<p>前文<!-- no-i18n-auto -->后文</p>',
+    '<p :title="/* no-i18n-auto */ \'排除\' + \'保留\'">动态旁白</p>',
+    '<p>{{ /* no-i18n-auto */ \'插值排除\' }}{{ \'插值保留\' }}</p>'
+  ].join('\n')
+  assert.deepStrictEqual(values(extract(source)), ['正文', '相邻', '前文', '保留', '动态旁白', '插值保留'])
+})
+
+test('an element directive and an expression directive suppress the same first fragment once', () => {
+  const source = '<!-- no-i18n-auto -->\n<p :title="/* no-i18n-auto */ \'甲\' + \'乙\'">正文</p>'
+  assert.deepStrictEqual(values(extract(source)), ['乙', '正文'])
+})
+
+test('ordinary and malformed HTML comments are not collected and do not exclude', () => {
+  const source = [
+    '<!-- 页面说明 -->',
+    '<p>保留说明旁</p>',
+    '<!-- no-i18n-auto extra -->',
+    '<p>无关注释旁</p>',
+    '<!-- NO-I18N-AUTO -->',
+    '<p>大小写不对</p>'
+  ].join('\n')
+  assert.deepStrictEqual(values(extract(source)), ['保留说明旁', '无关注释旁', '大小写不对'])
+})
+
+test('an exclusion directive binds to the next element and leaves a later sibling', () => {
+  const source = [
+    '<!-- no-i18n-auto -->',
+    '<span></span>',
+    '<p>不排除</p>'
+  ].join('\n')
+  assert.deepStrictEqual(values(extract(source)), ['不排除'])
+})
+
+test('a Vue template block keeps exclusion coordinates inside the template', () => {
+  const source = [
+    '<template>',
+    '  <!-- no-i18n-auto -->',
+    '  <p>排除</p>',
+    '  <p>保留</p>',
+    '</template>',
+    '<script>export default { title: "脚本" }</script>'
+  ].join('\n')
+  const result = extract(source, { projectPath: 'src/App.vue' })
+  assert.deepStrictEqual(values(result), ['保留'])
+  assert.strictEqual(result.entries[0].locations[0].kind, 'html-text')
+  assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '保留')
+})
+
+test('a static HTML exclusion directive excludes the next fragment only', () => {
+  const source = [
+    '<!-- 页面说明 -->',
+    '<p>页面文案</p>',
+    '<!-- no-i18n-auto -->',
+    '<p title="排除">正文</p>',
+    '<p>相邻</p>'
+  ].join('\n')
+  const result = extractStandalone(source)
+  assert.deepStrictEqual(values(result), ['页面文案', '正文', '相邻'])
+  assert.deepStrictEqual(result.entries.map(entry => entry.locations[0].kind), [
+    'static-html-text',
+    'static-html-text',
+    'static-html-text'
+  ])
+})
+
 test('fails a standalone document when an invalid tag is not an EJS delimiter', () => {
   assert.throws(() => extractStandalone('<p><1文案</p>'), /invalid-first-character-of-tag-name/)
 })

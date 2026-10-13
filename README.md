@@ -62,6 +62,33 @@ The React demo exercises JavaScript string and template-literal extraction in `.
 
 A fragment is collected when it contains a Han character. The collected value keeps the rest of that static fragment. Import and export specifiers, non-allowlisted attributes, CSS comments, custom properties, and `content` values of `none`, `normal`, empty text, or whitespace are ignored.
 
+## Exclusion directive
+
+A comment is an exclusion directive when it is syntax-valid in that source and its text, ignoring surrounding whitespace, is exactly `no-i18n-auto`. The match is case-sensitive. Extra words, a different spelling, or different casing leave the comment irrelevant. The directive is control metadata and is never collected. Ordinary comments, including comments that contain Chinese, are not collected and do not exclude anything.
+
+The directive associates with the collectable construct that starts after it when only whitespace separates them. It removes exactly one collected fragment: the next fragment of that construct. Later fragments of the same construct, and every neighboring construct, stay in the result. A comment after a construct does not apply backward. Source coordinates of kept fragments, resource snapshots, and failed-round behavior stay the same.
+
+Script:
+
+- A string literal is the construct. The directive removes that string.
+- A template literal is the construct. The directive removes only the first static fragment of that literal that contains Chinese.
+- A comment with code between it and the literal, such as `// no-i18n-auto` on the line above `const label = "文案"`, does not associate. Place the comment immediately before the literal.
+
+Vue template and static HTML:
+
+- An element is the construct. The directive removes the earliest collected fragment owned by that element, in source order. An allowlisted attribute comes before the element's text. The first interpolation fragment comes before a later one.
+- A text node is the construct when the comment sits immediately before that text, as in `前文<!-- no-i18n-auto -->后文`. The directive removes the first collected fragment of that text node.
+- Whitespace between the comment and the next element does not break the association. A comment that immediately precedes an element with no collected fragment does not move on to the next element.
+- A JavaScript comment inside an interpolation or a dynamic attribute uses the script rules for that expression.
+
+CSS:
+
+- A `content` declaration is the construct when the comment is the previous node and only whitespace separates them. The directive removes the first collected string in that declaration.
+- A string inside a `content` value is the construct when a comment sits immediately before that string. The directive removes that string only.
+- A comment before a rule does not exclude the strings inside the rule.
+
+Two directives that select the same fragment remove it once. They do not also remove the following fragment.
+
 The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app.
 
 ## Configuration
@@ -117,6 +144,6 @@ Each loader call submits a complete replacement snapshot for that identity, incl
 - A parse error fails the round and keeps the previous official output.
 - Watch may compile one extra time after a real dictionary change, then become quiet.
 - A one-shot production build writes the latest dictionary, but that same bundle can still embed the previous dictionary.
-- Source rewriting, final-bundle scanning, webpack 4, Vite, Rollup, evaluating dynamic expressions, and `no-i18n-auto` are not supported.
+- Source rewriting, final-bundle scanning, webpack 4, Vite, Rollup, and evaluating dynamic expressions are not supported.
 
 Source coordinates are 1-based lines and 0-based UTF-16 columns. Ranges are half-open.

@@ -1719,3 +1719,90 @@ test('vue style output stays unchanged and content keeps original block coordina
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('exclusion directives suppress one fragment and the next compilation replaces that snapshot', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-directive-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const entry = path.join(root, 'src/main.js')
+  const copy = path.join(root, 'src/copy.js')
+  const vue = path.join(root, 'src/App.vue')
+  const excluded = [
+    '// 这是注释',
+    'module.exports = {',
+    '  kept: "保留",',
+    '  excluded: /* no-i18n-auto */ "排除",',
+    '  malformed: /* no-i18n-auto extra */ "多余文字",',
+    '  adjacent: "相邻"',
+    '}',
+    ''
+  ].join('\n')
+  const component = [
+    '<template>',
+    '  <!-- 模板注释 -->',
+    '  <p>注释旁</p>',
+    '  <!-- no-i18n-auto -->',
+    '  <p>模板排除</p>',
+    '  <p>模板保留</p>',
+    '</template>',
+    '<script>',
+    'export default { title: "应用" }',
+    '</script>',
+    '<style>',
+    '.a {',
+    '  /* no-i18n-auto */',
+    '  content: "样式排除";',
+    '}',
+    '.b { content: "样式保留"; }',
+    '</style>',
+    ''
+  ].join('\n')
+  fs.writeFileSync(copy, excluded)
+  fs.writeFileSync(vue, component)
+  fs.writeFileSync(entry, [
+    'require("./copy")',
+    'require("./App.vue?vue&type=script&lang=js")',
+    'require("./App.vue?vue&type=template&lang=html")',
+    'require("./App.vue?vue&type=style&index=0&lang=css")',
+    ''
+  ].join('\n'))
+  const pass = path.join(root, 'pass-loader.js')
+  fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
+  const collector = require.resolve('../myloader')
+  const handle = start({
+    ...project(root, entry),
+    cache: { type: 'memory' },
+    plugins: [new MyI18nPlugin()],
+    module: {
+      rules: [
+        { test: /\.js$/, loader: collector },
+        { test: /\.vue$/, resourceQuery: /type=script/, use: [pass, collector] },
+        { test: /\.vue$/, resourceQuery: /type=template/, use: [pass, collector] },
+        { test: /\.vue$/, resourceQuery: /type=style/, use: [pass, collector] }
+      ]
+    }
+  })
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), [
+      '保留', '多余文字', '相邻', '注释旁', '模板保留', '应用', '样式保留'
+    ].sort())
+    fs.writeFileSync(copy, excluded.replace('/* no-i18n-auto */ ', ''))
+    const second = await handle.run()
+    assert.strictEqual(second.hasErrors(), false, messages(second))
+    const output = readOutput(root)
+    assert.deepStrictEqual(Object.values(output.dictionary).sort(), [
+      '保留', '排除', '多余文字', '相邻', '注释旁', '模板保留', '应用', '样式保留'
+    ].sort())
+    const kinds = new Map(output.map.entries.map(entry => [entry.value, entry.locations.map(location => location.kind).sort()]))
+    assert.deepStrictEqual(kinds.get('排除'), ['script-string'])
+    assert.deepStrictEqual(kinds.get('模板保留'), ['html-text'])
+    assert.deepStrictEqual(kinds.get('样式保留'), ['css-generated-content'])
+    assert.strictEqual(kinds.has('模板排除'), false)
+    assert.strictEqual(kinds.has('样式排除'), false)
+    assert.strictEqual(kinds.has('这是注释'), false)
+    assert.strictEqual(kinds.has('模板注释'), false)
+  } finally {
+    await handle.close()
+  }
+})

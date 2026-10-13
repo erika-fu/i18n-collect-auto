@@ -1012,7 +1012,7 @@ HTML entity 和 CSS escape 会导致解码值长度与源码长度不同。Scann
 - 执行或复杂折叠 JavaScript/CSS 动态表达式；
 - Sass、Less、Stylus 解析；
 - webpack 4 支持；
-- `no-i18n-auto` 实现或提前搭建 directive framework；
+- 通用 directive framework。节点级 `no-i18n-auto` 排除指令见 README；
 - Vite/Rollup 集成；
 - 通用 parser registry；
 - 解决一次性 bundle 消费同轮新字典的构建闭环。

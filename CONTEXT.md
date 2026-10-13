@@ -43,7 +43,16 @@ The complete collection for one currently processed source resource, submitted a
 The source HTML document at an explicitly configured path, collected from its original template rather than from rendered build output.
 
 **Collection configuration**:
-The local configuration for collection inputs, semantic attribute rules, output files, and resource filtering; it is separate from the dependency package's translation configuration.
+The local configuration for collection inputs, semantic attribute rules, output files, resource filtering, and optional collection-context filters; it is separate from the dependency package's translation configuration.
+
+**Translation catalog**:
+A locale-specific mapping from localization keys to translated text, derived from collected text and maintained separately for each locale. The default external representation is a flat JSON mapping, while format adapters may emit other consumer formats.
+
+**Translation provider**:
+A project-supplied integration that produces translation drafts for requested source text and target locales. It is optional and independent of collection.
+
+**Localization key**:
+The stable runtime identifier used by source replacements and translation catalogs. A location-derived key is generated when no adjacent key directive explicitly supplies one.
 
 **Resource identity**:
 The normalized project resource path plus its semantic block or resource query, used to replace one resource snapshot without overwriting another block from the same file.
@@ -61,4 +70,4 @@ A position in original source. Lines are 1-based. Columns are 0-based and count 
 A source text segment whose value can be determined without executing application code, including a segment around an interpolation; only fragments containing Chinese are collected.
 
 **Exclusion directive**:
-A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the associated semantic node from entering the collection result.
+A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the next associated collected text or static fragment from entering the collection result. The directive is control metadata; its own comment text is not collected. Ordinary comments are not collected.

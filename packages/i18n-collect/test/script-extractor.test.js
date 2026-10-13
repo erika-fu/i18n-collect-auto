@@ -96,6 +96,69 @@ test('keeps JavaScript columns on the next line after CRLF', () => {
   assert.deepStrictEqual(entry.locations[0].end, { line: 2, column: 14 })
 })
 
+test('an exclusion directive immediately before a string excludes that string only', () => {
+  const source = [
+    'const excluded = /* no-i18n-auto */ "排除"',
+    'const kept = "保留"',
+    ''
+  ].join('\n')
+  const entries = extract(source)
+  assert.deepStrictEqual(entries.map(entry => entry.value), ['保留'])
+  const kept = entries[0]
+  assert.strictEqual(kept.locations[0].kind, 'script-string')
+  assert.strictEqual(kept.locations[0].path, 'src/example.js')
+  assert.deepStrictEqual(kept.locations[0].start, { line: 2, column: 13 })
+  assert.deepStrictEqual(kept.locations[0].end, { line: 2, column: 17 })
+  assert.strictEqual(source.split('\n')[1].slice(13, 17), '"保留"')
+})
+
+test('an exclusion directive before a template literal excludes only its next collected fragment', () => {
+  const source = [
+    'const message = /* no-i18n-auto */ `排除${name}保留`',
+    'const nested = `前${/* no-i18n-auto */ "内嵌"}后`',
+    'const later = /* no-i18n-auto */ `hello${name}世界再${name}见`',
+    'const adjacent = "相邻"',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(extract(source).map(entry => entry.value), ['保留', '前', '后', '见', '相邻'])
+})
+
+test('a line comment excludes the literal it immediately precedes', () => {
+  const source = [
+    'const excluded =',
+    '  // no-i18n-auto',
+    '  "排除"',
+    'const kept = "保留"',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(extract(source).map(entry => entry.value), ['保留'])
+})
+
+test('ordinary comments are not collected and do not exclude nearby copy', () => {
+  const source = [
+    '// 这是注释',
+    'const first = "仍收集"',
+    '/* 另一条注释 */',
+    'const second = "另一条"',
+    ''
+  ].join('\n')
+  const entries = extract(source)
+  assert.deepStrictEqual(entries.map(entry => entry.value), ['仍收集', '另一条'])
+  assert.ok(entries.every(entry => !entry.value.includes('注释')))
+})
+
+test('malformed comments and a directive separated by code do not exclude', () => {
+  const source = [
+    '// no-i18n-auto',
+    'const separated = "仍收集"',
+    'const extra = /* no-i18n-auto extra */ "带多余文字"',
+    'const typo = /* no-i18n-aut */ "拼写不对"',
+    'const upper = /* NO-I18N-AUTO */ "大小写不对"',
+    ''
+  ].join('\n')
+  assert.deepStrictEqual(extract(source).map(entry => entry.value), ['仍收集', '带多余文字', '拼写不对', '大小写不对'])
+})
+
 test('collects JavaScript literals from a JSX-containing module', () => {
   const source = [
     "const title = 'React 标题'",

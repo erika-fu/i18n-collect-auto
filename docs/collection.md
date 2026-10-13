@@ -34,6 +34,10 @@ The plugin does not scan the project. A file is collected only when it enters `i
 
 A build with no loader invocation and no restored loader metadata fails and asks for the ordinary module rules, the Vue script, template, and style rules, and the HTML template loader chain. An empty snapshot, an excluded file, and an unsupported style are still loader evidence. Restored module metadata from the webpack filesystem cache is also loader evidence. Metadata from another root compiler or another configuration hash stays out of the session and fails the round, so a foreign snapshot is not published.
 
+## A comment removed one fragment
+
+An exclusion directive is a syntax-valid comment whose text is exactly `no-i18n-auto`. It removes the next collected fragment of the construct it immediately precedes: a script string or template literal, a Vue or static HTML element or text node, or a CSS `content` declaration or string. Ordinary comments are not collected and do not exclude copy. The association rules are in the README. Kept fragments keep their source coordinates. A parse error still fails the round and keeps the previous output.
+
 ## Coordinates do not match the decoded text
 
 Source coordinates are 1-based lines and 0-based UTF-16 columns. Ranges are half-open. HTML entity and CSS escape values are decoded for the dictionary, while the source range still covers the original spelling and excludes HTML or CSS string delimiters. Historical JavaScript ranges still include the JavaScript string delimiters. A column after an astral character counts that character as two UTF-16 code units. CRLF is one line break.

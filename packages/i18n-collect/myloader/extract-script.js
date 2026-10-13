@@ -1,5 +1,6 @@
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
+const { directiveEnds, followsDirective } = require('./exclusion')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const MODULE_SPECIFIER_PARENTS = new Set([
@@ -24,9 +25,11 @@ function extractScript({ source, resource }) {
   }
   const entries = []
   const ast = parser.parse(source, { sourceType: 'unambiguous', plugins: ['jsx', 'typescript'] })
+  const directiveEndOffsets = directiveEnds(ast.comments)
   traverse(ast, {
     StringLiteral(nodePath) {
       if (MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)) return
+      if (followsDirective(source, directiveEndOffsets, nodePath.node.start)) return
       const value = nodePath.node.value
       if (!containsHan(value)) return
       entries.push({
@@ -35,9 +38,14 @@ function extractScript({ source, resource }) {
       })
     },
     TemplateLiteral(nodePath) {
+      let skipNext = followsDirective(source, directiveEndOffsets, nodePath.node.start)
       for (const node of nodePath.node.quasis) {
         const value = node.value.cooked
         if (!value || !containsHan(value)) continue
+        if (skipNext) {
+          skipNext = false
+          continue
+        }
         entries.push({
           value,
           locations: [location(source, resource.projectPath, node, 'template-literal')]

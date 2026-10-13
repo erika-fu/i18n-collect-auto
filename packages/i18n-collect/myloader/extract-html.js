@@ -2,6 +2,7 @@ const parse5 = require('parse5')
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
 const { DEFAULTS } = require('../mycommon/config')
+const { directiveEnds, followsDirective, isExclusionDirective, whitespaceGap } = require('./exclusion')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const IGNORED_PARSE_ERRORS = new Set([
@@ -386,6 +387,64 @@ function classifyAttribute(name, allowlist) {
   return allowlist.has(base) ? { dynamic: true } : null
 }
 
+function eachHtmlNode(node, visit) {
+  visit(node)
+  for (const child of node.childNodes || []) eachHtmlNode(child, visit)
+  if (node.content) eachHtmlNode(node.content, visit)
+}
+
+function isHtmlConstruct(node) {
+  const location = node.sourceCodeLocation
+  if (!location) return false
+  if (node.nodeName === '#text') return !/^\s*$/.test(node.value || '')
+  return node.nodeName[0] !== '#'
+}
+
+function constructsPrecededByDirective(fragment, root) {
+  const comments = []
+  const constructs = []
+  eachHtmlNode(root, node => {
+    const location = node.sourceCodeLocation
+    if (!location) return
+    if (node.nodeName === '#comment') {
+      if (isExclusionDirective(node.data)) comments.push(location.endOffset)
+      return
+    }
+    if (isHtmlConstruct(node)) constructs.push(node)
+  })
+  const marked = new Set()
+  for (const end of comments) {
+    let chosen = null
+    let chosenStart = Infinity
+    for (const construct of constructs) {
+      const start = construct.sourceCodeLocation.startOffset
+      if (start < end || !whitespaceGap(fragment, end, start) || start >= chosenStart) continue
+      chosen = construct
+      chosenStart = start
+    }
+    if (chosen) marked.add(chosen)
+  }
+  return marked
+}
+
+function attachedComments(ast) {
+  const comments = []
+  const seen = new Set()
+  traverse(ast, {
+    enter(nodePath) {
+      const node = nodePath.node
+      for (const key of ['leadingComments', 'innerComments', 'trailingComments']) {
+        for (const comment of node[key] || []) {
+          if (seen.has(comment)) continue
+          seen.add(comment)
+          comments.push(comment)
+        }
+      }
+    }
+  })
+  return comments
+}
+
 function attributeContent(fragment, location) {
   const raw = fragment.slice(location.startOffset, location.endOffset)
   const eq = raw.indexOf('=')
@@ -432,8 +491,9 @@ function extractHtml({ source, resource, config }) {
   if (fatal.length > 0) throw failAt(source, span.start + (fatal[0].startOffset || 0), fatal[0].code || 'HTML parse error')
 
   const entries = []
+  const ownerStack = []
 
-  function push(value, kind, start, end) {
+  function push(value, kind, start, end, suppress) {
     entries.push({
       value,
       locations: [{
@@ -441,7 +501,10 @@ function extractHtml({ source, resource, config }) {
         kind,
         start: offsetToPosition(source, start),
         end: offsetToPosition(source, end)
-      }]
+      }],
+      owners: ownerStack.slice(),
+      start,
+      suppress: suppress === true
     })
   }
 
@@ -464,6 +527,7 @@ function extractHtml({ source, resource, config }) {
         body: [{ type: 'ExpressionStatement', expression }]
       }
     }
+    const directiveEndOffsets = directiveEnds(attachedComments(ast))
     const excludeStringDelimiters = kind === 'html-attribute'
     traverse(ast, {
       StringLiteral(nodePath) {
@@ -471,13 +535,22 @@ function extractHtml({ source, resource, config }) {
         if (!containsHan(value)) return
         const startIndex = excludeStringDelimiters ? nodePath.node.start + 1 : nodePath.node.start
         const endIndex = excludeStringDelimiters ? nodePath.node.end - 1 : nodePath.node.end
-        push(value, kind, origin + decoded.starts[startIndex], origin + decoded.starts[endIndex])
+        push(
+          value,
+          kind,
+          origin + decoded.starts[startIndex],
+          origin + decoded.starts[endIndex],
+          followsDirective(decoded.value, directiveEndOffsets, nodePath.node.start)
+        )
       },
       TemplateLiteral(nodePath) {
+        let skipNext = followsDirective(decoded.value, directiveEndOffsets, nodePath.node.start)
         for (const quasi of nodePath.node.quasis) {
           const value = quasi.value.cooked
           if (!value || !containsHan(value)) continue
-          push(value, kind, origin + decoded.starts[quasi.start], origin + decoded.starts[quasi.end])
+          const suppress = skipNext
+          if (skipNext) skipNext = false
+          push(value, kind, origin + decoded.starts[quasi.start], origin + decoded.starts[quasi.end], suppress)
         }
       }
     })
@@ -570,16 +643,40 @@ function extractHtml({ source, resource, config }) {
 
   function walk(node) {
     if (node.nodeName === '#text') {
+      ownerStack.push(node)
       collectText(node)
+      ownerStack.pop()
       return
     }
+    if (node.nodeName[0] === '#') {
+      for (const child of node.childNodes || []) walk(child)
+      return
+    }
+    ownerStack.push(node)
     if (node.attrs) collectAttributes(node)
     for (const child of node.childNodes || []) walk(child)
     if (node.content) walk(node.content)
+    ownerStack.pop()
   }
 
+  const marked = constructsPrecededByDirective(fragment, root)
   walk(root)
-  return { entries, warnings }
+  const dropped = new Set()
+  for (const construct of marked) {
+    let earliest = null
+    for (const entry of entries) {
+      if (!entry.owners.includes(construct)) continue
+      if (!earliest || entry.start < earliest.start) earliest = entry
+    }
+    if (earliest) dropped.add(earliest)
+  }
+  return {
+    entries: entries.filter(entry => !entry.suppress && !dropped.has(entry)).map(entry => ({
+      value: entry.value,
+      locations: entry.locations
+    })),
+    warnings
+  }
 }
 
 module.exports = { extractHtml }

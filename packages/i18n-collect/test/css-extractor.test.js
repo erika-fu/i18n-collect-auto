@@ -234,6 +234,61 @@ test('warns once in the result for an unsupported style language and does not pa
   assert.strictEqual(standalone.warnings[0].code, 'unsupported-style-preprocessor')
 })
 
+test('an exclusion directive before a content declaration excludes only its next string', () => {
+  const source = [
+    '.a {',
+    '  /* no-i18n-auto */',
+    '  content: "排除" "保留";',
+    '  content: "下一条";',
+    '}',
+    '.b { content: "相邻"; }',
+    ''
+  ].join('\n')
+  const result = extract(source)
+  assert.deepStrictEqual(values(result), ['保留', '下一条', '相邻'])
+  assert.ok(result.entries.every(entry => entry.locations[0].kind === 'css-generated-content'))
+})
+
+test('an exclusion directive inside a content value excludes the string it precedes', () => {
+  const source = [
+    '.a { content: /* no-i18n-auto */ "排除" "保留"; }',
+    '.b { content: "甲" /* no-i18n-auto */ "乙" "丙"; }',
+    '/* no-i18n-auto */',
+    '.c { content: "规则旁不排除"; }',
+    '.d { content: "仍收集"; /* 中文注释 */ }',
+    '.e { /* no-i18n-auto extra */ content: "多余文字"; }',
+    '.f { /* NO-I18N-AUTO */ content: "大小写不对"; }',
+    '.h {',
+    '  /* no-i18n-auto */',
+    '  content: /* no-i18n-auto */ "叠甲" "叠乙";',
+    '}',
+    ''
+  ].join('\n')
+  const result = extract(source)
+  assert.deepStrictEqual(values(result), ['保留', '甲', '丙', '规则旁不排除', '仍收集', '多余文字', '大小写不对', '叠乙'])
+})
+
+test('a Vue style block exclusion keeps the following content string', () => {
+  const source = [
+    '<template><p>模板</p></template>',
+    '<style>',
+    '.a {',
+    '  /* no-i18n-auto */',
+    '  content: "排除";',
+    '}',
+    '.b { content: "保留"; }',
+    '</style>'
+  ].join('\n')
+  const result = extract(source, {
+    projectPath: 'src/App.vue',
+    styleIndex: 0,
+    lang: 'css',
+    identity: 'src/App.vue::style[index=0;lang=css]'
+  })
+  assert.deepStrictEqual(values(result), ['保留'])
+  assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '保留')
+})
+
 test('fails a standard CSS syntax error at the original position', () => {
   assert.throws(
     () => extract('.a { content: "必填 }\n'),

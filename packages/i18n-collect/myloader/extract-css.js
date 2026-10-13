@@ -1,4 +1,5 @@
 const postcss = require('postcss')
+const { followsDirective, isExclusionDirective, whitespaceGap } = require('./exclusion')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const UNSUPPORTED_STYLE = 'unsupported-style-preprocessor'
@@ -266,28 +267,39 @@ function readString(source, quoteIndex) {
   return { value, start, end: source.length, next: source.length }
 }
 
+function declarationSkipsFirst(css, decl) {
+  const previous = decl.prev()
+  if (!previous || previous.type !== 'comment' || !isExclusionDirective(previous.text)) return false
+  if (!previous.source || !previous.source.end || !decl.source || !decl.source.start) return false
+  return whitespaceGap(css, previous.source.end.offset + 1, decl.source.start.offset)
+}
+
 function scanStrings(value) {
-  const found = []
+  const strings = []
+  const directiveEnds = []
   let index = 0
-  let depth = 0
   while (index < value.length) {
     if (value[index] === '/' && value[index + 1] === '*') {
       const close = value.indexOf('*/', index + 2)
-      index = close === -1 ? value.length : close + 2
+      if (close === -1) {
+        index = value.length
+        continue
+      }
+      if (isExclusionDirective(value.slice(index + 2, close))) directiveEnds.push(close + 2)
+      index = close + 2
       continue
     }
     const char = value[index]
     if (char === '"' || char === "'") {
       const parsed = readString(value, index)
-      found.push(parsed)
+      parsed.quote = index
+      strings.push(parsed)
       index = parsed.next
       continue
     }
-    if (char === '(') depth += 1
-    if (char === ')') depth = Math.max(0, depth - 1)
     index += 1
   }
-  return found
+  return { strings, directiveEnds }
 }
 
 function extractCss({ source, resource, config }) {
@@ -317,8 +329,15 @@ function extractCss({ source, resource, config }) {
     if (!decl.source || !decl.source.start || !decl.source.end) return
     const value = declarationValue(css, decl)
     if (isNoneOrNormal(value.text)) return
-    for (const string of scanStrings(value.text)) {
-      if (!string.value.trim() || !containsHan(string.value)) continue
+    const scanned = scanStrings(value.text)
+    const collectable = scanned.strings.filter(string => string.value.trim() && containsHan(string.value))
+    const suppressed = new Set()
+    if (declarationSkipsFirst(css, decl) && collectable[0]) suppressed.add(collectable[0])
+    for (const string of collectable) {
+      if (followsDirective(value.text, scanned.directiveEnds, string.quote)) suppressed.add(string)
+    }
+    for (const string of collectable) {
+      if (suppressed.has(string)) continue
       const start = located.start + value.offset + string.start
       const end = located.start + value.offset + string.end
       entries.push({
