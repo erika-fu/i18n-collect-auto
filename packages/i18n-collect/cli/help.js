@@ -40,6 +40,7 @@ Options:
   --locale <tag>      Target locale. Repeat to set several. Replaces targetLocales.
   --retranslate       Replace existing target text with a new provider draft.
   --failure <policy>  Replace translationFailure. Policies: partial, strict.
+  --allow-network     Allow a network provider to send source text outside the project.
   --json              Print the translation report as JSON on stdout.
   -h, --help          Show this help.
 
@@ -54,12 +55,18 @@ Provider contract:
   Failure policy: partial, the default, writes successful drafts and review marks, then exits 4 and lists failed pairs. strict writes nothing when any pair fails, so the catalogs stay as they were.
   Return { drafts: [{ key, locale, text }], failures?: [{ key, locale, message }] }.
   A failure for a pair suppresses its draft. A requested pair with neither is a failure.
-  The provider is a local project module and does not need credentials, a vendor SDK, or network access.
+  Set network: true on the exported function, or beside translate, when the provider can send source text outside the project.
+  Interactive use asks for confirmation before that provider is called. Non-interactive and CI use do not ask; pass --allow-network.
+  Without that authorization the provider is not called, catalogs stay unchanged, and the command exits 5.
+  A local provider omits network. It does not need credentials, a vendor SDK, or network access.
+  Target catalogs and review state are prepared together and replaced as one set. A failed or interrupted replacement restores the previous files. A caught write failure exits 6. A journal that is still there is restored the next time translate runs, before it reads catalogs.
 
 Exit codes:
   0  translation finished
   1  configuration failure
   4  translation failure
+  5  network translation was not authorized
+  6  translation catalogs could not be saved
 `
 
 const ROOT_HELP = `i18n-collect

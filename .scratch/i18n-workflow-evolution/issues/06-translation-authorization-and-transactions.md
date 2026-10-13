@@ -4,10 +4,10 @@
 
 **Blocked by:** 05 — Translate catalogs through a project provider.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] A network-capable translation operation cannot transmit source text without interactive confirmation or explicit non-interactive authorization.
-- [ ] Local/offline fake provider tests can exercise translation without requiring real credentials or outbound network traffic.
-- [ ] All planned file contents are prepared before replacement, and a failed replacement restores every already changed translation artifact.
-- [ ] Partial item failures follow the configured policy and are distinguishable from authorization and persistence failures.
-- [ ] Integration tests prove authorization refusal, explicit authorization, provider failure, and rollback behavior.
+- [x] A network-capable translation operation cannot transmit source text without interactive confirmation or explicit non-interactive authorization.
+- [x] Local/offline fake provider tests can exercise translation without requiring real credentials or outbound network traffic.
+- [x] All planned file contents are prepared before replacement, and a failed replacement restores every already changed translation artifact.
+- [x] Partial item failures follow the configured policy and are distinguishable from authorization and persistence failures.
+- [x] Integration tests prove authorization refusal, explicit authorization, provider failure, and rollback behavior.

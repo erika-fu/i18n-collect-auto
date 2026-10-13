@@ -6,15 +6,62 @@ const path = require('path')
 const test = require('node:test')
 const { fingerprintOf } = require('../mycommon/catalog')
 const { loadConfig } = require('../mycommon/config')
+const { translate } = require('../cli/translate')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 
-function run(args, cwd) {
+function run(args, cwd, env = {}) {
   return spawnSync(process.execPath, [bin, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1', ...env }
+  })
+}
+
+function runFailingReplacement(args, cwd) {
+  const hook = path.join(cwd, 'fail-replacement.js')
+  fs.writeFileSync(hook, `const fs = require('fs')
+const path = require('path')
+const rename = fs.renameSync.bind(fs)
+const write = fs.writeFileSync.bind(fs)
+const finals = new Set(['en.json', 'fr.json', 'translation-state.json'])
+let replaced = 0
+function noteFinal(file) {
+  if (!finals.has(path.basename(String(file)))) return
+  replaced += 1
+  if (replaced === 3) {
+    const error = new Error('simulated storage failure')
+    error.code = 'EIO'
+    throw error
+  }
+}
+fs.writeFileSync = (file, ...args) => {
+  noteFinal(file)
+  return write(file, ...args)
+}
+fs.renameSync = (from, to) => {
+  if (String(from).includes('.tmp-')) noteFinal(to)
+  return rename(from, to)
+}
+`)
+  return spawnSync(process.execPath, ['-r', hook, bin, ...args], {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1' }
   })
+}
+
+function networkProvider(body) {
+  return `const fs = require('fs')
+const path = require('path')
+module.exports = {
+  network: true,
+  translate(request) {
+    fs.writeFileSync(path.join(__dirname, 'sent.json'), JSON.stringify(request.items))
+    ${body}
+  }
+}
+`
 }
 
 function json(value) {
@@ -332,6 +379,8 @@ test('translate help documents the provider contract and failure policy', () => 
   assert.match(help, /partial/)
   assert.match(help, /strict/)
   assert.match(help, /does not need credentials/)
+  assert.match(help, /--allow-network/)
+  assert.match(help, /network: true/)
 })
 
 test('a partial failure creates no catalog when every draft fails', () => {
@@ -383,6 +432,378 @@ test('a restored source fingerprint clears needs-review and keeps the translatio
     review: 'current'
   })
   assert.deepStrictEqual(JSON.parse(result.stdout).needsReview, [])
+})
+
+test('a network provider cannot send source text unless translation is authorized', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-auth-'))
+  writeProject(root, {
+    messages: { 'home.keep': '保留', 'home.title': '首页' },
+    targets: { en: { 'home.keep': 'Keep me' } },
+    provider: `const fs = require('fs')
+const path = require('path')
+module.exports = {
+  network: true,
+  translate(request) {
+    fs.writeFileSync(path.join(__dirname, 'sent.json'), JSON.stringify(request))
+    return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }
+  }
+}
+`
+  })
+  const catalog = path.join(root, 'lang/catalog/en.json')
+  const before = fs.readFileSync(catalog)
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 5, result.stderr)
+  assert.match(result.stderr, /^authorization: /)
+  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
+  assert.deepStrictEqual(fs.readFileSync(catalog), before)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/translation-state.json')), false)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.command, 'translate')
+  assert.strictEqual(report.failure, 'authorization')
+  assert.strictEqual(report.ok, false)
+  assert.match(report.message, /--allow-network/)
+})
+
+test('--allow-network authorizes a network provider to receive source text', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-allow-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    provider: `const fs = require('fs')
+const path = require('path')
+module.exports = {
+  network: true,
+  translate(request) {
+    fs.writeFileSync(path.join(__dirname, 'sent.json'), JSON.stringify(request.items))
+    const item = request.items[0]
+    return { drafts: [{ key: item.key, locale: 'en', text: 'Home' }] }
+  }
+}
+`
+  })
+  const result = run(['translate', '--json', '--allow-network'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.strictEqual(result.stderr, '')
+  const sent = JSON.parse(fs.readFileSync(path.join(root, 'i18n/sent.json'), 'utf8'))
+  assert.deepStrictEqual(sent, [{ key: 'home.title', source: '首页', locales: ['en'] }])
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8')), {
+    'home.title': 'Home'
+  })
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.strictEqual(report.failure, undefined)
+  assert.deepStrictEqual(report.created, [{ key: 'home.title', locale: 'en' }])
+})
+
+test('interactive confirmation sends source text only after an explicit yes', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-prompt-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    provider: networkProvider(`return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }`)
+  })
+  const questions = []
+  const declined = await translate(['--cwd', root, '--json'], {
+    interactive: true,
+    ask: async question => {
+      questions.push(question)
+      return 'n'
+    }
+  })
+  assert.strictEqual(declined.code, 5, declined.stderr)
+  assert.match(declined.stderr, /^authorization: /)
+  assert.match(questions[0], /outside the project/)
+  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
+
+  const accepted = await translate(['--cwd', root, '--json'], {
+    interactive: true,
+    ask: async () => 'yes'
+  })
+  assert.strictEqual(accepted.code, 0, accepted.stderr)
+  const sent = JSON.parse(fs.readFileSync(path.join(root, 'i18n/sent.json'), 'utf8'))
+  assert.deepStrictEqual(sent, [{ key: 'home.title', source: '首页', locales: ['en'] }])
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.title'], 'Home')
+})
+
+test('a network provider skips confirmation when no source text is transmitted', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-local-review-'))
+  writeProject(root, {
+    messages: { 'home.title': '主页' },
+    targets: { en: { 'home.title': 'Home' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.title': { sourceFingerprint: fingerprintOf('首页'), review: 'current' } }
+      }
+    },
+    provider: networkProvider(`throw new Error('source text was sent')`)
+  })
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.title'], 'Home')
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.strictEqual(state.locales.en['home.title'].review, 'needs-review')
+})
+
+test('an authorized provider failure stays a translation failure', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-provider-fail-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    provider: networkProvider(`return { drafts: [], failures: [{ key: 'home.title', locale: 'en', message: 'provider down' }] }`)
+  })
+  const result = run(['translate', '--json', '--allow-network'], root)
+  assert.strictEqual(result.status, 4, result.stderr)
+  assert.match(result.stderr, /^translation: home\.title \[en\]: provider down/)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.failure, undefined)
+  assert.strictEqual(report.policy, 'partial')
+  assert.deepStrictEqual(report.failures, [{ key: 'home.title', locale: 'en', message: 'provider down' }])
+})
+
+test('a failed replacement restores every translation artifact from that run', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-rollback-'))
+  writeProject(root, {
+    messages: { 'home.keep': '保留', 'home.title': '首页' },
+    targets: { en: { 'home.keep': 'Keep me' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.keep': { sourceFingerprint: fingerprintOf('保留'), review: 'current' } }
+      }
+    },
+    config: {
+      translationProvider: 'i18n/provider.js',
+      targetLocales: ['en', 'fr']
+    },
+    provider: `module.exports = {
+      translate() {
+        return {
+          drafts: [
+            { key: 'home.title', locale: 'en', text: 'Home' },
+            { key: 'home.title', locale: 'fr', text: 'Accueil' }
+          ]
+        }
+      }
+    }
+    `
+  })
+  const catalog = path.join(root, 'lang/catalog')
+  const beforeEn = fs.readFileSync(path.join(catalog, 'en.json'))
+  const beforeState = fs.readFileSync(path.join(catalog, 'translation-state.json'))
+  const result = runFailingReplacement(['translate', '--json'], root)
+  assert.strictEqual(result.status, 6, result.stderr)
+  assert.match(result.stderr, /^storage: /)
+  assert.deepStrictEqual(fs.readFileSync(path.join(catalog, 'en.json')), beforeEn)
+  assert.strictEqual(fs.existsSync(path.join(catalog, 'fr.json')), false)
+  assert.deepStrictEqual(fs.readFileSync(path.join(catalog, 'translation-state.json')), beforeState)
+  assert.deepStrictEqual(
+    fs.readdirSync(catalog).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
+    []
+  )
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.command, 'translate')
+  assert.strictEqual(report.failure, 'storage')
+  assert.strictEqual(report.ok, false)
+  assert.strictEqual(report.policy, undefined)
+  assert.match(report.message, /simulated storage failure/)
+})
+
+test('removing a backup after a finished replacement does not undo the catalogs', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-bak-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    targets: { en: { 'home.title': 'Old' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.title': { sourceFingerprint: fingerprintOf('首页'), review: 'current' } }
+      }
+    },
+    config: {
+      translationProvider: 'i18n/provider.js',
+      targetLocales: ['en', 'fr']
+    },
+    provider: `module.exports = {
+      translate() {
+        return {
+          drafts: [
+            { key: 'home.title', locale: 'en', text: 'Home' },
+            { key: 'home.title', locale: 'fr', text: 'Accueil' }
+          ]
+        }
+      }
+    }
+    `
+  })
+  const hook = path.join(root, 'fail-backup-cleanup.js')
+  fs.writeFileSync(hook, `const fs = require('fs')
+const unlink = fs.unlinkSync.bind(fs)
+let backups = 0
+fs.unlinkSync = file => {
+  if (String(file).includes('.bak-')) {
+    backups += 1
+    if (backups === 2) throw Object.assign(new Error('backup cleanup failed'), { code: 'EPERM' })
+  }
+  return unlink(file)
+}
+`)
+  const result = spawnSync(process.execPath, ['-r', hook, bin, 'translate', '--json', '--retranslate'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1' }
+  })
+  assert.strictEqual(result.status, 0, result.stderr)
+  const catalog = path.join(root, 'lang/catalog')
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(catalog, 'en.json'), 'utf8')), {
+    'home.title': 'Home'
+  })
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(catalog, 'fr.json'), 'utf8')), {
+    'home.title': 'Accueil'
+  })
+  const state = JSON.parse(fs.readFileSync(path.join(catalog, 'translation-state.json'), 'utf8'))
+  assert.strictEqual(state.locales.en['home.title'].review, 'current')
+  assert.strictEqual(state.locales.en['home.title'].sourceFingerprint, fingerprintOf('首页'))
+  assert.strictEqual(state.locales.fr['home.title'].review, 'current')
+})
+
+test('an interrupted replacement is restored before the next translation is saved', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-interrupt-'))
+  writeProject(root, {
+    messages: { 'home.keep': '保留', 'home.title': '首页' },
+    targets: { en: { 'home.keep': 'Keep me' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.keep': { sourceFingerprint: fingerprintOf('保留'), review: 'current' } }
+      }
+    },
+    config: {
+      translationProvider: 'i18n/provider.js',
+      targetLocales: ['en', 'fr']
+    },
+    provider: `const fs = require('fs')
+const path = require('path')
+module.exports = {
+  translate(request) {
+    fs.writeFileSync(path.join(__dirname, 'sent.json'), JSON.stringify(request.items))
+    const drafts = []
+    for (const item of request.items) {
+      for (const locale of item.locales) {
+        let text = 'Home'
+        if (item.key === 'home.title' && locale === 'fr') text = 'Accueil'
+        if (item.key === 'home.keep') text = locale === 'fr' ? 'Garder' : 'Keep me'
+        drafts.push({ key: item.key, locale, text })
+      }
+    }
+    return { drafts }
+  }
+}
+`
+  })
+  const hook = path.join(root, 'interrupt-replacement.js')
+  fs.writeFileSync(hook, `const fs = require('fs')
+const path = require('path')
+const rename = fs.renameSync.bind(fs)
+fs.renameSync = (from, to) => {
+  if (String(from).includes('.tmp-') && path.basename(String(to)) === 'fr.json') process.exit(99)
+  return rename(from, to)
+}
+`)
+  const catalog = path.join(root, 'lang/catalog')
+  const beforeEn = fs.readFileSync(path.join(catalog, 'en.json'))
+  const beforeState = fs.readFileSync(path.join(catalog, 'translation-state.json'))
+  const interrupted = spawnSync(process.execPath, ['-r', hook, bin, 'translate', '--json'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1' }
+  })
+  assert.strictEqual(interrupted.status, 99, interrupted.stderr)
+  assert.deepStrictEqual(fs.readFileSync(path.join(catalog, 'en.json')), beforeEn)
+  assert.deepStrictEqual(fs.readFileSync(path.join(catalog, 'translation-state.json')), beforeState)
+  assert.strictEqual(fs.existsSync(path.join(catalog, 'fr.json')), false)
+  assert.deepStrictEqual(fs.readdirSync(catalog).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')), [])
+
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const sent = JSON.parse(fs.readFileSync(path.join(root, 'i18n/sent.json'), 'utf8'))
+  assert.deepStrictEqual(sent, [
+    { key: 'home.keep', source: '保留', locales: ['fr'] },
+    { key: 'home.title', source: '首页', locales: ['en', 'fr'] }
+  ])
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(catalog, 'en.json'), 'utf8')), {
+    'home.keep': 'Keep me',
+    'home.title': 'Home'
+  })
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(catalog, 'fr.json'), 'utf8')), {
+    'home.keep': 'Garder',
+    'home.title': 'Accueil'
+  })
+  assert.deepStrictEqual(fs.readdirSync(catalog).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')), [])
+})
+
+test('an unreadable commit journal fails before source text is sent', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-journal-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    targets: { en: { 'home.title': 'Old' } },
+    provider: networkProvider(`return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }`)
+  })
+  const catalog = path.join(root, 'lang/catalog')
+  fs.writeFileSync(path.join(catalog, '.commit-broken.json'), '{')
+  const before = fs.readFileSync(path.join(catalog, 'en.json'))
+  const result = run(['translate', '--json', '--allow-network'], root)
+  assert.strictEqual(result.status, 6, result.stderr)
+  assert.match(result.stderr, /^storage: /)
+  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
+  assert.deepStrictEqual(fs.readFileSync(path.join(catalog, 'en.json')), before)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.failure, 'storage')
+  assert.strictEqual(report.policy, undefined)
+})
+
+test('a piped answer does not authorize a non-interactive network provider', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-piped-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    provider: networkProvider(`return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }`)
+  })
+  const result = spawnSync(process.execPath, [bin, 'translate', '--json'], {
+    cwd: root,
+    encoding: 'utf8',
+    input: 'y\n',
+    env: { ...process.env, NO_COLOR: '1' }
+  })
+  assert.strictEqual(result.status, 5, result.stderr)
+  assert.match(result.stderr, /^authorization: /)
+  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
+})
+
+test('a provider function marked network cannot send source text without authorization', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-fn-network-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    provider: `const fs = require('fs')
+const path = require('path')
+function translate(request) {
+  fs.writeFileSync(path.join(__dirname, 'sent.json'), JSON.stringify(request.items))
+  return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }
+}
+translate.network = true
+module.exports = translate
+`
+  })
+  const denied = run(['translate', '--json'], root)
+  assert.strictEqual(denied.status, 5, denied.stderr)
+  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
+
+  const allowed = run(['translate', '--json', '--allow-network'], root)
+  assert.strictEqual(allowed.status, 0, allowed.stderr)
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'i18n/sent.json'), 'utf8')), [
+    { key: 'home.title', source: '首页', locales: ['en'] }
+  ])
 })
 
 test('translation settings do not change the collection config hash', () => {

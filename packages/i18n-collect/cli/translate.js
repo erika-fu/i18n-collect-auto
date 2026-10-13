@@ -1,13 +1,17 @@
 const fs = require('fs')
 const path = require('path')
+const readline = require('readline')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { catalogFiles, loadConfig, translationSettings } = require('../mycommon/config')
+const { commitFiles, recoverCommits, unchanged } = require('../mycommon/output')
 const { applyDrafts, needsReview, planTranslation, serializeState } = require('../mycommon/translate')
 
 const EXIT = {
   ok: 0,
   configuration: 1,
-  translation: 4
+  translation: 4,
+  authorization: 5,
+  storage: 6
 }
 const REVIEW_NAME = 'translation-state.json'
 
@@ -41,7 +45,15 @@ function take(args, index, flag) {
 }
 
 function parseTranslateArgs(args) {
-  const parsed = { cwd: null, failure: null, json: false, locales: null, provider: null, retranslate: false }
+  const parsed = {
+    allowNetwork: false,
+    cwd: null,
+    failure: null,
+    json: false,
+    locales: null,
+    provider: null,
+    retranslate: false
+  }
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
     const eq = arg.indexOf('=')
@@ -68,7 +80,10 @@ function parseTranslateArgs(args) {
       if (inline !== null) throw commandError('configuration', 'unknown option "--retranslate"')
       parsed.retranslate = true
     } else if (flag === '--failure') parsed.failure = value('--failure')
-    else if (flag.startsWith('-')) throw commandError('configuration', `unknown option "${flag}"`)
+    else if (flag === '--allow-network') {
+      if (inline !== null) throw commandError('configuration', 'unknown option "--allow-network"')
+      parsed.allowNetwork = true
+    } else if (flag.startsWith('-')) throw commandError('configuration', `unknown option "${flag}"`)
     else throw commandError('configuration', `unexpected argument "${arg}"`)
   }
   return parsed
@@ -163,13 +178,41 @@ function loadProvider(root, specifier) {
   if (typeof translate !== 'function') {
     throw commandError('configuration', 'translation provider must export a translate function')
   }
-  return translate
+  const network = Boolean((loaded && loaded.network) || translate.network)
+  return { network, translate }
 }
 
-function writeIfChanged(file, content) {
-  if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content, 'utf8')
+function ask(question, input, output) {
+  return new Promise(resolve => {
+    const rl = readline.createInterface({ input, output, terminal: false })
+    rl.question(question, answer => {
+      rl.close()
+      resolve(answer)
+    })
+  })
+}
+
+function defaultTerminal() {
+  return {
+    interactive: Boolean(process.stdin.isTTY) && !process.env.CI,
+    ask(question) {
+      return ask(question, process.stdin, process.stderr)
+    }
+  }
+}
+
+async function authorizeNetwork(provider, parsed, terminal) {
+  if (!provider.network || parsed.allowNetwork) return
+  if (terminal.interactive) {
+    const answer = await terminal.ask(
+      'The translation provider can send source text outside the project.\nAllow this network translation? [y/N] '
+    )
+    if (/^(y|yes)$/i.test(String(answer || '').trim())) return
+  }
+  throw commandError(
+    'authorization',
+    'network translation was not authorized; rerun with --allow-network to send source text outside the project'
+  )
 }
 
 function humanReport(report) {
@@ -201,7 +244,7 @@ function humanReport(report) {
   return lines.join('\n')
 }
 
-async function execute(parsed) {
+async function execute(parsed, terminal) {
   const root = path.resolve(parsed.cwd || process.cwd())
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
     throw commandError('configuration', `project root is not a directory: ${root}`)
@@ -239,6 +282,7 @@ async function execute(parsed) {
     throw commandError('configuration', `cannot read catalog metadata ${files.metadata}: ${error.message}`)
   }
   const entries = alignedEntries(messages, metadata, files.metadata)
+  recoverCommits(path.join(root, config.catalogDir))
   const targets = {}
   for (const locale of config.targetLocales) {
     const relative = localeFile(config, locale)
@@ -258,9 +302,10 @@ async function execute(parsed) {
   let replaced = []
   let failures = []
   if (plan.items.length > 0) {
+    await authorizeNetwork(provider, parsed, terminal)
     let result
     try {
-      result = await provider({
+      result = await provider.translate({
         sourceLocale: config.sourceLocale,
         locales: config.targetLocales,
         items: plan.items
@@ -319,18 +364,32 @@ function hasRecords(state) {
 }
 
 function writeTranslation(root, config, adapter, plan) {
+  const targets = []
   for (const locale of config.targetLocales) {
     const catalog = plan.nextTargets[locale]
     const file = path.join(root, localeFile(config, locale))
     if (!fs.existsSync(file) && Object.keys(catalog).length === 0) continue
-    writeIfChanged(file, adapter.serialize(catalog))
+    const content = adapter.serialize(catalog)
+    if (!unchanged(fs, file, content)) targets.push({ file, content })
   }
   const stateFile = path.join(root, reviewFile(config))
-  if (!fs.existsSync(stateFile) && !hasRecords(plan.nextState)) return
-  writeIfChanged(stateFile, serializeState(plan.nextState))
+  if (fs.existsSync(stateFile) || hasRecords(plan.nextState)) {
+    const content = serializeState(plan.nextState)
+    if (!unchanged(fs, stateFile, content)) targets.push({ file: stateFile, content })
+  }
+  try {
+    commitFiles(targets)
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error)
+    const code = error && error.code ? `${error.code}: ` : ''
+    const lead = error && error.restored === false
+      ? 'translation catalogs could not be restored after a write failure'
+      : 'translation catalogs were restored after a write failure'
+    throw commandError('storage', `${lead}: ${code}${message}`)
+  }
 }
 
-async function translate(args) {
+async function translate(args, terminal = defaultTerminal()) {
   const json = args.includes('--json')
   let parsed
   try {
@@ -339,7 +398,7 @@ async function translate(args) {
     return failure(error, json)
   }
   try {
-    return await execute(parsed)
+    return await execute(parsed, terminal)
   } catch (error) {
     return failure(error, parsed.json)
   }

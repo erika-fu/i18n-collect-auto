@@ -143,6 +143,7 @@ The catalog's external representation goes through a format adapter. An adapter 
 npx i18n-collect translate
 npx i18n-collect translate --locale en --provider i18n/provider.js
 npx i18n-collect translate --retranslate --failure strict --json
+npx i18n-collect translate --allow-network
 npx i18n-collect translate --help
 ```
 
@@ -175,6 +176,8 @@ The provider request is:
 
 A failure for a pair suppresses a draft for that same pair. A requested pair with neither a draft nor a failure fails as `provider returned no draft`. Draft text must be a string. Drafts for pairs that were not requested are ignored.
 
+Set `network: true` on the exported function, or on the module object beside `translate`, when the provider can send source text outside the project. `translate` is not called with that source text until the run is authorized. An interactive terminal asks `Allow this network translation? [y/N]`. A non-interactive or CI run does not read a piped answer; pass `--allow-network`. Without authorization the command exits 5, writes nothing, and reports `authorization`. A local provider omits `network`, so tests can use a fake provider with no credentials and no outbound network traffic. A run that selects no source text does not ask and does not call the provider.
+
 Selection rules:
 
 - A target entry that has no text is always sent to the provider. A successful draft creates it and records the current source fingerprint with review `current`.
@@ -184,7 +187,9 @@ Selection rules:
 - An existing translation whose recorded source fingerprint differs from the current source fingerprint keeps its text and is marked `needs-review`. It is not sent to the provider unless `--retranslate` is set. A failed retranslate leaves the previous text and the `needs-review` mark. When the current source fingerprint matches the recorded fingerprint again, review returns to `current` and the text stays.
 - A key that is present, including one whose text is an empty string, is an existing translation. Only a missing key is sent to the provider by default.
 
-`partial` writes every successful draft and review mark, leaves failed pairs unchanged, and exits 4 with a report that names each failed key, locale, and message. A run that accepts nothing does not create a new target catalog or review file. `strict` writes nothing when any pair fails, including review marks from that run, and the report lists withheld drafts. Exit 0 means every selected pair succeeded. Exit 1 is a configuration failure.
+`partial` writes every successful draft and review mark, leaves failed pairs unchanged, and exits 4 with a report that names each failed key, locale, and message. A run that accepts nothing does not create a new target catalog or review file. `strict` writes nothing when any pair fails, including review marks from that run, and the report lists withheld drafts. Exit 0 means every selected pair succeeded. Exit 1 is a configuration failure. Exit 4 is a provider or item failure. Exit 5 is denied network authorization. Exit 6 is a storage failure. The JSON report for an item failure includes `policy` and `failures`. Authorization and storage failures use `failure` of `authorization` or `storage` and do not report a partial write.
+
+Translate prepares every target catalog and the review state that this run will change, writes a journal for that set, then replaces the files. The journal is removed only after every replacement. If a replacement fails, or the process exits while the journal is still there, the previous files are restored and a caught failure exits 6 with `storage`. The next `translate` restores a journal it still finds before it reads catalogs, and exits 6 if that journal cannot be read or restored. Backup files are removed after the commit; a failure to delete one does not undo the catalogs. An item failure under `partial` or `strict` is not a storage failure: `partial` still keeps successful drafts, and `strict` still leaves the catalogs untouched.
 
 Translate writes:
 
