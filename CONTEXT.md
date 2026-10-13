@@ -57,6 +57,12 @@ A locale-specific mapping from localization keys to translated text, derived fro
 **Translation provider**:
 A project-supplied integration that produces translation drafts for requested source text and target locales. It is optional and independent of collection.
 
+**Translation draft**:
+The text a translation provider proposes for one localization key in one target locale. It becomes catalog text only when the translate command accepts it.
+
+**Review state**:
+The per-key, per-target-locale record of the source fingerprint a translation was accepted against, and whether that translation is current or needs review. It is stored beside the catalogs and is not part of the source-locale catalog metadata.
+
 **Localization key**:
 The stable runtime identifier used by source replacements and translation catalogs. A location-derived key is generated when no adjacent key directive explicitly supplies one.
 

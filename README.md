@@ -135,6 +135,62 @@ Comparing two metadata files tells which keys were added, removed, or source-cha
 
 The catalog's external representation goes through a format adapter. An adapter has a `name`, a file `extension`, `serialize(messages)` that returns identical text for identical messages, and `parse(text)`. `json` is the only adapter and the default.
 
+## Translation command
+
+`i18n-collect translate` fills target-locale catalogs from a project translation provider. It reads the source-locale catalog and catalog metadata written by collection. It does not run webpack, does not rewrite application source, and does not ship a vendor SDK. The provider is a local project module, so a fake provider needs no credentials and no network access.
+
+```
+npx i18n-collect translate
+npx i18n-collect translate --locale en --provider i18n/provider.js
+npx i18n-collect translate --retranslate --failure strict --json
+npx i18n-collect translate --help
+```
+
+Configuration fields, all optional for collection:
+
+- `translationProvider`: a project-relative module path. The module exports `translate(request)` or is that function.
+- `targetLocales`: locale tags to fill, such as `['en']`. A tag must not equal `sourceLocale`.
+- `translationFailure`: `partial` (the default) or `strict`.
+
+`--provider`, `--locale`, and `--failure` replace those fields for one run. Repeat `--locale` to set several tags. These fields are not loader or plugin options, and they do not change the source map's `configHash`.
+
+The provider request is:
+
+```js
+{
+  sourceLocale: 'zh',
+  locales: ['en'],
+  items: [{ key: 'home.title', source: '首页', locales: ['en'] }]
+}
+```
+
+`locales` is every target locale requested for the run. Each item is one source text selected for a draft, and `item.locales` is the subset still needed for that key. Return:
+
+```js
+{
+  drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }],
+  failures: [{ key: 'home.body', locale: 'en', message: 'glossary rejected 正文' }]
+}
+```
+
+A failure for a pair suppresses a draft for that same pair. A requested pair with neither a draft nor a failure fails as `provider returned no draft`. Draft text must be a string. Drafts for pairs that were not requested are ignored.
+
+Selection rules:
+
+- A target entry that has no text is always sent to the provider. A successful draft creates it and records the current source fingerprint with review `current`.
+- An existing translation is kept, and the provider is not asked for it, unless `--retranslate` is set.
+- `--retranslate` also sends every existing translation. A successful draft replaces the text, records the current source fingerprint, and sets review to `current`.
+- The first time an existing translation is seen, with no review record, it is accepted as the translation of the current source: the text stays, and the current fingerprint is recorded with review `current`.
+- An existing translation whose recorded source fingerprint differs from the current source fingerprint keeps its text and is marked `needs-review`. It is not sent to the provider unless `--retranslate` is set. A failed retranslate leaves the previous text and the `needs-review` mark. When the current source fingerprint matches the recorded fingerprint again, review returns to `current` and the text stays.
+- A key that is present, including one whose text is an empty string, is an existing translation. Only a missing key is sent to the provider by default.
+
+`partial` writes every successful draft and review mark, leaves failed pairs unchanged, and exits 4 with a report that names each failed key, locale, and message. A run that accepts nothing does not create a new target catalog or review file. `strict` writes nothing when any pair fails, including review marks from that run, and the report lists withheld drafts. Exit 0 means every selected pair succeeded. Exit 1 is a configuration failure.
+
+Translate writes:
+
+- `<catalogDir>/<locale>.json`: the target catalog, through the same format adapter as the source catalog. Keys that are not in the source catalog are left in place.
+- `<catalogDir>/translation-state.json`: review state, `{ version: 1, locales }`. Each locale maps a localization key to `{ sourceFingerprint, review }`. `review` is `current` or `needs-review`. The recorded fingerprint stays at the source the translation was accepted against, so a later source change can be told apart from the current catalog metadata.
+
 The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app.
 
 ## Configuration
@@ -152,11 +208,16 @@ One `i18n-collect.config.js` at the project root supplies the defaults below. Lo
   sourceMapFilename: 'lang/zh_hash.map.json',
   catalogDir: 'lang/catalog',
   sourceLocale: 'zh',
-  catalogFormat: 'json'
+  catalogFormat: 'json',
+  translationProvider: '',
+  targetLocales: [],
+  translationFailure: 'partial'
 }
 ```
 
-`catalogDir` is a project-relative directory. `sourceLocale` is a locale tag such as `zh` or `zh-CN` and names the source-locale catalog file. `catalogFormat` names the format adapter. The catalog files must not coincide with `outputPath` or `sourceMapFilename`. The catalog fields do not take part in the source map's `configHash`.
+`catalogDir` is a project-relative directory. `sourceLocale` is a locale tag such as `zh` or `zh-CN` and names the source-locale catalog file. `catalogFormat` names the format adapter. The catalog files must not coincide with `outputPath` or `sourceMapFilename`. The catalog fields and the translation fields do not take part in the source map's `configHash`.
+
+`translationProvider` is a project-relative path and may be empty. `targetLocales` lists locale tags other than `sourceLocale`, with no duplicates. `translationFailure` is `partial` or `strict`. See Translation command for how they are used.
 
 `include` and `exclude` are project-relative scope patterns. A pattern with no `*`, `?`, `[`, or `{` is a file or directory boundary: `src/foo` matches `src/foo` and `src/foo/bar.js`, and does not match `src/foobar.js`. A pattern with those characters is a glob. `*` and `?` stay inside one path segment. `**` matches any number of segments, including zero, and must be a whole segment. `[abc]`, `[a-z]`, `[!abc]`, and `[^abc]` match one character in that segment; a `]` placed first in the class is literal. Backslash is a separator, not an escape. An empty `include` allows every resource that enters the loader. `exclude` then vetoes a match, whether the overlapping rules are boundaries, globs, or one of each. The plugin does not apply these filters again.
 

@@ -26,6 +26,42 @@ Exit codes:
   3  build failure
 `
 
+const TRANSLATE_HELP = `i18n-collect translate
+
+Fill missing target-locale catalog entries from a project translation provider.
+Existing target text stays unless --retranslate is set. This command does not rewrite application source.
+
+Usage:
+  i18n-collect translate [options]
+
+Options:
+  --cwd <dir>         Project root. Defaults to the current directory.
+  --provider <path>   Project-relative provider module. Replaces translationProvider.
+  --locale <tag>      Target locale. Repeat to set several. Replaces targetLocales.
+  --retranslate       Replace existing target text with a new provider draft.
+  --failure <policy>  Replace translationFailure. Policies: partial, strict.
+  --json              Print the translation report as JSON on stdout.
+  -h, --help          Show this help.
+
+Provider contract:
+  The module exports translate(request) or is that function.
+  request is { sourceLocale, locales, items }.
+  locales are the target locales requested for this run.
+  items are { key, source, locales } for each source text selected for a draft.
+  Selection: a missing target entry is always selected. An existing entry is selected only with --retranslate.
+  A successful draft creates a missing entry or replaces a selected existing entry, and records the current source fingerprint with review "current".
+  An existing entry whose recorded source fingerprint differs from the current source is kept and marked "needs-review". --retranslate may replace it; a successful draft then clears the mark.
+  Failure policy: partial, the default, writes successful drafts and review marks, then exits 4 and lists failed pairs. strict writes nothing when any pair fails, so the catalogs stay as they were.
+  Return { drafts: [{ key, locale, text }], failures?: [{ key, locale, message }] }.
+  A failure for a pair suppresses its draft. A requested pair with neither is a failure.
+  The provider is a local project module and does not need credentials, a vendor SDK, or network access.
+
+Exit codes:
+  0  translation finished
+  1  configuration failure
+  4  translation failure
+`
+
 const ROOT_HELP = `i18n-collect
 
 Automation-friendly commands for this workspace.
@@ -34,14 +70,16 @@ Usage:
   i18n-collect <command> [options]
 
 Commands:
-  collect   Collect Chinese user-facing copy through the project's webpack integration.
+  collect    Collect Chinese user-facing copy through the project's webpack integration.
+  translate  Fill target-locale catalogs through a project translation provider.
 
-Run i18n-collect collect --help for collection options.
+Run i18n-collect <command> --help for command options.
 `
 
 function helpFor(command) {
   if (command === 'collect') return COLLECT_HELP
+  if (command === 'translate') return TRANSLATE_HELP
   return ROOT_HELP
 }
 
-module.exports = { COLLECT_HELP, ROOT_HELP, helpFor }
+module.exports = { COLLECT_HELP, ROOT_HELP, TRANSLATE_HELP, helpFor }

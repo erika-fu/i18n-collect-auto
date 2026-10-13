@@ -4,11 +4,11 @@
 
 **Blocked by:** 04 — Establish the keyed translation catalog.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] A documented provider contract allows a project module to receive source text and requested target locales and return translation drafts.
-- [ ] Missing translations are created without overwriting existing human translations by default.
-- [ ] `--retranslate` explicitly permits replacement according to documented selection rules.
-- [ ] Source-text changes mark retained target translations as needing review instead of silently treating them as current.
-- [ ] Default partial failure preserves successful work and produces an actionable failure report; strict failure behavior is configurable.
-- [ ] Tests use deterministic fake providers and do not require credentials, a vendor SDK, or network access.
+- [x] A documented provider contract allows a project module to receive source text and requested target locales and return translation drafts.
+- [x] Missing translations are created without overwriting existing human translations by default.
+- [x] `--retranslate` explicitly permits replacement according to documented selection rules.
+- [x] Source-text changes mark retained target translations as needing review instead of silently treating them as current.
+- [x] Default partial failure preserves successful work and produces an actionable failure report; strict failure behavior is configurable.
+- [x] Tests use deterministic fake providers and do not require credentials, a vendor SDK, or network access.

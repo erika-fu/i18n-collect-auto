@@ -200,11 +200,11 @@ test('collect prints a stable human report', { timeout: 20000 }, () => {
   ].join('\n'))
 })
 
-test('an unknown command is a configuration failure and does not translate', () => {
-  const result = run(['translate'])
+test('an unknown command is a configuration failure', () => {
+  const result = run(['publish'])
   assert.strictEqual(result.status, 1)
-  assert.match(result.stderr, /configuration: unknown command "translate"/)
-  assert.doesNotMatch(result.stdout, /translat/)
+  assert.match(result.stderr, /configuration: unknown command "publish"/)
+  assert.match(result.stdout, /Commands:/)
 })
 
 test('collect reports configuration failures for the project file, overrides, and webpack config', { timeout: 20000 }, () => {

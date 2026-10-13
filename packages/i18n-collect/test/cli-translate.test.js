@@ -1,0 +1,404 @@
+const assert = require('assert')
+const { spawnSync } = require('child_process')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const test = require('node:test')
+const { fingerprintOf } = require('../mycommon/catalog')
+const { loadConfig } = require('../mycommon/config')
+
+const bin = path.join(__dirname, '../bin/i18n-collect.js')
+
+function run(args, cwd) {
+  return spawnSync(process.execPath, [bin, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1' }
+  })
+}
+
+function json(value) {
+  return `${JSON.stringify(value, null, 2)}\n`
+}
+
+function entry(source) {
+  return {
+    source,
+    fingerprint: fingerprintOf(source),
+    origin: 'explicit',
+    locations: []
+  }
+}
+
+function writeProject(root, {
+  provider,
+  messages,
+  targets = {},
+  state = null,
+  config = {
+    translationProvider: 'i18n/provider.js',
+    targetLocales: ['en']
+  }
+} = {}) {
+  fs.mkdirSync(path.join(root, 'i18n'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'i18n/provider.js'), provider)
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), `module.exports = ${JSON.stringify(config, null, 2)}\n`)
+  const entries = {}
+  for (const [key, source] of Object.entries(messages)) entries[key] = entry(source)
+  fs.writeFileSync(path.join(root, 'lang/catalog/zh.json'), json(messages))
+  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json({
+    version: 1,
+    sourceLocale: 'zh',
+    format: 'json',
+    entries
+  }))
+  for (const [locale, catalog] of Object.entries(targets)) {
+    fs.writeFileSync(path.join(root, 'lang/catalog', `${locale}.json`), json(catalog))
+  }
+  if (state) fs.writeFileSync(path.join(root, 'lang/catalog/translation-state.json'), json(state))
+}
+
+test('translate fills missing target text from a local provider and keeps an existing translation', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-translate-'))
+  const sourceBytes = []
+  writeProject(root, {
+    messages: { 'home.keep': '保留', 'home.title': '首页' },
+    targets: { en: { 'home.keep': 'Keep me' } },
+    provider: `module.exports = {
+      translate(request) {
+        if (request.sourceLocale !== 'zh') throw new Error('unexpected source locale')
+        if (!request.locales.includes('en')) throw new Error('missing requested locale')
+        if (request.items.some(item => item.key === 'home.keep')) throw new Error('protected text was sent')
+        const item = request.items.find(entry => entry.key === 'home.title')
+        if (!item || item.source !== '首页' || item.locales.join(',') !== 'en') throw new Error('missing source text')
+        return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }
+      }
+    }
+    `
+  })
+  sourceBytes.push(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')))
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.strictEqual(result.stderr, '')
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8')), {
+    'home.keep': 'Keep me',
+    'home.title': 'Home'
+  })
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.deepStrictEqual(state.locales.en['home.title'], {
+    sourceFingerprint: fingerprintOf('首页'),
+    review: 'current'
+  })
+  assert.deepStrictEqual(state.locales.en['home.keep'], {
+    sourceFingerprint: fingerprintOf('保留'),
+    review: 'current'
+  })
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), sourceBytes[0])
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.strictEqual(report.command, 'translate')
+  assert.deepStrictEqual(report.created, [{ key: 'home.title', locale: 'en' }])
+  assert.deepStrictEqual(report.kept, [{ key: 'home.keep', locale: 'en' }])
+  assert.deepStrictEqual(report.replaced, [])
+  assert.deepStrictEqual(report.failures, [])
+})
+
+test('--retranslate replaces existing translations that the default run keeps', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-retranslate-'))
+  writeProject(root, {
+    messages: { 'home.keep': '保留', 'home.title': '首页' },
+    targets: { en: { 'home.keep': 'Keep me' } },
+    state: {
+      version: 1,
+      locales: {
+        en: {
+          'home.keep': { sourceFingerprint: fingerprintOf('保留'), review: 'current' }
+        }
+      }
+    },
+    provider: `module.exports = {
+      translate(request) {
+        const keys = request.items.map(item => item.key + ':' + item.locales.join('+')).sort().join(',')
+        if (keys === 'home.title:en') {
+          return { drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }] }
+        }
+        if (keys === 'home.keep:en,home.title:en') {
+          return {
+            drafts: [
+              { key: 'home.keep', locale: 'en', text: 'Kept' },
+              { key: 'home.title', locale: 'en', text: 'Home again' }
+            ]
+          }
+        }
+        throw new Error('unexpected selection ' + keys)
+      }
+    }
+    `
+  })
+  const kept = run(['translate', '--json'], root)
+  assert.strictEqual(kept.status, 0, kept.stderr)
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.keep'], 'Keep me')
+
+  const result = run(['translate', '--json', '--retranslate'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8')), {
+    'home.keep': 'Kept',
+    'home.title': 'Home again'
+  })
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.retranslate, true)
+  assert.deepStrictEqual(report.replaced, [
+    { key: 'home.keep', locale: 'en' },
+    { key: 'home.title', locale: 'en' }
+  ])
+  assert.deepStrictEqual(report.created, [])
+  assert.deepStrictEqual(report.kept, [])
+})
+
+test('a changed source keeps the target text and marks it as needing review', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-'))
+  const previous = fingerprintOf('首页')
+  writeProject(root, {
+    messages: { 'home.title': '主页' },
+    targets: { en: { 'home.title': 'Home' } },
+    state: {
+      version: 1,
+      locales: {
+        en: {
+          'home.title': { sourceFingerprint: previous, review: 'current' }
+        }
+      }
+    },
+    provider: `module.exports = {
+      translate() {
+        throw new Error('provider should not be called')
+      }
+    }
+    `
+  })
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.title'], 'Home')
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.deepStrictEqual(state.locales.en['home.title'], {
+    sourceFingerprint: previous,
+    review: 'needs-review'
+  })
+  assert.deepStrictEqual(JSON.parse(result.stdout).needsReview, [{ key: 'home.title', locale: 'en' }])
+})
+
+test('a partial failure keeps the successful draft and reports the failed item', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-partial-'))
+  writeProject(root, {
+    messages: { 'home.body': '正文', 'home.title': '首页' },
+    provider: `module.exports = {
+      translate() {
+        return {
+          drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }],
+          failures: [{ key: 'home.body', locale: 'en', message: 'glossary rejected 正文' }]
+        }
+      }
+    }
+    `
+  })
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 4, result.stderr)
+  assert.match(result.stderr, /translation: home\.body \[en\]: glossary rejected 正文/)
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8')), {
+    'home.title': 'Home'
+  })
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, false)
+  assert.strictEqual(report.policy, 'partial')
+  assert.deepStrictEqual(report.created, [{ key: 'home.title', locale: 'en' }])
+  assert.deepStrictEqual(report.failures, [{
+    key: 'home.body',
+    locale: 'en',
+    message: 'glossary rejected 正文'
+  }])
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.strictEqual(state.locales.en['home.title'].review, 'current')
+  assert.strictEqual(state.locales.en['home.body'], undefined)
+})
+
+test('strict failure leaves every catalog unchanged until a partial run is requested', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-strict-'))
+  const previous = fingerprintOf('首页')
+  writeProject(root, {
+    messages: { 'home.body': '正文', 'home.keep': '主页', 'home.title': '首页' },
+    targets: { en: { 'home.keep': 'Old home' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.keep': { sourceFingerprint: previous, review: 'current' } }
+      }
+    },
+    config: {
+      translationProvider: 'i18n/provider.js',
+      targetLocales: ['en'],
+      translationFailure: 'strict'
+    },
+    provider: `module.exports = {
+      translate() {
+        return {
+          drafts: [{ key: 'home.title', locale: 'en', text: 'Home' }],
+          failures: [{ key: 'home.body', locale: 'en', message: 'glossary rejected 正文' }]
+        }
+      }
+    }
+    `
+  })
+  const beforeCatalog = fs.readFileSync(path.join(root, 'lang/catalog/en.json'))
+  const beforeState = fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'))
+  const strict = run(['translate', '--json'], root)
+  assert.strictEqual(strict.status, 4, strict.stderr)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/en.json')), beforeCatalog)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json')), beforeState)
+  const withheld = JSON.parse(strict.stdout)
+  assert.strictEqual(withheld.policy, 'strict')
+  assert.strictEqual(withheld.applied, false)
+  assert.deepStrictEqual(withheld.created, [])
+  assert.deepStrictEqual(withheld.needsReview, [])
+  assert.deepStrictEqual(withheld.withheld, [{ key: 'home.title', locale: 'en' }])
+  assert.deepStrictEqual(withheld.failures, [{
+    key: 'home.body',
+    locale: 'en',
+    message: 'glossary rejected 正文'
+  }])
+
+  const partial = run(['translate', '--json', '--failure', 'partial'], root)
+  assert.strictEqual(partial.status, 4, partial.stderr)
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8')), {
+    'home.keep': 'Old home',
+    'home.title': 'Home'
+  })
+  const saved = JSON.parse(partial.stdout)
+  assert.strictEqual(saved.policy, 'partial')
+  assert.strictEqual(saved.applied, true)
+  assert.deepStrictEqual(saved.created, [{ key: 'home.title', locale: 'en' }])
+  assert.deepStrictEqual(saved.needsReview, [{ key: 'home.keep', locale: 'en' }])
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.deepStrictEqual(state.locales.en['home.keep'], {
+    sourceFingerprint: previous,
+    review: 'needs-review'
+  })
+})
+
+test('--retranslate replaces a review-marked translation and records the new source fingerprint', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-rereview-'))
+  writeProject(root, {
+    messages: { 'home.title': '主页' },
+    targets: { en: { 'home.title': 'Home' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.title': { sourceFingerprint: fingerprintOf('首页'), review: 'needs-review' } }
+      }
+    },
+    provider: `module.exports = {
+      translate(request) {
+        const item = request.items[0]
+        if (!item || item.key !== 'home.title' || item.source !== '主页') throw new Error('stale source was sent')
+        return { drafts: [{ key: 'home.title', locale: 'en', text: 'Main page' }] }
+      }
+    }
+    `
+  })
+  const result = run(['translate', '--json', '--retranslate'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.title'], 'Main page')
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.deepStrictEqual(state.locales.en['home.title'], {
+    sourceFingerprint: fingerprintOf('主页'),
+    review: 'current'
+  })
+  const report = JSON.parse(result.stdout)
+  assert.deepStrictEqual(report.replaced, [{ key: 'home.title', locale: 'en' }])
+  assert.deepStrictEqual(report.needsReview, [])
+})
+
+test('translate help documents the provider contract and failure policy', () => {
+  const result = run(['translate', '--help'])
+  assert.strictEqual(result.status, 0)
+  assert.strictEqual(result.stderr, '')
+  const help = result.stdout
+  assert.match(help, /translate\(request\)/)
+  assert.match(help, /sourceLocale/)
+  assert.match(help, /\{ key, source, locales \}/)
+  assert.match(help, /drafts/)
+  assert.match(help, /--retranslate/)
+  assert.match(help, /needs-review/)
+  assert.match(help, /partial/)
+  assert.match(help, /strict/)
+  assert.match(help, /does not need credentials/)
+})
+
+test('a partial failure creates no catalog when every draft fails', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-empty-fail-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    provider: `module.exports = {
+      translate() {
+        return { drafts: [], failures: [{ key: 'home.title', locale: 'en', message: 'provider down' }] }
+      }
+    }
+    `
+  })
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 4, result.stderr)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/translation-state.json')), false)
+  assert.deepStrictEqual(JSON.parse(result.stdout).failures, [{
+    key: 'home.title',
+    locale: 'en',
+    message: 'provider down'
+  }])
+})
+
+test('a restored source fingerprint clears needs-review and keeps the translation', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-restore-'))
+  writeProject(root, {
+    messages: { 'home.title': '首页' },
+    targets: { en: { 'home.title': 'Home' } },
+    state: {
+      version: 1,
+      locales: {
+        en: { 'home.title': { sourceFingerprint: fingerprintOf('首页'), review: 'needs-review' } }
+      }
+    },
+    provider: `module.exports = {
+      translate() {
+        throw new Error('provider should not be called')
+      }
+    }
+    `
+  })
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.title'], 'Home')
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.deepStrictEqual(state.locales.en['home.title'], {
+    sourceFingerprint: fingerprintOf('首页'),
+    review: 'current'
+  })
+  assert.deepStrictEqual(JSON.parse(result.stdout).needsReview, [])
+})
+
+test('translation settings do not change the collection config hash', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-hash-'))
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = {}\n')
+  const plain = loadConfig({ root })
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), [
+    'module.exports = {',
+    '  translationProvider: "i18n/provider.js",',
+    '  targetLocales: ["en"],',
+    '  translationFailure: "strict"',
+    '}',
+    ''
+  ].join('\n'))
+  const configured = loadConfig({ root })
+  assert.strictEqual(configured.configHash, plain.configHash)
+  assert.strictEqual(configured.fileConfigHash, plain.fileConfigHash)
+  assert.deepStrictEqual(configured.targetLocales, ['en'])
+})

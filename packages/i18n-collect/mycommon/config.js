@@ -19,12 +19,17 @@ const DEFAULTS = {
   sourceMapFilename: 'lang/zh_hash.map.json',
   catalogDir: 'lang/catalog',
   sourceLocale: 'zh',
-  catalogFormat: 'json'
+  catalogFormat: 'json',
+  translationProvider: '',
+  targetLocales: [],
+  translationFailure: 'partial'
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
 const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])
 const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat']
+const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
+const FAILURE_POLICIES = new Set(['partial', 'strict'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
 const SCOPE_OVERRIDE_FIELDS = ['include', 'exclude', 'contextFilters']
 let scopeOverrides = null
@@ -131,6 +136,20 @@ function validate(root, input) {
   if ([files.messages, files.metadata].some(file => file === config.outputPath || file === config.sourceMapFilename)) {
     fail('catalog files must differ from outputPath and sourceMapFilename')
   }
+  if (typeof config.translationProvider !== 'string') fail('translationProvider must be a project-relative path')
+  if (config.translationProvider) {
+    config.translationProvider = projectPath(root, config.translationProvider, 'translationProvider')
+  }
+  array(
+    config.targetLocales,
+    'targetLocales',
+    value => LOCALE.test(value),
+    'targetLocales must be an array of locale tags such as "en" or "en-US"'
+  )
+  if (config.targetLocales.includes(config.sourceLocale)) fail('targetLocales must not include sourceLocale')
+  if (!FAILURE_POLICIES.has(config.translationFailure)) {
+    fail('translationFailure must be "partial" or "strict"')
+  }
   return config
 }
 
@@ -155,10 +174,11 @@ function hashConfig(config) {
   return crypto.createHash('md5').update(JSON.stringify(config)).digest('hex')
 }
 
-// Catalog fields stay out of both hashes so the source map and cached module metadata keep their values.
+// Catalog and translation settings stay out of both hashes so the source map and cached module metadata keep their values.
 function collectionHash(config) {
   const collection = { ...config }
   for (const field of CATALOG_FIELDS) delete collection[field]
+  for (const field of TRANSLATION_FIELDS) delete collection[field]
   return hashConfig(collection)
 }
 
@@ -202,6 +222,19 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
   }
 }
 
+function translationSettings(config, overrides = {}) {
+  const input = {}
+  for (const key of Object.keys(DEFAULTS)) input[key] = config[key]
+  for (const key of Object.keys(overrides)) {
+    if (!TRANSLATION_FIELDS.includes(key)) fail(`unknown translation setting "${key}"`)
+    input[key] = overrides[key]
+  }
+  const next = validate(config.root, input)
+  const picked = {}
+  for (const key of TRANSLATION_FIELDS) picked[key] = next[key]
+  return { ...config, ...picked }
+}
+
 module.exports = {
   CONFIG_FILE,
   DEFAULTS,
@@ -210,5 +243,6 @@ module.exports = {
   clearCollectionOverrides,
   loadConfig,
   setCollectionOverrides,
+  translationSettings,
   validate
 }

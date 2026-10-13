@@ -1,5 +1,6 @@
 const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
+const { translate } = require('./translate')
 
 function write(stream, text) {
   if (!text) return
@@ -13,17 +14,17 @@ async function main(argv) {
     return EXIT.ok
   }
   const command = args[0]
-  if (command !== 'collect') {
+  if (command !== 'collect' && command !== 'translate') {
     write(process.stderr, `configuration: unknown command "${command}"`)
     write(process.stdout, helpFor())
     return EXIT.configuration
   }
-  const collectArgs = args.slice(1)
-  if (collectArgs.includes('--help') || collectArgs.includes('-h')) {
-    write(process.stdout, helpFor('collect'))
+  const commandArgs = args.slice(1)
+  if (commandArgs.includes('--help') || commandArgs.includes('-h')) {
+    write(process.stdout, helpFor(command))
     return EXIT.ok
   }
-  const outcome = await collect(collectArgs)
+  const outcome = command === 'collect' ? await collect(commandArgs) : await translate(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   return outcome.code
