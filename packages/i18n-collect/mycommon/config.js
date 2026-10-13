@@ -17,6 +17,18 @@ const DEFAULTS = {
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
+const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])
+const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename'])
+const SCOPE_OVERRIDE_FIELDS = ['include', 'exclude', 'contextFilters']
+let scopeOverrides = null
+
+function setCollectionOverrides(overrides) {
+  scopeOverrides = overrides
+}
+
+function clearCollectionOverrides() {
+  scopeOverrides = null
+}
 
 function fail(message) {
   throw new Error(`Invalid ${CONFIG_FILE}: ${message}`)
@@ -126,6 +138,16 @@ function canonicalRoot(root) {
   }
 }
 
+function applyScopeOverrides(root, config) {
+  if (!scopeOverrides) return config
+  const picked = {}
+  for (const field of SCOPE_OVERRIDE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(scopeOverrides, field)) picked[field] = scopeOverrides[field]
+  }
+  if (Object.keys(picked).length === 0) return config
+  return validate(root, merge(config, picked, LOADER_FIELDS))
+}
+
 function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {}) {
   const projectRoot = path.resolve(root)
   const file = path.join(projectRoot, CONFIG_FILE)
@@ -136,8 +158,9 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
   }
   let config = validate(projectRoot, fileConfig)
   const fileConfigHash = hashConfig(config)
-  config = validate(projectRoot, merge(config, loaderOptions, new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])))
-  config = validate(projectRoot, merge(config, pluginOptions, new Set(['outputPath', 'sourceMapFilename'])))
+  config = validate(projectRoot, merge(config, loaderOptions, LOADER_FIELDS))
+  config = validate(projectRoot, merge(config, pluginOptions, PLUGIN_FIELDS))
+  config = applyScopeOverrides(projectRoot, config)
   return {
     ...config,
     root: projectRoot,
@@ -146,4 +169,12 @@ function loadConfig({ root = process.cwd(), loaderOptions, pluginOptions } = {})
   }
 }
 
-module.exports = { CONFIG_FILE, DEFAULTS, canonicalRoot, loadConfig, validate }
+module.exports = {
+  CONFIG_FILE,
+  DEFAULTS,
+  canonicalRoot,
+  clearCollectionOverrides,
+  loadConfig,
+  setCollectionOverrides,
+  validate
+}

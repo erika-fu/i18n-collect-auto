@@ -33,6 +33,18 @@ npm run update-react-demo-collection
 
 The first command runs `vue-cli-service build` for the Vue demo; the second runs the React demo's Webpack production build. These are the only workflows that update their respective committed collection files.
 
+## Collection command
+
+`i18n-collect collect` runs that same webpack integration once, without a prompt. The configuration must already include `i18n-collect/myloader` and `i18n-collect/myplugin`. The command reads `i18n-collect.config.js` and can replace `include`, `exclude`, and `contextFilters` with `--include`, `--exclude`, and `--context-filter`. It writes the hash dictionary and source map, prints a collection report, and leaves application source unchanged. It does not translate or make network requests. The webpack bundle is emitted outside the project.
+
+```
+npx i18n-collect collect --webpack-config webpack.config.js
+npx i18n-collect collect --json
+npx i18n-collect collect --help
+```
+
+Exit 0 means collection finished. Exit 1 is a configuration failure, exit 2 is a collection failure, and exit 3 is a build failure. A collection failure keeps the previous dictionary and source map. The Vue demo is wired through Vue CLI, so its checked-in dictionary still comes from `npm run update-demo-collection`.
+
 ## Webpack 5 integration
 
 The package peer dependency is webpack 5. Webpack 4, Vite, and Rollup are not supported.

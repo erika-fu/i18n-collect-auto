@@ -2,6 +2,9 @@
   "name": "i18n-collect",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "i18n-collect": "./bin/i18n-collect.js"
+  },
   "scripts": {
     "test": "node --test test/*.test.js"
   },

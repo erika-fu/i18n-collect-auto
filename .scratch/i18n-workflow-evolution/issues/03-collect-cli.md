@@ -4,10 +4,10 @@
 
 **Blocked by:** 01 — Support the local exclusion directive; 02 — Add glob scope and optional context filters.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] `collect` can be invoked non-interactively from a project and observes configured and command-line collection scope rules.
-- [ ] Existing collection outputs remain compatible and successful collection behavior is deterministic.
-- [ ] The command supplies useful help, exit codes, and diagnostics for configuration, collection, and build failures.
-- [ ] The command makes no network request and never changes application source files.
-- [ ] CLI integration tests demonstrate collection, override behavior, output compatibility, and failure reporting.
+- [x] `collect` can be invoked non-interactively from a project and observes configured and command-line collection scope rules.
+- [x] Existing collection outputs remain compatible and successful collection behavior is deterministic.
+- [x] The command supplies useful help, exit codes, and diagnostics for configuration, collection, and build failures.
+- [x] The command makes no network request and never changes application source files.
+- [x] CLI integration tests demonstrate collection, override behavior, output compatibility, and failure reporting.
