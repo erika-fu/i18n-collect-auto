@@ -4,10 +4,10 @@
 
 **Blocked by:** 06 — Protect external translation and catalog writes; 07 — Preview safe source replacement.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Source is changed only when the caller explicitly requests `--write`; otherwise replacement remains preview-only.
-- [ ] A write failure after one or more file replacements restores all affected source, catalog, and metadata files to their prior content.
-- [ ] `run` composes selected stages predictably and exposes stable non-interactive inputs, outputs, exit codes, and diagnostics.
-- [ ] Network permission and strict-mode semantics are preserved when translation/replacement run through the orchestration command.
-- [ ] Integration tests cover successful writes, multi-file rollback, collect-only, translate-only composition, replacement composition, and the full workflow.
+- [x] Source is changed only when the caller explicitly requests `--write`; otherwise replacement remains preview-only.
+- [x] A write failure after one or more file replacements restores all affected source, catalog, and metadata files to their prior content.
+- [x] `run` composes selected stages predictably and exposes stable non-interactive inputs, outputs, exit codes, and diagnostics.
+- [x] Network permission and strict-mode semantics are preserved when translation/replacement run through the orchestration command.
+- [x] Integration tests cover successful writes, multi-file rollback, collect-only, translate-only composition, replacement composition, and the full workflow.

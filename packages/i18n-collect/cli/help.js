@@ -72,7 +72,8 @@ Exit codes:
 const REPLACE_HELP = `i18n-collect replace
 
 Preview safe source replacements backed by the keyed catalog.
-This command is a dry-run: it does not write source files or catalog files, does not install dependencies, and does not rewrite application bootstrap.
+Without --write, this command is a dry-run: it does not write source files or catalog files, does not install dependencies, and does not rewrite application bootstrap.
+--write prepares every changed source file, the keyed catalogs, and replacement metadata, then commits that set together. A failed commit restores those files.
 
 Usage:
   i18n-collect replace --adapter <name> [options]
@@ -80,8 +81,9 @@ Usage:
 Options:
   --adapter <name>   Runtime adapter. Names: vue2, vue3, js.
   --cwd <dir>        Project root. Defaults to the current directory.
-  --strict           Fail when any candidate is skipped.
-  --json             Print the replacement preview as JSON on stdout.
+  --strict           Fail when any candidate is skipped. Nothing is written.
+  --write            Commit source replacements, keyed catalogs, and replacement metadata.
+  --json             Print the replacement report as JSON on stdout.
   -h, --help         Show this help.
 
 Adapters:
@@ -114,8 +116,9 @@ Skipped:
   --strict turns skipped candidates into failure. Already localized calls are not skipped.
 
 Exit codes:
-  0  dry-run finished
+  0  finished
   1  configuration failure, including a missing runtime integration
+  6  replacement files could not be saved
   7  strict mode found a skipped candidate
 `
 
@@ -129,16 +132,67 @@ Usage:
 Commands:
   collect    Collect Chinese user-facing copy through the project's webpack integration.
   translate  Fill target-locale catalogs through a project translation provider.
-  replace    Preview safe source replacements. This command does not write files.
+  replace    Preview safe source replacements, or commit them with --write.
+  run        Run selected collect, translate, and replace stages.
 
 Run i18n-collect <command> --help for command options.
+`
+
+const RUN_HELP = `i18n-collect run
+
+Compose collection, translation, and replacement into one non-interactive workflow.
+Selected stages always run in this order: collect, then translate, then replace.
+A failing stage stops the workflow and keeps that stage's exit code and diagnostic.
+Replacement stays a dry-run unless --write is set. --allow-network and --strict mean the same thing here as they do on translate and replace.
+
+Workflows:
+  --collect                         Collect only.
+  --translate                       Translate only.
+  --collect --translate             Collect, then translate.
+  --collect --replace --adapter js  Collect, then preview replacements.
+  --collect --translate --replace --adapter js --write
+                                    Collect, translate, and commit replacements.
+
+Usage:
+  i18n-collect run (--collect | --translate | --replace)... [options]
+
+Options:
+  --collect                 Run collection.
+  --translate               Run translation.
+  --replace                 Run replacement. Requires --adapter.
+  --cwd <dir>               Project root. Defaults to the current directory.
+  --webpack-config <path>   Collect: webpack configuration. Defaults to webpack.config.js.
+  --include <pattern>       Collect: replace the configured include scope. Repeatable.
+  --exclude <pattern>       Collect: replace the configured exclude scope. Repeatable.
+  --context-filter <name>   Collect: replace configured context filters. Repeatable.
+  --provider <path>         Translate: project-relative provider module.
+  --locale <tag>            Translate: target locale. Repeatable.
+  --retranslate             Translate: replace existing target text.
+  --failure <policy>        Translate: partial or strict.
+  --allow-network           Translate: allow a network provider to send source text.
+  --adapter <name>          Replace: vue2, vue3, or js.
+  --strict                  Replace: fail when any candidate is skipped. Nothing is written.
+  --write                   Replace: commit source files, keyed catalogs, and replacement metadata.
+  --json                    Print the workflow report as JSON on stdout.
+  -h, --help                Show this help.
+
+Exit codes are the exit code of the stage that finished the workflow:
+  0  every selected stage finished
+  1  configuration failure
+  2  collection failure
+  3  build failure
+  4  translation failure
+  5  network translation was not authorized
+  6  catalogs or replacement files could not be saved
+  7  strict mode found a skipped candidate
 `
 
 function helpFor(command) {
   if (command === 'collect') return COLLECT_HELP
   if (command === 'translate') return TRANSLATE_HELP
   if (command === 'replace') return REPLACE_HELP
+  if (command === 'run') return RUN_HELP
   return ROOT_HELP
 }
 
-module.exports = { COLLECT_HELP, REPLACE_HELP, ROOT_HELP, TRANSLATE_HELP, helpFor }
+module.exports = { COLLECT_HELP, REPLACE_HELP, ROOT_HELP, RUN_HELP, TRANSLATE_HELP, helpFor }

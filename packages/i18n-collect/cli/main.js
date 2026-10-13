@@ -1,6 +1,7 @@
 const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
 const { replace } = require('./replace')
+const { run } = require('./run')
 const { translate } = require('./translate')
 
 function write(stream, text) {
@@ -15,7 +16,7 @@ async function main(argv) {
     return EXIT.ok
   }
   const command = args[0]
-  if (command !== 'collect' && command !== 'translate' && command !== 'replace') {
+  if (command !== 'collect' && command !== 'translate' && command !== 'replace' && command !== 'run') {
     write(process.stderr, `configuration: unknown command "${command}"`)
     write(process.stdout, helpFor())
     return EXIT.configuration
@@ -29,7 +30,9 @@ async function main(argv) {
     ? await collect(commandArgs)
     : command === 'translate'
       ? await translate(commandArgs)
-      : replace(commandArgs)
+      : command === 'replace'
+        ? replace(commandArgs)
+        : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   return outcome.code

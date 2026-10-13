@@ -2,13 +2,17 @@ const fs = require('fs')
 const path = require('path')
 const { CATALOG_VERSION } = require('../mycommon/catalog')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
+const { commitFiles, recoverCommits } = require('../mycommon/output')
 const { SCRIPT_EXTENSIONS, exportsLocalizationFunction, planPreview, runtimeCalls } = require('../mycommon/replace-preview')
 
 const EXIT = {
   ok: 0,
   configuration: 1,
+  storage: 6,
   replacement: 7
 }
+const REPLACEMENTS_NAME = 'replacements.json'
+const RESERVED_CATALOG_NAMES = new Set(['catalog.meta.json', REPLACEMENTS_NAME, 'translation-state.json'])
 const ADAPTERS = ['vue2', 'vue3', 'js']
 const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'coverage'])
 const RUNTIME = {
@@ -45,7 +49,7 @@ function take(args, index, flag) {
 }
 
 function parseReplaceArgs(args) {
-  const parsed = { adapter: null, cwd: null, json: false, strict: false }
+  const parsed = { adapter: null, cwd: null, json: false, strict: false, write: false }
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
     const eq = arg.indexOf('=')
@@ -66,6 +70,9 @@ function parseReplaceArgs(args) {
     } else if (flag === '--strict') {
       if (inline !== null) throw commandError('configuration', 'unknown option "--strict"')
       parsed.strict = true
+    } else if (flag === '--write') {
+      if (inline !== null) throw commandError('configuration', 'unknown option "--write"')
+      parsed.write = true
     } else if (flag === '--cwd') parsed.cwd = value('--cwd')
     else if (flag === '--adapter') parsed.adapter = value('--adapter')
     else if (flag.startsWith('-')) throw commandError('configuration', `unknown option "${flag}"`)
@@ -217,9 +224,175 @@ function readSources(root, items) {
   return sources
 }
 
+function recordedId(item) {
+  return `${item.path}\0${item.key}\0${item.kind}\0${item.start.line}:${item.start.column}`
+}
+
+function replacementRelative(config) {
+  return path.posix.join(config.catalogDir, REPLACEMENTS_NAME)
+}
+
+function sortDetails(items) {
+  return [...items].sort((left, right) => {
+    if (left.path !== right.path) return left.path < right.path ? -1 : 1
+    if (left.start.line !== right.start.line) return left.start.line - right.start.line
+    if (left.start.column !== right.start.column) return left.start.column - right.start.column
+    return left.kind < right.kind ? -1 : left.kind > right.kind ? 1 : 0
+  })
+}
+
+function readRecorded(root, config) {
+  const file = path.join(root, replacementRelative(config))
+  if (!fs.existsSync(file)) return []
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw commandError('configuration', 'replacement metadata could not be read')
+  }
+  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.replacements)) {
+    throw commandError('configuration', 'replacement metadata is not version 1')
+  }
+  return parsed.replacements
+}
+
+function reconcileRecorded(planned, sources, recorded) {
+  const byId = new Map(recorded.map(item => [recordedId(item), item]))
+  const skipped = []
+  const recognized = [...planned.recognized]
+  for (const item of planned.skipped) {
+    const prior = byId.get(recordedId(item))
+    const source = sources.get(item.path)
+    if (prior && typeof source === 'string' && source.includes(prior.call)) {
+      recognized.push({
+        path: item.path,
+        key: item.key,
+        kind: item.kind,
+        source: item.source,
+        call: prior.call,
+        start: item.start,
+        end: item.end
+      })
+    } else skipped.push(item)
+  }
+  return { ...planned, skipped, recognized: sortDetails(recognized) }
+}
+
+function replacementEntry(item) {
+  return {
+    path: item.path,
+    key: item.key,
+    kind: item.kind,
+    source: item.source,
+    call: item.call,
+    start: item.start,
+    end: item.end
+  }
+}
+
+function mergeRecorded(recorded, replacements, adapter) {
+  const next = recorded.map(replacementEntry)
+  const seen = new Set(next.map(recordedId))
+  for (const item of replacements) {
+    const entry = replacementEntry(item)
+    const id = recordedId(entry)
+    if (seen.has(id)) continue
+    next.push(entry)
+    seen.add(id)
+  }
+  next.sort((left, right) => {
+    if (left.path !== right.path) return left.path < right.path ? -1 : 1
+    if (left.start.line !== right.start.line) return left.start.line - right.start.line
+    if (left.start.column !== right.start.column) return left.start.column - right.start.column
+    return left.key < right.key ? -1 : left.key > right.key ? 1 : 0
+  })
+  return { version: 1, adapter, replacements: next }
+}
+
+function readRequired(file, label) {
+  if (!fs.existsSync(file)) throw commandError('configuration', `${label} is missing`)
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch (error) {
+    throw commandError('configuration', `${label} could not be read`)
+  }
+}
+
+function catalogCommitTargets(root, config, replacementDocument) {
+  const files = catalogFiles(config)
+  const dir = path.join(root, config.catalogDir)
+  let names
+  try {
+    names = fs.readdirSync(dir)
+  } catch (error) {
+    throw commandError('configuration', 'source catalog is missing')
+  }
+  const sourceName = path.posix.basename(files.messages)
+  const extras = names
+    .filter(name => name.endsWith('.json') && !RESERVED_CATALOG_NAMES.has(name) && name !== sourceName)
+    .sort()
+  const relatives = [
+    files.messages,
+    ...extras.map(name => path.posix.join(config.catalogDir, name)),
+    files.metadata,
+    replacementRelative(config)
+  ]
+  const replacementPath = replacementRelative(config)
+  return relatives.map(relative => ({
+    file: path.join(root, relative),
+    relative,
+    content: relative === replacementPath ? jsonText(replacementDocument) : readRequired(path.join(root, relative), relative)
+  }))
+}
+
+function sourceCommitTargets(root, previews) {
+  return [...previews]
+    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+    .map(preview => ({
+      file: path.join(root, preview.path),
+      relative: preview.path,
+      content: preview.content
+    }))
+}
+
+function writeReplacement(targets) {
+  try {
+    commitFiles(targets.map(target => ({ file: target.file, content: target.content })))
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error)
+    const code = error && error.code ? `${error.code}: ` : ''
+    const lead = error && error.restored === false
+      ? 'replacement files could not be restored after a write failure'
+      : 'replacement files were restored after a write failure'
+    throw commandError('storage', `${lead}: ${code}${message}`)
+  }
+}
+
+function reportOf(parsed, planned, extra = {}) {
+  return {
+    command: 'replace',
+    adapter: parsed.adapter,
+    dryRun: !parsed.write,
+    written: false,
+    files: [],
+    ok: true,
+    strict: parsed.strict,
+    replacements: planned.replacements,
+    skipped: planned.skipped,
+    recognized: planned.recognized,
+    previews: planned.previews,
+    ...extra
+  }
+}
+
 function human(report) {
+  const lead = report.dryRun
+    ? `Dry run (${report.adapter}). No source or catalog file was modified.`
+    : report.written
+      ? `Wrote source, catalog, and replacement metadata (${report.adapter}).`
+      : `No source changes (${report.adapter}). No source or catalog file was modified.`
   const lines = [
-    `Dry run (${report.adapter}). No source or catalog file was modified.`,
+    lead,
     `Replacements: ${report.replacements.length}. Skipped: ${report.skipped.length}. Already localized: ${report.recognized.length}.`
   ]
   const paths = [...new Set([
@@ -253,43 +426,47 @@ function human(report) {
 }
 
 function replace(args) {
+  const json = args.includes('--json')
   let parsed
   try {
     parsed = parseReplaceArgs(args)
   } catch (error) {
-    return failure(error, false)
+    return failure(error, json)
   }
   const root = path.resolve(parsed.cwd || process.cwd())
   try {
     const config = loadConfig({ root })
+    recoverCommits(path.join(config.root, config.catalogDir))
     const metadata = readMetadata(config.root, config)
     assertRuntime(config.root, parsed.adapter)
     const items = catalogItems(metadata)
     const sources = readSources(config.root, items)
-    const planned = planPreview({
+    const recorded = readRecorded(config.root, config)
+    const planned = reconcileRecorded(planPreview({
       adapter: parsed.adapter,
       items,
       sources,
       styleExtensions: new Set(config.styleExtensions.map(extension => String(extension).toLowerCase()))
-    })
-    const report = {
-      command: 'replace',
-      adapter: parsed.adapter,
-      dryRun: true,
-      ok: true,
-      strict: parsed.strict,
-      replacements: planned.replacements,
-      skipped: planned.skipped,
-      recognized: planned.recognized,
-      previews: planned.previews
-    }
+    }), sources, recorded)
     if (parsed.strict && planned.skipped.length > 0) {
-      report.ok = false
-      report.failure = 'replacement'
-      report.message = 'skipped candidates fail strict mode'
+      const report = reportOf(parsed, planned, {
+        ok: false,
+        failure: 'replacement',
+        message: 'skipped candidates fail strict mode'
+      })
       const stdout = parsed.json ? jsonText(report) : human(report)
       return outcome(EXIT.replacement, stdout, 'replacement: skipped candidates fail strict mode\n')
     }
+    if (!parsed.write || planned.replacements.length === 0) {
+      const report = reportOf(parsed, planned)
+      return outcome(EXIT.ok, parsed.json ? jsonText(report) : human(report), '')
+    }
+    const targets = [
+      ...catalogCommitTargets(config.root, config, mergeRecorded(recorded, planned.replacements, parsed.adapter)),
+      ...sourceCommitTargets(config.root, planned.previews)
+    ]
+    writeReplacement(targets)
+    const report = reportOf(parsed, planned, { written: true, files: targets.map(target => target.relative) })
     return outcome(EXIT.ok, parsed.json ? jsonText(report) : human(report), '')
   } catch (error) {
     return failure(error, parsed.json)
