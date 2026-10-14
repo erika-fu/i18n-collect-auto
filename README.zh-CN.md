@@ -10,7 +10,7 @@
 - `packages/i18n-collect`：实际的 Webpack Loader / Plugin 包；
 - `apps/demo`：基于 Vue 2、Vue CLI、vue-loader 15 与 Vue I18n 8 的完整接入示例。
 
-> 本工具负责“发现和汇总待国际化文案”，**不负责翻译、翻译审核、翻译平台对接、运行时语言切换或自动改写业务源码**。
+> 收集阶段负责发现和汇总待国际化文案，并且不改写业务源码。`translate` 通过项目自己的 translation provider 填写翻译目录，默认保留已有译文。`replace` 默认只做替换预览，只有显式 `--write` 才会把受支持的位置改成运行时本地化调用。本工具不内置第三方翻译 SDK，也不负责运行时语言切换。
 
 ---
 
@@ -18,9 +18,13 @@
 
 - [它解决什么问题](#它解决什么问题)
 - [适用范围与核心边界](#适用范围与核心边界)
-- [端到端工作流程](#端到端工作流程)
+- [一次收集轮次](#一次收集轮次)
 - [能够收集哪些文案](#能够收集哪些文案)
 - [排除指令](#排除指令)
+- [迁移产物](#迁移产物)
+- [翻译命令](#翻译命令)
+- [源码替换](#源码替换)
+- [组合命令](#组合命令)
 - [为什么采用这种实现](#为什么采用这种实现)
 - [输出产物与业务含义](#输出产物与业务含义)
 - [业务项目如何接入](#业务项目如何接入)
@@ -43,7 +47,7 @@
 
 `i18n-collect` 的目标是把“可由静态分析确定的中文用户文案”变成一套可重复生成、可审计、可交给本地化流程处理的构建产物。
 
-它并不要求业务代码立刻改成某一种 `t()` 调用形式。当前模型是：**源码保留原有静态中文，构建期收集候选文案，后续由业务团队决定如何使用收集结果。**
+它并不要求业务代码立刻改成 `t()` 调用。收集保持源码里的静态中文。之后是否替换，由 `replace` 决定，并且默认不写文件。
 
 ---
 
@@ -63,15 +67,22 @@
 
 ### 不做什么
 
-以下能力不属于当前版本的职责或支持范围：
+收集阶段不做这些事：
 
-- 不改写源码，也不会把中文字符串自动替换为 `$t()`、key 或其他调用；
+- 不改写源码；
 - 不执行 JavaScript / Vue 表达式，不做变量求值、常量折叠或运行时推断；
 - 不扫描整个项目目录来“补收集”；
 - 不扫描最终 bundle；
 - 不支持 Webpack 4、Vite 或 Rollup；
 - 不解析 SCSS、Sass、Less、Stylus；
-- 不提供翻译管理、翻译 API、译文审核或多语言发布工作流。
+- 不内置翻译供应商 SDK，测试也不访问外部翻译服务。
+
+迁移阶段另外有这些边界：
+
+- `translate` 只填写翻译目录，不改写源码。已有译文默认保留，除非显式 `--retranslate`。
+- `replace` 默认是替换预览。源码、键控目录和替换元数据只在 `--write` 时一起提交；提交失败会恢复这一组文件。
+- 替换适配器只有 `vue2`、`vue3` 和 `js`。React JSX、独立 HTML 和 CSS 生成内容不在替换范围内。
+- 替换命令不安装依赖，也不改写应用启动代码。
 
 最重要的一条边界是：
 
@@ -83,7 +94,7 @@
 
 ---
 
-## 端到端工作流程
+## 一次收集轮次
 
 一次成功的收集轮次可以理解为以下过程：
 
@@ -268,6 +279,97 @@ CSS：
 
 两条指令如果选中同一片段，只去掉这一次，不会再去掉后面的片段。
 
+只由空白隔开的指令注释组成同一组，所以 `/* no-i18n-auto */ /* i18n-key: a.b */ "文案"` 会同时作用在 `"文案"` 上。中间插入普通注释或代码后，这一组就结束了。
+
+显式本地化键来自 `i18n-key` 指令：语法合法、文本为 `i18n-key: <key>` 的注释。键以字母开头，由点分隔的段组成，每段可以包含字母、数字、`_` 和 `-`，例如 `home.title`。它和 `no-i18n-auto` 使用同一套关联规则。以 `i18n-key` 开头但形状不对的注释是畸形指令，会让本轮收集失败。一个片段被两条不同的键指令同时命名，也会失败。片段被排除时，它的键指令不生效。
+
+没有显式键的位置会得到派生键。派生键由项目相对路径、语义种类和收集文案计算，不包含行号和列号。同一个键如果对应两段不同的源文案，就是键冲突，本轮失败并保留上一份正式产物。
+
+---
+
+## 迁移产物
+
+迁移时要把下面几样分开看：
+
+| 名称 | 是什么 |
+| --- | --- |
+| 收集文案 | 源码里识别出的中文候选。收集只记录它，不改文件。 |
+| 哈希收集产物 | `lang/zh_hash.json` 和 `lang/zh_hash.map.json`。词典的 key 是文案的 MD5。 |
+| 翻译目录 | `lang/catalog/<locale>.json`，本地化键到文案的扁平映射。收集写出源语言；`translate` 写出每个目标语言。 |
+| 目录元数据 | `lang/catalog/catalog.meta.json`：源文案、源指纹、显式或派生来源，以及来源位置。 |
+| 审阅状态 | `lang/catalog/translation-state.json`：每个键、每个目标语言记录译文接受时的源指纹，以及 `current` 或 `needs-review`。 |
+| 翻译提供方 | 交给 `translate` 的项目模块。它不是产物文件，也不是内置的供应商 SDK。 |
+| 替换预览 | `replace` 的默认结果。它报告将要写成的源码，并且不改任何文件。 |
+| 源码替换 | 把受支持的位置改写成运行时本地化调用。源码只在 `--write` 时改变。 |
+| 替换元数据 | `lang/catalog/replacements.json`，已提交替换的记录。一次写入会把源码、键控目录和这份记录一起提交。 |
+
+哈希收集产物会保留，已有的哈希消费方可以继续使用。翻译和源码替换使用翻译目录。
+
+---
+
+## 翻译命令
+
+`i18n-collect translate` 读取收集写出的源语言目录，按项目的 translation provider 填写缺失的目标语言条目。它不运行 webpack，不改写源码，也不携带供应商 SDK。
+
+```bash
+npx i18n-collect translate
+npx i18n-collect translate --locale en --provider i18n/provider.js
+npx i18n-collect translate --retranslate --failure strict --json
+npx i18n-collect translate --allow-network
+```
+
+已有译文默认保留。`--retranslate` 才允许用新的翻译草稿替换它。源文案变化时，已有译文仍然保留，审阅状态改为 `needs-review`。默认 `partial` 会写下成功的草稿和审阅标记，然后以退出码 4 列出失败的键、语言和原因。`strict` 在任一失败时不写这轮的任何目录。
+
+可以发送源文案到项目之外的提供方必须声明 `network: true`。交互终端会询问 `Allow this network translation? [y/N]`。非交互和 CI 不会读取管道里的回答，必须传入 `--allow-network`。没有授权时命令退出 5，不调用提供方，也不写目录。本地提供方省略 `network`，因此不需要凭据，也不会发出站请求。没有选中任何源文案时，命令既不询问，也不调用提供方。
+
+目标目录和审阅状态会先准备好，再作为一组替换。替换失败或进程在日志还在时退出，会恢复之前的文件。被捕获的写入失败退出 6。下一次 `translate` 如果仍发现这份日志，会在读取目录之前先恢复；日志无法读取或无法恢复时也退出 6。
+
+---
+
+## 源码替换
+
+`i18n-collect replace` 按翻译目录，把受支持的收集位置改成运行时本地化调用。默认是替换预览，也就是 dry-run：不写源码、不写目录、不写替换元数据，不安装依赖，也不改写应用启动代码。
+
+```bash
+npx i18n-collect replace --adapter js
+npx i18n-collect replace --adapter vue2 --json
+npx i18n-collect replace --adapter vue3 --strict
+npx i18n-collect replace --adapter js --write
+```
+
+必须指定 `--adapter`：
+
+- `vue2` 把 Vue 2 模板文本改成 `{{ $t('key') }}`，把静态白名单属性改成 `:name="$t('key')"`，把模板表达式或动态属性里的字符串改成 `$t('key')`，把 Options API 实例方法里的字符串改成 `this.$t('key')`。项目里需要已经安装 vue-i18n 8，并且已经有 `Vue.use(VueI18n)` 或 `new VueI18n(...)`。
+- `vue3` 的模板调用与 `vue2` 相同。`<script setup>` 在 `t` 已经在作用域内时使用 `t('key')`。Options API 实例方法使用 `this.$t('key')`。项目里需要 vue-i18n 9 或更新版本，并且已经有 `createI18n(...)`。
+- `js` 把受支持的 JavaScript 或 TypeScript 字符串、模板字面量改成 `t('key')`，并且 `t` 必须已经在作用域内。项目里需要已经有一个导出函数 `t` 的模块。命令不会自动插入 import。
+
+受支持的脚本位置包括：变量初值、赋值、return、throw、调用和构造参数、数组元素、对象值、条件表达式、逻辑和二元运算的操作数、逗号表达式、表达式语句、箭头函数体、默认导出，以及这些位置上的模板字面量。
+
+React JSX、独立 HTML 和 CSS 生成内容不在替换范围内。对象键、switch case 以及其他不支持的位置会被跳过，并带上来源位置和原因。已经是 `t()`、`$t()` 或 `this.$t()` 的调用会被识别并保持原样，所以重复执行不会嵌套。`--strict` 把每一个被跳过的候选当成失败，并且什么都不写。已经本地化的调用不算跳过。
+
+`--write` 会先准备所有将要改动的源码、键控目录和替换元数据，再把这一组一起提交。提交失败时，这些文件恢复为之前的内容。如果进程在日志还在时退出，下一次 `replace` 会先按日志恢复，再规划新的写入。退出码 0 表示预览或写入完成。退出码 1 是配置失败，包括运行时集成缺失。退出码 6 表示替换文件没能保存。退出码 7 表示 strict 模式遇到了被跳过的候选。
+
+这三份示例对应三个适配器：
+
+- `packages/i18n-collect/fixtures/replacement/vue2`：Vue 2 模板文本、白名单属性和 Options API 实例方法，并且已经接入 vue-i18n 8。
+- `packages/i18n-collect/fixtures/replacement/vue3`：Vue 3 模板文本和 `<script setup>` 绑定，并且已经有 `createI18n` 和导出的 `t`。
+- `packages/i18n-collect/fixtures/replacement/js`：通用 JavaScript。它同时包含排除指令、`i18n-key` 指令、否决 `src/legacy/**/*.js` 的 exclude glob，以及一个本地翻译提供方。该提供方没有 `network` 标记，因此测试不需要 API key，也不会发出站请求。
+
+---
+
+## 组合命令
+
+`i18n-collect run` 把收集、翻译和源码替换串成一次非交互流程。被选中的阶段始终按这个顺序执行：先 collect，再 translate，再 replace。某一阶段失败就停止，并保留该阶段的退出码和诊断。没有 `--write` 时，替换仍然只是预览。`--allow-network` 和 `--strict` 的含义与单独运行 `translate`、`replace` 时相同。
+
+```bash
+npx i18n-collect run --collect
+npx i18n-collect run --collect --translate
+npx i18n-collect run --collect --replace --adapter js
+npx i18n-collect run --collect --translate --replace --adapter js --write
+```
+
+退出码来自结束这次流程的那个阶段：0 完成，1 配置失败，2 收集失败，3 构建失败，4 翻译失败，5 网络翻译未获授权，6 存储失败，7 strict 模式发现被跳过的候选。
+
 ---
 
 ## 为什么采用这种实现
@@ -326,7 +428,7 @@ Webpack 增量构建或文件系统缓存可能不会重新执行每个 Loader�
 - 解析错误、元数据错误、编译错误或写出错误都会放弃本轮候选结果；
 - 上一次成功的内存状态与正式 JSON 文件会被保留；
 - 不会发布“只收集到一半”的词典；
-- 两个输出文件作为一对更新；写入中发生同步错误时会回滚。
+- 哈希词典、来源映射和源语言目录作为一组更新；写入中发生错误时会一起回滚。
 
 这使构建产物可以被业务侧视为“最近一次成功收集结果”，而不是某次不完整构建的副作用。
 
@@ -340,7 +442,7 @@ vue-loader 会将单文件组件拆成不同请求，并可能改变中间源码
 
 ## 输出产物与业务含义
 
-默认会生成一对 JSON 文件：
+一次成功的收集还会写出源语言翻译目录。哈希收集产物默认是这一对文件：
 
 ```text
 lang/zh_hash.json
@@ -520,7 +622,7 @@ export default new VueI18n({
 - 在 CI 中比对词典变化，形成新增/删除文案的审核环节；
 - 按团队自己的 key 设计、译文管理和多语言资源发布方式进行二次处理。
 
-本项目不规定这些后续流程，也不会自动将源码中的中文替换成 MD5 key。
+收集不会把源码中的中文替换成 MD5。源码替换使用本地化键，并且只在 `replace --write` 或带 `--write` 的 `run` 里提交。
 
 ---
 
@@ -544,7 +646,13 @@ module.exports = {
   contextFilters: [],
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
-  sourceMapFilename: 'lang/zh_hash.map.json'
+  sourceMapFilename: 'lang/zh_hash.map.json',
+  catalogDir: 'lang/catalog',
+  sourceLocale: 'zh',
+  catalogFormat: 'json',
+  translationProvider: '',
+  targetLocales: [],
+  translationFailure: 'partial'
 }
 ```
 
@@ -559,10 +667,16 @@ module.exports = {
 | `contextFilters` | Loader | 可选的收集上下文策略：`logging`、`tests`、`analytics` |
 | `attributeAllowlist` | Loader | 允许收集的 HTML 用户可见属性名 |
 | `styleExtensions` | Loader | 被当作样式资源识别的扩展名 |
-| `outputPath` | Plugin | 运行时词典输出路径 |
+| `outputPath` | Plugin | 哈希词典输出路径 |
 | `sourceMapFilename` | Plugin | 来源映射输出路径 |
+| `catalogDir` | Plugin | 翻译目录所在目录 |
+| `sourceLocale` | Plugin | 源语言目录文件名使用的区域标签 |
+| `catalogFormat` | Plugin | 目录格式适配器，目前为 `json` |
+| `translationProvider` | 仅 `translate` | 项目相对的提供方模块，不属于 loader 或 plugin 选项 |
+| `targetLocales` | 仅 `translate` | 要填写的目标区域标签 |
+| `translationFailure` | 仅 `translate` | `partial` 或 `strict` |
 
-显式 Loader options 只能覆盖 Loader 字段；显式 Plugin options 只能覆盖 Plugin 字段。将字段传给错误的一侧，或配置未知字段，都会报错。
+显式 Loader options 只能覆盖 Loader 字段；显式 Plugin options 只能覆盖 Plugin 字段。`translationProvider`、`targetLocales` 和 `translationFailure` 只属于配置文件和 `translate` 命令，不是 Loader 或 Plugin 选项。将字段传给错误的一侧，或配置未知字段，都会报错。
 
 ### `include` 与 `exclude`
 
@@ -676,7 +790,8 @@ SCSS、Sass、Less 和 Stylus 当前没有对应 parser。遇到 Vue 非 CSS `la
 - 标准 CSS 解析失败；
 - 无法安全恢复的 HTML 解析诊断；
 - Loader metadata 校验失败；
-- 输出准备或成对写入失败；
+- 输出准备或整组写入失败；
+- 畸形 `i18n-key` 指令，或一个本地化键对应两段不同源文案；
 - 本轮既没有 Loader 调用证据，也没有可验证的缓存 metadata。
 
 失败时的行为是：
@@ -684,7 +799,7 @@ SCSS、Sass、Less 和 Stylus 当前没有对应 parser。遇到 Vue 非 CSS `la
 - Webpack 保持失败；
 - 当前候选快照被放弃；
 - 上一次成功提交的快照不变；
-- 两个正式 JSON 文件保持上一次成功版本；
+- 哈希词典、来源映射和源语言目录保持上一次成功版本；
 - 不发布部分收集结果。
 
 解析错误会尽力包含项目相对路径、语义 block、适用时的 style index / lang、1-based 行、0-based UTF-16 列以及底层错误原因。

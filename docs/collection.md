@@ -1,6 +1,6 @@
 # Collection troubleshooting
 
-Vocabulary matches `CONTEXT.md`. The design record is `docs/collection-architecture.md`.
+Vocabulary matches `CONTEXT.md`. The design record is `docs/collection-architecture.md`. Source replacement, translation providers, and migration outputs are documented in the README. This page is the collection troubleshooting record.
 
 ## Watch compiles again after a real collection change
 

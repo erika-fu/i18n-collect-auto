@@ -1,6 +1,6 @@
 # i18n-collect
 
-This repository collects Chinese user-facing copy during a webpack 5 build. It contains Vue 2 and React demos alongside the `i18n-collect` package. Collection does not rewrite application source.
+This repository collects Chinese user-facing copy during a webpack 5 build and can carry that copy into a keyed translation catalog and into source replacement. It contains Vue 2 and React demos alongside the `i18n-collect` package. Collection does not rewrite application source. Source replacement is a separate command and stays a replacement preview unless `--write` is set.
 
 - `packages/i18n-collect` exports `myloader` and `myplugin`.
 - `apps/demo` is the Vue 2 / Vue CLI demo. It uses vue-loader 15 and vue-i18n 8.
@@ -22,7 +22,7 @@ npm run build
 npm run build-react-demo
 ```
 
-`npm test` runs the package tests. Those tests use temporary directories and do not rewrite either demo's `lang` directory.
+`npm test` runs the package tests, including the migration workflow against `packages/i18n-collect/fixtures/replacement`. Those tests use temporary directories and a local fake translation provider. They do not rewrite either demo's `lang` directory, and they do not need an API key, a vendor SDK, or an outbound network request.
 
 Refresh checked-in dictionaries and source maps with the appropriate production build:
 
@@ -198,6 +198,66 @@ Translate writes:
 
 The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app.
 
+## Migration outputs
+
+Migration keeps the following distinct:
+
+| Name | What it is |
+| --- | --- |
+| Collected text | Chinese copy found in source. Collection records it and leaves the file unchanged. |
+| Hash collection output | `lang/zh_hash.json` and `lang/zh_hash.map.json`. The dictionary key is the MD5 of the collected text. |
+| Translation catalog | `lang/catalog/<locale>.json`, a flat map from a localization key to text. Collection writes the source locale. Translate writes each target locale. |
+| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, and source locations. |
+| Review state | `lang/catalog/translation-state.json`: for each key and target locale, the source fingerprint the translation was accepted against, and `current` or `needs-review`. |
+| Translation provider | A project module passed to translate. It is not an output file and it is not a vendor SDK. |
+| Replacement preview | The default result of replace. It reports the source that would be written and does not modify files. |
+| Source replacement | The rewrite of a supported location into a runtime localization call. Source files change only with `--write`. |
+| Replacement metadata | `lang/catalog/replacements.json`, the record of committed replacements. A write commits source files, the keyed catalogs, and this record together. |
+
+The hash collection output stays so existing hash consumers keep working. Translation and source replacement use the translation catalog.
+
+## Source replacement
+
+`i18n-collect replace` turns supported collected locations into runtime localization calls backed by the translation catalog. The default is a replacement preview. That dry-run does not write source files, catalogs, or replacement metadata. It does not install dependencies, and it does not rewrite application bootstrap.
+
+```
+npx i18n-collect replace --adapter js
+npx i18n-collect replace --adapter vue2 --json
+npx i18n-collect replace --adapter vue3 --strict
+npx i18n-collect replace --adapter js --write
+```
+
+`--adapter` is required:
+
+- `vue2` rewrites Vue 2 template text to `{{ $t('key') }}`, a static allowlisted attribute to `:name="$t('key')"`, a template expression or dynamic attribute string to `$t('key')`, and a string in an Options API instance method to `this.$t('key')`. It requires vue-i18n 8 and an existing `Vue.use(VueI18n)` or `new VueI18n(...)` call.
+- `vue3` uses those same template calls. `<script setup>` uses `t('key')` where `t` is already in scope. Options API instance methods use `this.$t('key')`. It requires vue-i18n 9 or newer and an existing `createI18n(...)` call.
+- `js` rewrites a supported JavaScript or TypeScript string or template literal to `t('key')` where `t` is already in scope. It requires an existing module that exports a function named `t`. The command does not insert an import.
+
+Supported script positions are variable initializers, assignments, returns, throws, call and constructor arguments, array elements, object values, conditionals, logical and binary operands, sequence expressions, expression statements, arrow function bodies, default exports, and template literals in those positions.
+
+React JSX, standalone HTML, and CSS generated content are outside replacement scope. Object keys, switch cases, and other unsupported positions are skipped with a source location and a reason. An already localized `t()`, `$t()`, or `this.$t()` call is recognized and left unchanged, so a repeated run does not nest it. `--strict` turns every skipped candidate into failure and writes nothing. Already localized calls are not skipped.
+
+`--write` prepares every changed source file, the keyed catalogs, and replacement metadata, then commits that set together. If the commit fails, those files are restored to their previous content. The next replace restores a journal it still finds before it plans another write. Exit 0 means the preview or the write finished. Exit 1 is a configuration failure, including a missing runtime integration. Exit 6 means the replacement files could not be saved. Exit 7 means strict mode found a skipped candidate.
+
+These fixtures show the supported adapters:
+
+- `packages/i18n-collect/fixtures/replacement/vue2` is the Vue 2 example: template text, an allowlisted attribute, and an Options API instance method, with vue-i18n 8 already integrated.
+- `packages/i18n-collect/fixtures/replacement/vue3` is the Vue 3 example: template text and a `<script setup>` binding, with `createI18n` and an exported `t` already present.
+- `packages/i18n-collect/fixtures/replacement/js` is the generic JavaScript example. It also shows an exclusion directive, an `i18n-key` directive, an exclude glob that vetoes `src/legacy/**/*.js`, and a local translation provider. That provider does not set `network`, so a test can call it with no API key and no outbound request.
+
+## Workflow command
+
+`i18n-collect run` composes collection, translation, and source replacement. Selected stages always run in this order: collect, then translate, then replace. A failing stage stops the workflow and keeps that stage's exit code and diagnostic. Replacement stays a replacement preview unless `--write` is set. `--allow-network` and `--strict` mean the same thing here as they do on `translate` and `replace`.
+
+```
+npx i18n-collect run --collect
+npx i18n-collect run --collect --translate
+npx i18n-collect run --collect --replace --adapter js
+npx i18n-collect run --collect --translate --replace --adapter js --write
+```
+
+Exit codes are the exit code of the stage that finished the workflow: 0 finished, 1 configuration, 2 collection, 3 build, 4 translation, 5 network translation was not authorized, 6 storage, and 7 strict mode.
+
 ## Configuration
 
 One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `contextFilters`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath`, `sourceMapFilename`, `catalogDir`, `sourceLocale`, and `catalogFormat`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
@@ -275,6 +335,7 @@ Each loader call submits a complete replacement snapshot for that identity, incl
 - A key directive that does not associate with a collected fragment is ignored, like an unattached `no-i18n-auto`.
 - Watch may compile one extra time after a real dictionary change, then become quiet.
 - A one-shot production build writes the latest dictionary, but that same bundle can still embed the previous dictionary.
-- Source rewriting, final-bundle scanning, webpack 4, Vite, Rollup, and evaluating dynamic expressions are not supported.
+- Final-bundle scanning, webpack 4, Vite, Rollup, and evaluating dynamic expressions are not supported.
+- Source replacement covers only the positions named by the `vue2`, `vue3`, and `js` replacement adapters. React JSX, standalone HTML, and CSS generated content stay outside replacement scope. Collection still records standalone HTML, CSS generated content, and JavaScript strings inside a JSX module.
 
 Source coordinates are 1-based lines and 0-based UTF-16 columns. Ranges are half-open.

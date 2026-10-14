@@ -1,11 +1,11 @@
 # Internationalization Collection Context
 
-This context defines the vocabulary for collecting Chinese user-facing text from source modules during the project's build process.
+This context defines the vocabulary for collecting Chinese user-facing text from source modules and for carrying that text through translation catalogs, translation providers, and source replacement.
 
 ## Language
 
 **Collected text**:
-Chinese text identified as candidate user-facing copy and added to the localization collection. Collection does not rewrite application source.
+Chinese text identified as candidate user-facing copy and added to the localization collection. Collection does not rewrite application source. Source replacement is a later command.
 
 **Template literal**:
 A JavaScript or TypeScript backtick literal. Each static Chinese segment is collected independently; interpolation expressions are not collected as copy.
@@ -98,3 +98,21 @@ A source text segment whose value can be determined without executing applicatio
 
 **Exclusion directive**:
 A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the next associated collected text or static fragment from entering the collection result. The directive is control metadata; its own comment text is not collected. Ordinary comments are not collected.
+
+**Existing translation**:
+Target-locale catalog text already stored for a localization key. Translate keeps that text unless the caller sets `--retranslate`. The kept text may be a human translation or an earlier translation draft that was already accepted. A source-text change keeps the text and sets its review state to `needs-review`.
+
+**Hash collection output**:
+The hash dictionary and its source map written by collection. The dictionary maps the MD5 of collected text to that text. It stays beside the translation catalog during migration. Source replacement does not use the hash as a localization key.
+
+**Replacement adapter**:
+The runtime call shape used by source replacement: `vue2`, `vue3`, or `js`. Each adapter states the semantic positions it can rewrite and requires a runtime integration that is already present. It does not install dependencies or rewrite application bootstrap. React JSX, standalone HTML, and CSS generated content are outside its scope.
+
+**Replacement metadata**:
+The versioned record of committed source replacements, stored as `replacements.json` beside the translation catalogs. A write prepares the changed source files, the keyed catalogs, and this record, then commits them as one set. A failed commit restores that set.
+
+**Replacement preview**:
+The dry-run result of source replacement. It reports the per-file source that would be written, the skipped candidates, and the calls that are already localized. It does not modify source files, translation catalogs, or replacement metadata.
+
+**Source replacement**:
+A rewrite of a supported collected location into a runtime localization call that names its localization key. Collection does not do this. The replace command's default is a replacement preview. Source files change only when the caller sets `--write`.
