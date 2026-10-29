@@ -1,7 +1,133 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 1：系统地图</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head><body><main><header class="masthead"><p class="eyebrow">COURSE · 01 / 10</p><h1>先建立正确的系统地图</h1><p>目标：用四个阶段和三个身份解释整个项目，避免把它误读成“扫一遍源码的脚本”。</p></header><section><h2>一个迁移管线，四个刻意分离的阶段</h2><div class="flow">Webpack source resource
-  ↓ myloader（识别并提交快照；不改源码）
-MyI18nPlugin（汇总一轮；原子发布）
-  ↓ source-locale catalog
-translate（可选，项目 provider 生成目标目录）
-  ↓ keyed catalogs + review state
-replace（可选，默认预览；--write 才改源码）</div><p>这条分层的核心是<strong>可逆与可验证</strong>：收集不能因为翻译服务或替换风险而失败；翻译不能修改应用；替换必须先展示将发生什么。</p></section><section><h2>三种身份绝不可混淆</h2><table><tr><th>身份</th><th>例子</th><th>用途</th></tr><tr><td>资源身份</td><td><code>src/App.vue::template[lang=html]</code></td><td>决定哪份快照替换哪份旧快照。</td></tr><tr><td>文本 hash</td><td><code>md5('欢迎')</code></td><td>兼容既有运行时字典，按文本值去重。</td></tr><tr><td>本地化键</td><td><code>home.welcome</code></td><td>翻译目录与替换调用的稳定语义标识。</td></tr></table><p>因此：仅改 <code>i18n-key</code> 会改 catalog 而不必改 MD5 字典；移动同一文本通常不改派生 key，因为 key 不含坐标。</p></section><section><h2>仓库构成</h2><ul><li><code>packages/i18n-collect</code>：CommonJS 核心包、Webpack 5 peer dependency、CLI 与 Node 测试。</li><li><code>apps/demo</code>：Vue 2 + Vue I18n 8 + Vue CLI 集成范例。</li><li><code>apps/react-demo</code>：React 18 + 独立 Webpack 5 集成范例。</li><li><code>docs/</code>：README 是行为契约；架构文档说明收集设计；故障文档解释运行现象。</li></ul></section><section class="exercise"><h2>检索练习（2 分钟）</h2><p>若一个文件从 Webpack module graph 移除，为什么不能只“向集合追加新文本”？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>因为旧文本会永久残留。每个 <em>resource identity</em> 必须提交完整替换快照，Plugin 又以当前 module graph 构造 live set，才能自然淘汰删除文件、移除 import、删除 Vue block 或过滤规则改变后不再存活的文案。</p></div></section><aside class="callout"><strong>本课结论：</strong>项目的最小理解单元不是“字符串”，而是“一个 resource snapshot 在一个 collection round 中被验证并发布”。</aside><nav class="lesson-nav" aria-label="课程导航"><span class="edge previous">← 第一课</span><a class="map" href="index.html">课程地图</a><a class="next" href="0002-loader-and-extractors.html">下一课：Loader 与提取器 →</a></nav><footer><p>主来源：<a href="../README.md">README</a>、<a href="../docs/collection-architecture.md">收集架构</a>。速查：<a href="../reference/0001-domain-glossary.html">术语表</a>。下一课：<a href="0002-loader-and-extractors.html">Loader 与提取器</a>。不清楚任何边界时，请直接向我追问。</p></footer></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>课程 1：从资源到产物的系统地图</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script defer src="../assets/lesson.js"></script>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <p class="eyebrow">COURSE · 01 / 10 · DEEP DIVE</p>
+    <h1>先建立四层地图：构建、快照、目录、替换</h1>
+    <p>本课的目标不是记住名词，而是能沿着一条文案，解释它从 Webpack 模块进入收集器后，为什么会出现在某个输出文件里。</p>
+  </header>
+
+  <section>
+    <h2>1. 项目到底在做什么</h2>
+    <p>它不是“扫描整个项目目录，找出所有中文”的脚本。只有进入 <code>myloader</code> 的资源才会被收集；Loader 观察资源并提交快照，Plugin 在一次 compilation 成功后汇总并发布结果。</p>
+    <div class="flow">Webpack module request
+      ↓
+myloader：识别语义资源，提取候选文案，提交 resource snapshot
+      ↓
+MyI18nPlugin：收集本轮所有仍存活的 snapshot，验证并聚合
+      ↓
+zh_hash.json + zh_hash.map.json + source-locale catalog
+      ↓（可选）
+translate：根据 catalog 生成目标语言目录
+      ↓（可选）
+replace：预览或显式写入源码改写</div>
+    <p>四个阶段故意分开：收集不依赖翻译服务，翻译不修改应用源码，替换默认只预览。这种分离让每个阶段都能单独失败、重试和验证。</p>
+  </section>
+
+  <section>
+    <h2>2. 三个“键”不是同一个东西</h2>
+    <table>
+      <tr><th>概念</th><th>例子</th><th>它回答的问题</th></tr>
+      <tr><td>资源身份</td><td><code>src/App.vue::template[lang=html]</code></td><td>哪一个语义资源的快照需要被替换？</td></tr>
+      <tr><td>文本 hash</td><td><code>md5('首页')</code></td><td>相同文本如何兼容旧的运行时字典并去重？</td></tr>
+      <tr><td>本地化键</td><td><code>home.title</code></td><td>翻译目录和源码替换使用哪个稳定的业务名称？</td></tr>
+    </table>
+    <h3>资源身份：文件路径后面为什么有两个冒号</h3>
+    <p><code>src/App.vue::template[lang=html]</code> 可拆成：</p>
+    <ul>
+      <li><code>src/App.vue</code>：项目相对路径；</li>
+      <li><code>::</code>：路径和语义 block 的分隔符；</li>
+      <li><code>template[lang=html]</code>：该 Vue 文件的 template block，语言按默认值规范化为 HTML。</li>
+    </ul>
+    <p>同一个物理文件会产生多个独立身份：</p>
+    <pre>src/App.vue::script[lang=js]
+src/App.vue::template[lang=html]
+src/App.vue::style[index=0;lang=css]</pre>
+    <p>这样删除 template 中的文案时，不会把 script 或 style 的贡献一起覆盖。资源身份是<strong>收集器内部的快照管理键</strong>，不是最终 source map 的字段。</p>
+  </section>
+
+  <section>
+    <h2>3. 为什么 <code>zh_hash.map.json</code> 没有 <code>resource</code></h2>
+    <p>这是一个容易混淆的边界。内部 snapshot 可能长这样：</p>
+    <pre>{
+  "identity": "src/App.vue::template[lang=html]",
+  "projectPath": "src/App.vue",
+  "owner": { "block": "template", "lang": "html" },
+  "entries": [ ... ]
+}</pre>
+    <p>但对外的兼容 source map 仍然是 version 1 结构：</p>
+    <pre>{
+  "version": 1,
+  "parserVersion": "babel-7",
+  "configHash": "...",
+  "entries": [
+    {
+      "key": "&lt;md5&gt;",
+      "value": "首页",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "html-text",
+          "start": { "line": 5, "column": 4 },
+          "end": { "line": 5, "column": 6 }
+        }
+      ]
+    }
+  ]
+}</pre>
+    <p>因此要记住：<code>identity</code> 用来管理“哪份快照替换哪份旧快照”；<code>path/kind/start/end</code> 用来让人追溯“这句文案在原文件什么位置”。项目明确不把 resource identity 写进哈希词典或 source map。</p>
+  </section>
+
+  <section>
+    <h2>4. “快照替换”与“增量构建”并不矛盾</h2>
+    <p>Webpack 的增量性和收集快照的更新策略是两个维度：</p>
+    <table>
+      <tr><th>维度</th><th>问题</th><th>本项目的答案</th></tr>
+      <tr><td>构建执行</td><td>这次需要重新处理哪些模块？</td><td>由 Webpack module graph、依赖失效和缓存决定。</td></tr>
+      <tr><td>资源状态</td><td>某个已处理资源当前贡献哪些文案？</td><td>以该资源的完整新 snapshot 替换旧 snapshot。</td></tr>
+      <tr><td>项目结果</td><td>本轮哪些资源应该进入产物？</td><td>聚合当前 module graph 中仍存活且已验证的 snapshots。</td></tr>
+    </table>
+    <p>例如：</p>
+    <pre>旧 snapshot：App.vue::template → 首页、欢迎回来、提交
+当前源码：  App.vue::template → 首页、提交
+新 snapshot：App.vue::template → 首页、提交</pre>
+    <p>如果只追加“新发现的文本”，收集器没有可靠的删除语义，“欢迎回来”会永久残留。差量方案可以计算 <code>added</code> 和 <code>removed</code>，但仍必须拿到旧完整状态并重新得到当前完整状态；直接提交当前快照更容易处理重试、缓存、事件顺序和失败回滚。</p>
+    <p>这不是“每次重扫整个项目”：Webpack 仍可以只重建受影响的模块，未重跑但仍存活的模块可从 metadata 恢复快照。替换发生在<strong>一个资源身份的状态</strong>上，不是整个项目文件无条件重写。</p>
+  </section>
+
+  <section>
+    <h2>5. 文件维度还是模块维度？</h2>
+    <p>日常可以说“改文件触发重建”，但 Webpack 的调度和缓存核心是 <strong>module graph</strong>。普通 <code>src/message.js</code> 往往近似一个物理文件对应一个模块；Vue SFC 则会把一个物理文件拆成多个带 query 的模块请求：</p>
+    <pre>src/App.vue?vue&amp;type=script&amp;lang=js
+src/App.vue?vue&amp;type=template&amp;lang=html
+src/App.vue?vue&amp;type=style&amp;index=0&amp;lang=css</pre>
+    <p>因此可以近似地说“修改 template 会让整个 <code>.vue</code> 相关构建流程重新评估”，但不能说它一定只重跑一个文件或一定只重跑 template。具体哪些模块失效，取决于 vue-loader、依赖关系和缓存命中。</p>
+    <div class="callout"><strong>精确表述：</strong>失效源头是物理文件变化；Webpack 处理的是关联的模块请求；i18n-collect 再把这些请求规范化为独立的语义 resource identity。</div>
+  </section>
+
+  <section class="exercise">
+    <h2>检索练习：不看答案先说完整链路</h2>
+    <p>修改 <code>src/App.vue</code> 的 template，删除“欢迎回来”，但没有改 script。请回答：</p>
+    <ol>
+      <li>为什么旧文案不会因为“只追加”而永久保留？</li>
+      <li>Webpack 的模块处理和 resource snapshot 的替换分别发生在哪个层面？</li>
+      <li>最终 <code>zh_hash.map.json</code> 会使用哪个字段定位源码，而不是使用 resource identity？</li>
+    </ol>
+    <button data-answer="answer">显示答案</button>
+    <div id="answer" class="answer"><p>重新处理后，<code>src/App.vue::template[lang=html]</code> 提交只包含当前 template 的完整快照，因此“欢迎回来”从该资源的贡献中消失；Webpack 是否重跑 script 等关联模块由 module graph/cache 决定。最终 source map 使用 <code>locations[].path</code>、<code>kind</code> 和行列坐标定位原始源码，不写入 <code>resource</code>。</p></div>
+  </section>
+
+  <aside class="callout"><strong>本课结论：</strong>项目的最小理解单元不是孤立字符串，而是“一个语义资源在一次 collection round 中提交的、可替换且可验证的 snapshot”。</aside>
+  <nav class="lesson-nav" aria-label="课程导航"><span class="edge previous">← 第一课</span><a class="map" href="index.html">课程地图</a><a class="next" href="0002-loader-and-extractors.html">下一课：Loader 与提取器 →</a></nav>
+  <footer><p>主来源：<a href="../README.zh-CN.md">README.zh-CN.md</a>、<a href="../docs/collection-architecture.md">收集架构</a>、<a href="../CONTEXT.md">领域词汇</a>。请把仍然含糊的步骤带回对话，我会按源码继续拆解。</p></footer>
+</main>
+</body>
+</html>

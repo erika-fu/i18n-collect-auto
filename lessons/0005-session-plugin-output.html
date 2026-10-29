@@ -1,9 +1,40 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 5：Session、Plugin 与输出</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head><body><main><header class="masthead"><p class="eyebrow">COURSE · 05 / 10</p><h1>一次收集轮次如何安全地成为正式结果</h1><p>目标：掌握候选/已提交状态、缓存恢复、冲突阻断与多文件事务。</p></header><section><h2>Session 是 compiler 边界内的状态机</h2><p><a href="../packages/i18n-collect/mycommon/session.js">session.js</a> 用 <code>WeakMap&lt;root compiler, CollectionSession&gt;</code> 隔离多个 compiler、并行构建与测试实例，也允许结束的 compiler 被回收。每个 main compilation 有候选 round：</p><div class="flow">begin → submit / noteInvocation / warn
-      ↓
- afterSeal：读取当前 graph metadata、诊断接入
-      ↓ (done, build 成功)
- assemble live snapshots → catalog conflict check
-      ↓
- release = checkpoint → 内存 commit → disk write
-      ↓                          ↓ throws
-      └────────────── success     rollback + abandon</div></section><section><h2>为什么 metadata 是关键而不是缓存漏洞</h2><p>Loader 将普通可序列化信封写进 <code>module.buildInfo.i18nCollect</code>：schema version、canonical root、<code>fileConfigHash</code>、是否 included 和 snapshot。Plugin 可从当前 main/child module graph 恢复它，因此未变模块或 filesystem cache 命中时，快照不会消失。</p><p><code>interpretMetadata</code> 同时检查 schema、root 和 file config hash。任何外来/过期/损坏 metadata 会诊断并使轮次失败，绝不发布“可能属于另一构建”的文本。</p></section><section><h2>Plugin 做什么，明确不做什么</h2><p><a href="../packages/i18n-collect/myplugin/index.js">MyI18nPlugin</a> 在 <code>thisCompilation</code> 建立 round，在 <code>afterSeal</code> 检查 loader 证据，在 <code>done</code> 汇总并发布。它可读取 module graph、session metadata、配置和输出路径；它<strong>不可</strong>读取/解析业务源文件或调用 extractor。</p><p>静态 HTML 是特殊生命周期：HWP child compilation 缓存命中时 Loader 本轮可能不执行。<code>retainStaticHtmlSnapshots</code> 只在模板仍配置、是 file dependency、存在且在 scope 时保留已提交快照；失去任一条件则淘汰。</p></section><section><h2>正式输出是一个原子集合</h2><p>成功 collection 同时发布：MD5 runtime dictionary、v1 source map、源 locale catalog、catalog metadata。<a href="../packages/i18n-collect/mycommon/output.js">output.js</a> 先比较字节，完全相同则不写；否则 journal 记录 temp/backup/final，写临时文件、备份旧文件、替换新文件，最后删 journal。中断或失败时恢复；下一次提交先恢复残留 journal。</p><p>这同时满足两个外部可见保证：失败绝不发布部分结果；watch 不会被相同内容的无效写入无限唤醒。</p></section><section><h2>一个真实限制，不应掩盖</h2><p>应用 bundle 在构建开头导入 dictionary，Plugin 在构建末尾才知道完整新 dictionary。因此一次生产构建会在磁盘写出最新产物，但同次 bundle 可能仍嵌入旧字典。watch 会因真实改动多编译一次，下一轮相同字节不再写，最终收敛。项目有意未引入双阶段构建。</p></section><section class="exercise"><h2>检索练习</h2><p>catalog key conflict 为什么由 Plugin（而不是单个 Loader）在输出前检查？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>冲突的定义跨资源：同一 key 能在多个 Loader 调用中出现，只有聚合所有 live snapshots 才能知道它是否命名不同源文本。Plugin 在 <code>buildCatalog</code> 后、<code>writeOutputs</code> 前失败，故整个正式集合保持上一成功版本。</p></div></section><nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0004-config-and-integration.html">← 上一课：配置与接入</a><a class="map" href="index.html">课程地图</a><a class="next" href="0006-catalog-and-keys.html">下一课：Catalog 与本地化键 →</a></nav><footer><p>主来源：<a href="../packages/i18n-collect/mycommon/session.js">session</a>、<a href="../packages/i18n-collect/myplugin/index.js">plugin</a>、<a href="../docs/collection.md">collection 故障说明</a>。下一课：<a href="0006-catalog-and-keys.html">Catalog 与本地化键</a>。不清楚失败或缓存现象时，请把报错与构建形态发给我。</p></footer></main></body></html>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 5：Session、Plugin 与输出</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
+<body><main><header class="masthead"><p class="eyebrow">COURSE · 05 / 10 · DEEP DIVE</p><h1>一次收集轮次如何安全地成为正式结果</h1><p>本课把“Loader 提交了快照”到“磁盘出现四组产物”之间的状态变化逐步展开。</p></header>
+<section><h2>1. 一个 compilation 对应一个候选 round</h2><p><a href="../packages/i18n-collect/mycommon/session.js">session.js</a> 通过以 root compiler 为键的 <code>WeakMap</code> 隔离不同 compiler。一个 compilation 开始时建立 round，round 只保存本轮候选：</p><pre>round = {
+  invocations: 0,
+  submissions: Map&lt;identity, snapshot&gt;,
+  warnings: Set,
+  abandoned: false
+}</pre><p><code>submit</code> 按 identity 覆盖同一轮中同一资源的提交；<code>noteInvocation</code> 只记录“Loader 被调用”；<code>warn</code> 按 code + identity 去重 warning。它们分别表达不同事实，不能用“entries 为空”代替 invocation。</p></section>
+<section><h2>2. 为什么要把 snapshot 放进 module metadata</h2><p>Loader 写入 <code>module.buildInfo.i18nCollect</code> 的是可序列化信封：</p><pre>{
+  schemaVersion: 1,
+  root: '/canonical/project',
+  fileConfigHash: '...',
+  invoked: true,
+  included: true,
+  snapshot: { identity, projectPath, owner, entries }
+}</pre><p>Webpack filesystem cache 命中时，Loader 可能不重新执行；Plugin 仍可从当前 module graph 的 <code>buildInfo</code> 恢复 snapshot。恢复不是盲信：<code>interpretMetadata</code> 会检查 schema、canonical root 和 <code>fileConfigHash</code>。root 或配置不一致时，metadata 属于另一构建，必须诊断并阻止发布。</p></section>
+<section><h2>3. live set 是什么</h2><p>最终结果不是“session 里历史上提交过的所有 snapshot”，而是当前 compilation/module graph 中仍存活、metadata 合法的 snapshot 集合：</p><div class="flow">当前 modules
+  ↓ 读取 buildInfo.i18nCollect
+校验 root / schema / config hash
+  ↓
+按 identity 去重
+  ↓
+live snapshots
+  ↓
+buildCatalog + dictionary + source map</div><p>因此文件移出 module graph、block 被删除或 scope 不再匹配时，旧贡献不会因为“历史提交”永久保留。静态 HTML 是例外中的例外：HWP child compiler 可能命中缓存而不重新调用 Loader，<code>retainStaticHtmlSnapshots</code> 还要确认模板仍是配置模板、仍是依赖、文件存在且在 scope 内。</p></section>
+<section><h2>4. Plugin 的边界与生命周期</h2><p><a href="../packages/i18n-collect/myplugin/index.js">MyI18nPlugin</a> 可以读取 compilation/module graph、session metadata 和配置；它不读取业务源码、不调用 extractor。典型顺序是：</p><pre>thisCompilation → begin round
+compilation.hooks.afterSeal → 检查 graph、Loader invocation、metadata
+compiler.hooks.done → 构建成功后 assemble/release/write</pre><p>把解析源码放进 Plugin 会破坏 Loader-owned collection：Plugin 看不到准确的 Loader 语义边界，也会把未参与构建的孤儿文件带进结果。</p></section>
+<section><h2>5. 为什么必须先成功再提交</h2><p>候选结果只有在 compilation 没有错误、接入证据完整、catalog 没有 key conflict、输出可以成组写入时，才成为 committed state。失败时：</p><ul><li>round 标记 abandoned；</li><li>内存中的上一成功状态保留；</li><li>磁盘上的 dictionary、source map、source catalog、metadata 都保持旧版本；</li><li>下一次构建重新从当前 graph 产生候选。</li></ul><p>这就是“事务式 collection”：不能发布只收集到一半的词典。</p></section>
+<section><h2>6. 多文件输出为什么需要 journal</h2><p><a href="../packages/i18n-collect/mycommon/output.js">output.js</a> 先序列化并比较每个目标文件的字节。全部相同则直接返回，不创建临时文件，因此 watch 不会因无意义写入再次触发。</p><p>有变化时，流程近似为：</p><div class="flow">写 journal（记录 final/temp/backup）
+  → 写所有 temp 文件
+  → 备份旧 final
+  → 逐个 rename temp → final
+  → 全部成功后删除 journal
+  → 任一步失败则按 journal 恢复</div><p>如果进程在中途退出，下一次提交先调用 <code>recoverCommits</code> 恢复残留 journal，再读取输出。多文件“最终看起来一致”依赖的是这组记录，而不是希望 rename 恰好都成功。</p></section>
+<section><h2>7. 一个真实的时序限制</h2><p>应用模块可能在构建早期导入 <code>zh_hash.json</code>，而 Plugin 只有在 compilation 结束后才能写最新 dictionary。因此本次构建的 bundle 可能嵌入旧字典，但磁盘产物已经是新字典；watch 会再触发一次，下一轮消费新字典。项目选择最终收敛，而不是引入双阶段构建。</p></section>
+<section class="exercise"><h2>检索练习</h2><p>为什么一个 Loader 已经提交了 snapshot，但 compilation 失败后不能直接把它放进 committed store？为什么 output.js 还要单独做 journal？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>Loader 提交的是本轮候选，不代表整轮通过；其他模块错误、跨资源 key conflict 或接入诊断都可能使它无效，所以要保留上一成功 committed store。journal 解决的是另一层问题：四类输出文件必须成组更新，任一 rename 中断都能按记录恢复，避免半新半旧。</p></div></section>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0004-config-and-integration.html">← 上一课：配置与接入</a><a class="map" href="index.html">课程地图</a><a class="next" href="0006-catalog-and-keys.html">下一课：Catalog 与本地化键 →</a></nav><footer><p>主来源：<a href="../packages/i18n-collect/mycommon/session.js">session.js</a>、<a href="../packages/i18n-collect/myplugin/index.js">plugin</a>、<a href="../packages/i18n-collect/mycommon/output.js">output.js</a>。对缓存或 watch 行为有疑问时，请先区分 candidate、live 和 committed。</p></footer>
+</main></body></html>

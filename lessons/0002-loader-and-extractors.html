@@ -1,8 +1,120 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 2：Loader 与提取器</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head><body><main><header class="masthead"><p class="eyebrow">COURSE · 02 / 10</p><h1>Loader：唯一的语义入口</h1><p>目标：理解为何收集发生在 <code>pitch</code>、如何保持透明，以及四个提取器如何分工。</p></header><section><h2>Loader 不是转换器，而是观察者</h2><p><a href="../packages/i18n-collect/myloader/index.js">myloader/index.js</a> 的 <code>pitch</code> 直接读取 <code>resourcePath</code> 的原始字节，再调用 <code>runCollect</code>；普通 loader 函数最终调用：</p><pre>this.callback(null, source, sourceMap, meta)</pre><p>这保证收集不会改变 bundle。<code>this.data.collected</code> 防止 pitch 与正常阶段重复收集；若 pitch 没执行，正常阶段才以其收到的 <code>source</code> 作为后备。</p><p>它必须在后续脚本转换之前、且在 <code>thread-loader</code> 之前：worker 无法可靠地写主进程 compilation/session，因此代码会明确报错而不是产生不完整结果。</p></section><section><h2>一次 Loader 调用的精确路径</h2><div class="flow">pitch → runCollect
-  → loadConfig + trackConfig
-  → canonicalPair + describeResource
-  → isResourceIncluded（include 后由 exclude 否决）
-  → collectedFor（按 block 分派 extractor）
-  → snapshotFor
-  → record（module.buildInfo + session.submit）
-  → 普通阶段透明 callback</div><p>被排除、无中文、或不支持的 style 也留下 invocation 证据；否则 Plugin 无法区分“已接入但结果为空”与“忘记接 Loader”。</p></section><section><h2>资源分类与 extractor</h2><table><tr><th>资源</th><th>提取器</th><th>收集内容</th></tr><tr><td>JS/TS/JSX</td><td><code>extractScript</code></td><td>非 import/export specifier 的字符串、template literal 的静态 Han 段。</td></tr><tr><td>Vue script</td><td><code>extractVueScript</code></td><td>定位并遮罩 SFC 外部字符以保持源码坐标，然后复用脚本提取。</td></tr><tr><td>Vue template / HTML</td><td><code>extractHtml</code></td><td>文本、白名单属性、插值、动态绑定中的静态片段；解析不执行。</td></tr><tr><td>CSS / Vue style</td><td><code>extractCss</code></td><td>仅 <code>content:</code> 声明中的静态字符串。SCSS 等产生一次 warning 与空快照。</td></tr></table><p>提取器是纯模块：不触碰 Webpack hooks、session 或输出。这样可用小 fixture 精确测试语义与坐标。</p></section><section><h2>三项共享语义</h2><ol><li><strong>Han 门槛：</strong><code>containsHan</code> 用 Unicode Han Script 判断；一段只要含一个 Han，整段静态文本保留。</li><li><strong>指令：</strong>紧邻且只隔空白的 <code>no-i18n-auto</code> 排除下一个关联片段；<code>i18n-key: a.b</code> 提供显式键。畸形 key 与同片段不同 key 是收集失败。</li><li><strong>位置：</strong>值可经 HTML entity/CSS escape 解码，范围仍锚定原始拼写；行 1-based、列 0-based UTF-16、end exclusive。</li></ol></section><section class="exercise"><h2>检索练习</h2><p>为何 Vue block 的收集器再次读取当前 <code>.vue</code> 文件，而普通 JS 通常直接使用 loader 的 <code>source</code>？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>vue-loader 的 block 输入可能被去缩进、填充或转换，无法稳定恢复原始列。重新读取<strong>当前正在处理</strong>的 SFC 是为原始坐标的最小例外，不是 Plugin 扫描，更不是跨文件收集。普通脚本的 pitch 已拿到原始字节，无需此例外。</p></div></section><nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0001-system-map.html">← 上一课：系统地图</a><a class="map" href="index.html">课程地图</a><a class="next" href="0003-extraction-semantics.html">下一课：提取语义 →</a></nav><footer><p>主来源：<a href="../packages/i18n-collect/myloader/index.js">loader</a>、<a href="../docs/collection-architecture.md">架构 §3、§8、§10</a>。速查：<a href="../reference/0002-system-atlas.html">函数地图</a>。下一课：<a href="0003-extraction-semantics.html">提取语义</a>。有任何源码路径不清楚，请直接问我。</p></footer></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>课程 2：Loader、pitch 与观察者模型</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script defer src="../assets/lesson.js"></script>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <p class="eyebrow">COURSE · 02 / 10 · DEEP DIVE</p>
+    <h1>Loader 不是转换器，而是观察者</h1>
+    <p>本课逐行解释 Loader Context、pitch、透明 callback，以及为什么收集要尽早发生但不能改变 bundle。</p>
+  </header>
+
+  <section>
+    <h2>1. 先区分两种 Loader</h2>
+    <h3>转换器 Loader</h3>
+    <p>普通 Loader 的职责是把输入 source 变成另一份 source，供后续 Loader 或 Webpack 使用：</p>
+    <pre>TypeScript：const n: number = 1
+       ↓
+JavaScript：const n = 1</pre>
+    <p>它改变模块内容，是构建主路径上的加工步骤。</p>
+    <h3>本项目的观察者 Loader</h3>
+    <p><code>myloader</code> 的目标是发现文案、记录位置和提交 snapshot；它不把源码改成 <code>$t(...)</code>，也不把中文替换成翻译。它走的是一条“观察旁路”：</p>
+    <div class="flow">source ──→ myloader ──→ 同一份 source ──→ 真正的转换 Loader ──→ bundle
+              │
+              └── entries → snapshot → session / module metadata → Plugin 输出语言文件</div>
+    <p>所以 <a href="../packages/i18n-collect/myloader/index.js">myloader/index.js</a> 在普通阶段最终执行：</p>
+    <pre>this.callback(null, source, sourceMap, meta)</pre>
+    <p>四个参数的意思是：没有 error；输出仍是原 source；source map 原样传递；metadata 原样传递。收集结果不进入 bundle，而是进入 session 和 module metadata。</p>
+  </section>
+
+  <section>
+    <h2>2. <code>this</code> 到底是谁</h2>
+    <p>Webpack 的 loader-runner 调用普通 Loader 时，语义上近似于：</p>
+    <pre>loader.call(loaderContext, source, sourceMap, meta)</pre>
+    <p>因此 Loader 中的 <code>this</code> 是当前模块请求的 <strong>Loader Context</strong>，不是 Vue 组件实例，也不是 Node 全局对象。</p>
+    <table>
+      <tr><th>字段 / 方法</th><th>含义</th><th>本项目用途</th></tr>
+      <tr><td><code>resourcePath</code></td><td>当前资源的物理绝对路径</td><td>读取当前文件原始字节</td></tr>
+      <tr><td><code>resourceQuery</code></td><td>模块请求的 query</td><td>辨认 Vue 的 script/template/style</td></tr>
+      <tr><td><code>rootContext</code></td><td>Webpack 根目录</td><td>寻找配置并计算项目相对路径</td></tr>
+      <tr><td><code>data</code></td><td>当前 Loader 的 pitch/normal 共享对象</td><td>记录 <code>collected</code> 防重复收集</td></tr>
+      <tr><td><code>_module</code></td><td>当前 Webpack Module</td><td>写入 <code>buildInfo</code> metadata 以支持缓存恢复</td></tr>
+      <tr><td><code>_compilation</code> / <code>_compiler</code></td><td>当前 compilation / compiler</td><td>找到并提交当前 collection session</td></tr>
+      <tr><td><code>getOptions()</code></td><td>读取 loader 配置</td><td>取得 root 等选项</td></tr>
+      <tr><td><code>addDependency()</code></td><td>声明额外依赖</td><td>配置文件变化能触发构建</td></tr>
+      <tr><td><code>callback()</code></td><td>结束普通 Loader 调用</td><td>透明传递 source、sourceMap、meta</td></tr>
+    </table>
+    <p>因此项目代码使用普通函数而不是箭头函数；箭头函数会捕获定义处的 <code>this</code>，不能接收 Webpack 提供的 Loader Context。</p>
+  </section>
+
+  <section>
+    <h2>3. pitch 是什么</h2>
+    <p>一个 Loader 可以有普通函数和同名的 <code>pitch</code> 属性：</p>
+    <pre>function loader(source) { /* normal 阶段 */ }
+loader.pitch = function pitch() { /* pitch 阶段 */ }</pre>
+    <p>对于一条 Loader 链，Webpack 先运行 pitch，再运行普通函数。简化为：</p>
+    <pre>Loader A → myloader → Loader B
+
+pitch：  A.pitch → myloader.pitch → B.pitch
+normal： B(source) → myloader(source) → A(source)</pre>
+    <p>pitch 阶段可以提前观察资源，也可以通过返回值让链路短路；本项目不在 pitch 返回转换结果，而是只调用 <code>runCollect</code> 后继续正常链路。</p>
+  </section>
+
+  <section>
+    <h2>4. 为什么在 pitch 中读原始文件</h2>
+    <p>普通阶段收到的 <code>source</code> 可能已经经过别的 Loader 处理。项目希望 source map 指向开发者编辑的原始文件，因此在 <a href="../packages/i18n-collect/myloader/index.js#L182-L185">index.js:182-185</a> 中：</p>
+    <pre>loader.pitch = function pitch() {
+  runCollect(this, fs.readFileSync(this.resourcePath, 'utf8'))
+  if (this.data) this.data.collected = true
+}</pre>
+    <p>这表示：用 <code>resourcePath</code> 找当前资源的磁盘原始字节，交给 <code>runCollect</code>；不把读取结果作为 Loader 输出。</p>
+    <p>Vue 特别重要：<code>App.vue</code> 可能被 vue-loader 拆成带 query 的请求，template 输入可能去缩进，script/style 可能补行或转换。项目允许 Loader 读取<strong>当前正在处理的 resourcePath 自身</strong>来恢复原始 block 坐标，但禁止借此扫描其他文件。普通 JS 通常可以直接使用 pitch 看到的 source。</p>
+  </section>
+
+  <section>
+    <h2>5. 为什么不重复收集</h2>
+    <p>一次 Loader 请求有 pitch 和 normal 两个机会。pitch 成功后把状态写入共享的 <code>this.data</code>：</p>
+    <pre>pitch：this.data.collected = true
+normal：if (!this.data || !this.data.collected) runCollect(this, source)</pre>
+    <p>这样正常路径是“pitch 收集一次，normal 透明放行”。如果由于特殊 Loader 链行为 pitch 没执行，normal 阶段才用它收到的 source 作为后备。后备不是第二次收集，而是保证没有 pitch 时仍有机会留下 invocation 和 snapshot。</p>
+  </section>
+
+  <section>
+    <h2>6. 从 <code>runCollect</code> 回到主流程</h2>
+    <div class="flow">runCollect(this, sourceText)
+  1. 检查 thread-loader，保证在主进程
+  2. loadConfig + trackConfig
+  3. canonicalPair + describeResource
+  4. include 后由 exclude 否决
+  5. collectedFor 选择 extractor
+  6. snapshotFor 包装 resource identity / owner / entries
+  7. record 写 module.buildInfo，并向 session.submit
+  8. normal 阶段 callback(null, source, sourceMap, meta)</div>
+    <p>被 include/exclude 排除、没有汉字、或 style 语言不支持时，也会留下 invocation 证据；否则 Plugin 无法区分“Loader 已接入但这次确实没有结果”和“根本没有接入 Loader”。</p>
+  </section>
+
+  <section class="exercise">
+    <h2>检索练习：观察者能不能改变源码</h2>
+    <p>假设 <code>myloader.pitch</code> 收集到了“首页”，然后普通函数收到的 <code>source</code> 是原始 Vue 代码。请回答：</p>
+    <ol>
+      <li><code>this</code> 是什么对象？</li>
+      <li>为什么 pitch 可以读取文件，却不会让 bundle 直接变成语言文件？</li>
+      <li>哪一行保证 myloader 不修改应用源码？</li>
+      <li><code>this.data.collected</code> 防止了什么？</li>
+    </ol>
+    <button data-answer="answer">显示答案</button>
+    <div id="answer" class="answer"><p><code>this</code> 是当前模块请求的 Webpack Loader Context；pitch 的读取只是观察和记录，结果通过 session/metadata 旁路交给 Plugin，普通输出仍是源码；<code>this.callback(null, source, sourceMap, meta)</code> 保证透明传递；<code>this.data.collected</code> 防止 pitch 和 normal 阶段重复收集。</p></div>
+  </section>
+
+  <aside class="callout"><strong>本课结论：</strong>Loader 的身份由 Webpack 决定，但它的职责可以是观察而非转换。<code>myloader</code> 读取原始资源、提交快照，然后把同一份构建数据放行。</aside>
+  <nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0001-system-map.html">← 上一课：系统地图</a><a class="map" href="index.html">课程地图</a><a class="next" href="0003-extraction-semantics.html">下一课：提取器与语义 →</a></nav>
+  <footer><p>主来源：<a href="../packages/i18n-collect/myloader/index.js">loader 实现</a>、<a href="../docs/collection-architecture.md#L346-L364">透明传递契约</a>、<a href="https://webpack.js.org/api/loaders/">Webpack Loader API</a>。不清楚任何字段时，请带着具体代码行继续追问。</p></footer>
+</main>
+</body>
+</html>

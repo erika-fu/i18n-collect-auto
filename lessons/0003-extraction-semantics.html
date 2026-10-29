@@ -1,6 +1,136 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 3：提取语义</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head><body><main><header class="masthead"><p class="eyebrow">COURSE · 03 / 10</p><h1>从源码到条目：只认静态、保留语义</h1><p>目标：能预测一段 JS、Vue、HTML 或 CSS 是否收集、产生什么 semantic kind，以及为什么。</p></header><section><h2>脚本：Babel AST，而非正则或执行</h2><p><a href="../packages/i18n-collect/myloader/extract-script.js">extract-script.js</a> 使用 Babel parser/traverse。普通字符串产生 <code>script-string</code>；反引号字面量的每个静态段分别产生 <code>template-literal</code>。表达式绝不求值，import/export module specifier 被跳过。</p><pre>const n = 3
-const a = '欢迎'        // 收集：script-string “欢迎”
-const b = `有${n}条任务` // 收集：template-literal “有”、 “条任务”
-import x from '中文包名' // 不收集：不是用户文案位置</pre><p>可选 <code>contextFilters</code> 只处理脚本候选：logging/tests/analytics 都是精确 AST 上下文策略，默认不启用，避免“看起来不像 UI”就被无声丢弃。</p></section><section><h2>HTML/Vue：结构决定 semantic kind</h2><table><tr><th>位置</th><th>种类</th><th>关键规则</th></tr><tr><td>Vue template 文本</td><td><code>html-text</code></td><td>每个 text node 独立；格式首尾空白可排除，不跨元素合并。</td></tr><tr><td>Vue 白名单属性</td><td><code>html-attribute</code></td><td>默认仅 title/placeholder/alt/aria-label/value；动态 binding 只取可静态确定片段。</td></tr><tr><td>Vue 插值</td><td><code>template-expression</code></td><td>其中 JS 由 Babel 解析，仍不执行。</td></tr><tr><td>独立 HTML</td><td><code>static-html-text</code> / <code>static-html-attribute</code></td><td>与 Vue 分开，因其运行时/替换含义不同。</td></tr></table><p><code>parse5</code> 解码 <code>&amp;nbsp;</code> 等 entity 后作为文案值，但 source range 保留原始 spelling；EJS 占位符不执行、不改写。</p></section><section><h2>CSS：非常小的支持面是安全决策</h2><p>只提取标准 CSS <code>content</code> 声明内的字符串，种类为 <code>css-generated-content</code>：</p><pre>.badge::after { content: '第' counter(n) '项'; }
-/* 收集：“第”、 “项” */
-.x { --label: '内部文案'; } /* 不收集：custom property */</pre><p>这比“收集 CSS 中一切中文”更正确：选择器、注释、变量定义不是可靠的用户可见副本。预处理器没有正式 parser 时仅 warning，宁漏报也不误解析。</p></section><section><h2>指令的关联单位</h2><p>指令不作用于“下一行任意文本”，而作用于紧随其后的<strong>构造</strong>：脚本字符串/模板字面量，HTML 元素或 text node，CSS content 声明或其中字符串。它只移除该构造的第一个可收集片段；两个指令锁定同片段也只移除一次。被排除的片段不创建显式 key。</p></section><section class="exercise"><h2>检索练习</h2><p>以下代码会产生几个条目、分别是什么？<br><code>&lt;input :placeholder=&quot;'请输入' + name&quot; data-tip=&quot;中文&quot;&gt;</code></p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>一个：<code>html-attribute</code> 的“请输入”。<code>:placeholder</code> 归一后在白名单中，且字符串是静态片段；<code>data-tip</code> 不在 allowlist，故即使含中文也不收集。</p></div></section><nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0002-loader-and-extractors.html">← 上一课：Loader 与提取器</a><a class="map" href="index.html">课程地图</a><a class="next" href="0004-config-and-integration.html">下一课：配置与接入 →</a></nav><footer><p>主来源：<a href="../README.md">README“什么会被收集”</a>、<a href="../docs/collection-architecture.md">架构 §11–15</a>。下一课：<a href="0004-config-and-integration.html">配置与接入</a>。不清楚某个边界时，请把源码片段发给我一起推演。</p></footer></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>课程 3：资源分发与提取语义</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script defer src="../assets/lesson.js"></script>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <p class="eyebrow">COURSE · 03 / 10 · DEEP DIVE</p>
+    <h1>先分类，再提取：为什么每种资源要有自己的 extractor</h1>
+    <p>本课把 <code>runCollect → describeResource → collectedFor → extractor</code> 逐步展开，并解释 Han 门槛、指令和坐标为何属于共享语义。</p>
+  </header>
+
+  <section>
+    <h2>1. <code>runCollect</code> 不直接猜文件类型</h2>
+    <p><code>runCollect</code> 首先把 Loader Context 中的两个输入交给 <a href="../packages/i18n-collect/myloader/resource.js#L66-L114">resource.js:66-114</a>：</p>
+    <pre>resourcePath  = /project/src/App.vue
+resourceQuery = ?vue&amp;type=template&amp;lang=html</pre>
+    <p><code>describeResource</code> 负责把它们规范化为一个普通 JavaScript 对象：</p>
+    <pre>{
+  absolutePath: '/project/src/App.vue',
+  projectPath: 'src/App.vue',
+  query: '?vue&amp;type=template&amp;lang=html',
+  block: 'template',
+  styleIndex: null,
+  lang: 'html',
+  identity: 'src/App.vue::template[lang=html]'
+}</pre>
+    <p>这里的 <code>block</code> 才是分发开关。分类和提取分开，意味着 extractor 不需要了解 Webpack hooks、session 或输出文件。</p>
+  </section>
+
+  <section>
+    <h2>2. <code>describeResource</code> 怎样分类</h2>
+    <table>
+      <tr><th>输入形状</th><th>block</th><th>lang / index</th><th>identity 示例</th></tr>
+      <tr><td><code>src/a.js</code>、<code>.ts</code> 等</td><td><code>script</code></td><td>普通脚本</td><td><code>src/a.js::script</code></td></tr>
+      <tr><td><code>src/page.html</code></td><td><code>html</code></td><td>HTML</td><td><code>src/page.html::html</code></td></tr>
+      <tr><td><code>src/base.css</code></td><td><code>style</code></td><td><code>index=0, lang=css</code></td><td><code>src/base.css::style[index=0;lang=css]</code></td></tr>
+      <tr><td><code>App.vue?vue&amp;type=script&amp;lang=js</code></td><td><code>script</code></td><td><code>js</code></td><td><code>src/App.vue::script[lang=js]</code></td></tr>
+      <tr><td><code>App.vue?vue&amp;type=template&amp;lang=html</code></td><td><code>template</code></td><td><code>html</code></td><td><code>src/App.vue::template[lang=html]</code></td></tr>
+      <tr><td><code>App.vue?vue&amp;type=style&amp;index=1&amp;lang=scss</code></td><td><code>style</code></td><td><code>index=1, lang=scss</code></td><td><code>src/App.vue::style[index=1;lang=scss]</code></td></tr>
+    </table>
+    <p>Vue 的 <code>type</code> query 优先描述语义 block；普通文件则主要由扩展名决定。无关 query（如 <code>id</code>、<code>scoped</code>、<code>prod</code>）不会制造新的 identity；style 的序号和语言会保留，因为它们影响收集语义。</p>
+  </section>
+
+  <section>
+    <h2>3. <code>collectedFor</code> 的分发树</h2>
+    <p>在 <a href="../packages/i18n-collect/myloader/index.js#L108-L137">index.js:108-137</a> 中，分发顺序很有意义：</p>
+    <div class="flow">resource.projectPath 是 .vue 且 resource.block === 'script'？
+  └─ 是 → extractVueScript（定位原始 SFC block，再复用脚本提取）
+否则 resource.block === 'template' 或 'html'？
+  └─ 是 → extractHtml
+否则 resource.block === 'script'？
+  └─ 是 → extractScript
+否则 resource.block === 'style'？
+  └─ 是 → extractCss
+否则
+  └─ null（没有可用 extractor）</div>
+    <table>
+      <tr><th>extractor</th><th>负责什么</th><th>为什么不能全用一个解析器</th></tr>
+      <tr><td><code>extractVueScript</code></td><td>定位原始 <code>.vue</code> 的 script，再交给脚本语义</td><td>需要保留 SFC 原始坐标并遮罩其他 block</td></tr>
+      <tr><td><code>extractScript</code></td><td>字符串字面量和 template literal 静态段</td><td>需要 Babel AST，且要排除 import/export specifier</td></tr>
+      <tr><td><code>extractHtml</code></td><td>HTML/Vue 文本、白名单属性、插值与绑定中的静态段</td><td>需要 HTML 解析和表达式解析，不能把标签属性当普通 JS</td></tr>
+      <tr><td><code>extractCss</code></td><td>CSS <code>content:</code> 中的静态字符串</td><td>需要 CSS AST；普通 CSS 字符串不等于用户可见文案</td></tr>
+    </table>
+    <p>例如 Vue template 会调用 <code>extractHtml</code>，但 Vue script 不直接调用普通 <code>extractScript</code>：前者需要恢复 template 原始范围，后者需要先定位并遮罩 SFC 外部内容。</p>
+  </section>
+
+  <section>
+    <h2>4. Han 门槛：候选文案的最低条件</h2>
+    <p>共享函数 <a href="../packages/i18n-collect/myloader/resource.js#L6-L8">resource.js:6-8</a> 是：</p>
+    <pre>function containsHan(value) {
+  return typeof value === 'string' &amp;&amp; /\p{Script=Han}/u.test(value)
+}</pre>
+    <p>它的意思是：一个已经被 extractor 划出的<strong>静态片段</strong>，只要含有至少一个 Unicode Han 字符，就保留整段；完全没有 Han，就跳过。</p>
+    <table>
+      <tr><th>片段</th><th>结果</th><th>原因</th></tr>
+      <tr><td><code>保存成功（2 项）</code></td><td>收集完整片段</td><td>至少含一个 Han；数字、标点、空格也属于同一文案</td></tr>
+      <tr><td><code>Hello，保存成功！</code></td><td>收集完整片段</td><td>英文不妨碍，存在 Han 即通过</td></tr>
+      <tr><td><code>Hello world</code></td><td>跳过</td><td>没有 Han</td></tr>
+      <tr><td><code>class-name</code></td><td>跳过</td><td>通常是技术标识而非中文用户文案</td></tr>
+    </table>
+    <p>Han 门槛不是“只截取汉字”，也不是完整的语言识别器。它只是这个中文源文案项目的噪声过滤器：先由 extractor 判断语义位置，再由 <code>containsHan</code> 判断该片段是否有理由进入收集结果。</p>
+  </section>
+
+  <section>
+    <h2>5. <code>i18n-key</code> 是业务键，不是资源身份</h2>
+    <p>在目标片段前面紧邻的注释可以显式命名本地化键：</p>
+    <pre>&lt;!-- i18n-key: home.title --&gt;
+&lt;h1&gt;首页&lt;/h1&gt;</pre>
+    <p>脚本中使用 JavaScript 注释：</p>
+    <pre>/* i18n-key: order.submit */
+const label = '提交'</pre>
+    <p>它只负责命名，不负责排除；要排除文案仍需 <code>no-i18n-auto</code>。没有显式键时，项目会根据项目相对路径、语义种类和文案派生键，且不含行列号，所以在文件内移动同一文案不会仅因坐标变化而换键。</p>
+    <p>键格式要求以字母开头，由点分隔的段组成，每段可含字母、数字、<code>_</code> 和 <code>-</code>，如 <code>home.title</code>、<code>order.submit-button</code>。形状错误、同一片段被两条不同 key 命名，都会使本轮失败而不是静默猜测。</p>
+    <div class="callout"><strong>三者再对照：</strong><code>resource identity</code> 管“哪份快照”；MD5 管“文本兼容与去重”；<code>i18n-key</code> 管“业务翻译名称”。</div>
+  </section>
+
+  <section>
+    <h2>6. 提取器返回什么</h2>
+    <p>extractor 是纯模块，不写 session，也不发布文件。它返回条目；Loader 再把条目包装成 snapshot：</p>
+    <pre>entry = {
+  value: '首页',
+  locations: [{ path, kind, start, end }],
+  key: 'home.title' // 只有存在合法 i18n-key 时才有
+}
+
+snapshot = {
+  identity,
+  projectPath,
+  owner: { block, styleIndex, lang },
+  entries
+}</pre>
+    <p>值可能经过 HTML entity 或 CSS escape 解码，但 location 仍指向原始拼写；行号从 1 开始，列号从 0 开始，end 为 exclusive。这就是“用户看到的值”和“开发者编辑的坐标”同时可靠的原因。</p>
+  </section>
+
+  <section class="exercise">
+    <h2>检索练习：手动走一次分发</h2>
+    <p>对下面三个请求分别写出 <code>block</code>、extractor 和是否通过 Han 门槛：</p>
+    <pre>1. /project/src/App.vue?vue&amp;type=template&amp;lang=html，内容：&lt;p&gt;Hello，欢迎！&lt;/p&gt;
+2. /project/src/message.js，内容：const x = 'submit'
+3. /project/src/base.css，内容：.x::after { content: '必填'; }</pre>
+    <button data-answer="answer">显示答案</button>
+    <div id="answer" class="answer"><p>1：<code>template → extractHtml</code>；“Hello，欢迎！”含 Han，收集整段。2：<code>script → extractScript</code>；“submit”没有 Han，跳过。3：<code>style → extractCss</code>；CSS 只检查 <code>content:</code> 的静态字符串，“必填”含 Han，收集。分类先于 Han 判断，Han 不能把技术位置自动变成文案位置。</p></div>
+  </section>
+
+  <aside class="callout"><strong>本课结论：</strong><code>describeResource</code> 负责回答“这是什么语义资源”，<code>collectedFor</code> 负责回答“交给哪个 extractor”，extractor 负责回答“这个语义位置有哪些可收集片段”。</aside>
+  <nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0002-loader-and-extractors.html">← 上一课：Loader 与 pitch</a><a class="map" href="index.html">课程地图</a><a class="next" href="0004-config-and-integration.html">下一课：配置与接入 →</a></nav>
+  <footer><p>主来源：<a href="../packages/i18n-collect/myloader/resource.js">resource.js</a>、<a href="../packages/i18n-collect/myloader/index.js">index.js</a>、<a href="../README.zh-CN.md#L117-L127">README：收集文案</a>。遇到某个 extractor 的边界时，请继续带着示例提问。</p></footer>
+</main>
+</body>
+</html>
