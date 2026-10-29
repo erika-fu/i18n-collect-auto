@@ -1,0 +1,836 @@
+{
+  "version": 1,
+  "sourceLocale": "zh",
+  "format": "json",
+  "entries": {
+    "public.index.2cc68d98": {
+      "source": "页面提示",
+      "fingerprint": "5269ad228225383d",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-attribute",
+          "start": {
+            "line": 14,
+            "column": 14
+          },
+          "end": {
+            "line": 14,
+            "column": 18
+          }
+        }
+      ]
+    },
+    "public.index.6681f618": {
+      "source": "页面文案",
+      "fingerprint": "12abdae1e423cf79",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-text",
+          "start": {
+            "line": 14,
+            "column": 20
+          },
+          "end": {
+            "line": 14,
+            "column": 24
+          }
+        }
+      ]
+    },
+    "src.App.3bf487c7": {
+      "source": "文本与属性",
+      "fingerprint": "d19af12866a1d67c",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 39,
+            "column": 31
+          },
+          "end": {
+            "line": 39,
+            "column": 38
+          }
+        }
+      ]
+    },
+    "src.App.47d04338": {
+      "source": "脚本字符串",
+      "fingerprint": "2091a26a01cff71e",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 37,
+            "column": 31
+          },
+          "end": {
+            "line": 37,
+            "column": 38
+          }
+        }
+      ]
+    },
+    "src.App.53ddac51": {
+      "source": "样式内容",
+      "fingerprint": "9f95abc7ef8e0b5a",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 40,
+            "column": 30
+          },
+          "end": {
+            "line": 40,
+            "column": 36
+          }
+        }
+      ]
+    },
+    "src.App.a6aa3e7a": {
+      "source": "模板字符串",
+      "fingerprint": "47a5e47c550cecfb",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 38,
+            "column": 32
+          },
+          "end": {
+            "line": 38,
+            "column": 39
+          }
+        }
+      ]
+    },
+    "src.App.b8b1dbb8": {
+      "source": "插值",
+      "fingerprint": "c8213dc7da9aaaab",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 36,
+            "column": 29
+          },
+          "end": {
+            "line": 36,
+            "column": 33
+          }
+        }
+      ]
+    },
+    "src.base.b35c87c8": {
+      "source": "独立样式",
+      "fingerprint": "c920fed11bdd636d",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/base.css",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 2,
+            "column": 12
+          },
+          "end": {
+            "line": 2,
+            "column": 16
+          }
+        }
+      ]
+    },
+    "src.copy.6514a00c": {
+      "source": "公共模板",
+      "fingerprint": "92d7f24ee3dea089",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/copy.js",
+          "kind": "template-literal",
+          "start": {
+            "line": 2,
+            "column": 28
+          },
+          "end": {
+            "line": 2,
+            "column": 32
+          }
+        }
+      ]
+    },
+    "src.copy.aeacf99a": {
+      "source": "片段",
+      "fingerprint": "908e56fe5ed8ba83",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/copy.js",
+          "kind": "template-literal",
+          "start": {
+            "line": 2,
+            "column": 36
+          },
+          "end": {
+            "line": 2,
+            "column": 38
+          }
+        }
+      ]
+    },
+    "src.copy.afd76ccc": {
+      "source": "来自独立脚本的公共词条",
+      "fingerprint": "f7389c0bddffc0cf",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/copy.js",
+          "kind": "script-string",
+          "start": {
+            "line": 1,
+            "column": 26
+          },
+          "end": {
+            "line": 1,
+            "column": 39
+          }
+        }
+      ]
+    },
+    "src.pages.HomePage.2a9e546f": {
+      "source": "插值",
+      "fingerprint": "c8213dc7da9aaaab",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/HomePage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 17,
+            "column": 13
+          },
+          "end": {
+            "line": 17,
+            "column": 17
+          }
+        }
+      ]
+    },
+    "src.pages.HomePage.9eb1a132": {
+      "source": "名字",
+      "fingerprint": "6773310492a96fcf",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/HomePage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 18,
+            "column": 9
+          },
+          "end": {
+            "line": 18,
+            "column": 13
+          }
+        }
+      ]
+    },
+    "src.pages.HomePage.a21b8385": {
+      "source": "我不好",
+      "fingerprint": "e5fdd049175eaa1f",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/HomePage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 19,
+            "column": 9
+          },
+          "end": {
+            "line": 19,
+            "column": 14
+          }
+        }
+      ]
+    },
+    "src.pages.HomePage.aa0e1597": {
+      "source": "这是",
+      "fingerprint": "f3411f682cda54f9",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/HomePage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 7,
+            "column": 13
+          },
+          "end": {
+            "line": 7,
+            "column": 15
+          }
+        }
+      ]
+    },
+    "src.pages.HomePage.dbcd3835": {
+      "source": "的名字呀",
+      "fingerprint": "9c8f2143e32d30a3",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/HomePage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 7,
+            "column": 19
+          },
+          "end": {
+            "line": 7,
+            "column": 23
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.48009562": {
+      "source": "纯静态插值",
+      "fingerprint": "6df89e2c97f666d2",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 6,
+            "column": 11
+          },
+          "end": {
+            "line": 6,
+            "column": 16
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.5b31b91a": {
+      "source": "你有",
+      "fingerprint": "533fa2b46a36380d",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-literal",
+          "start": {
+            "line": 24,
+            "column": 14
+          },
+          "end": {
+            "line": 24,
+            "column": 16
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.7d553bba": {
+      "source": "条未读消息",
+      "fingerprint": "e0b9ed900a7ee326",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-literal",
+          "start": {
+            "line": 24,
+            "column": 29
+          },
+          "end": {
+            "line": 24,
+            "column": 34
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.86388d2e": {
+      "source": "欢迎",
+      "fingerprint": "960d96a6920e3c49",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 4,
+            "column": 11
+          },
+          "end": {
+            "line": 4,
+            "column": 13
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.9f41356f": {
+      "source": "拼接后的中文",
+      "fingerprint": "a12a0e1f6c28cfcf",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 7,
+            "column": 18
+          },
+          "end": {
+            "line": 7,
+            "column": 26
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.c42b7887": {
+      "source": "小明",
+      "fingerprint": "df3ea25a4369305a",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 17,
+            "column": 12
+          },
+          "end": {
+            "line": 17,
+            "column": 16
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.eb835181": {
+      "source": "模板字符串",
+      "fingerprint": "47a5e47c550cecfb",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 16,
+            "column": 13
+          },
+          "end": {
+            "line": 16,
+            "column": 20
+          }
+        }
+      ]
+    },
+    "src.pages.LiteralPage.ecf7d199": {
+      "source": "回来",
+      "fingerprint": "b3ab908cef2352cd",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 4,
+            "column": 20
+          },
+          "end": {
+            "line": 4,
+            "column": 22
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.26c98dee": {
+      "source": "姓名提示",
+      "fingerprint": "3c6c07427a3d62aa",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 9,
+            "column": 15
+          },
+          "end": {
+            "line": 9,
+            "column": 19
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.2d62b446": {
+      "source": "静态段落里的中文",
+      "fingerprint": "110405c48dc29f4e",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 4,
+            "column": 7
+          },
+          "end": {
+            "line": 4,
+            "column": 15
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.387ef4df": {
+      "source": "关闭",
+      "fingerprint": "3fd47edce45b3603",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 15,
+            "column": 30
+          },
+          "end": {
+            "line": 15,
+            "column": 32
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.45f6bf77": {
+      "source": "姓名",
+      "fingerprint": "50b5b1d2abefbca6",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 6,
+            "column": 6
+          },
+          "end": {
+            "line": 6,
+            "column": 8
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.6d8e2561": {
+      "source": "小红",
+      "fingerprint": "73b784d6bf997d84",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 26,
+            "column": 12
+          },
+          "end": {
+            "line": 26,
+            "column": 16
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.80931103": {
+      "source": "文本与属性",
+      "fingerprint": "d19af12866a1d67c",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 25,
+            "column": 13
+          },
+          "end": {
+            "line": 25,
+            "column": 20
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.9f22c7af": {
+      "source": "请输入姓名",
+      "fingerprint": "c59d0536d789dc0a",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 8,
+            "column": 21
+          },
+          "end": {
+            "line": 8,
+            "column": 26
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.a7ae3cf9": {
+      "source": "当前用户",
+      "fingerprint": "a569c636d974551c",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 10,
+            "column": 22
+          },
+          "end": {
+            "line": 10,
+            "column": 26
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.b9f7b9d3": {
+      "source": "示例图片",
+      "fingerprint": "32359fdc59ff98b0",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 13,
+            "column": 14
+          },
+          "end": {
+            "line": 13,
+            "column": 18
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.cdcf43a1": {
+      "source": "提交按钮",
+      "fingerprint": "924d8df007a36efb",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 14,
+            "column": 32
+          },
+          "end": {
+            "line": 14,
+            "column": 36
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.dd539f21": {
+      "source": "旁白",
+      "fingerprint": "101f6e6d6095ef5e",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 16,
+            "column": 29
+          },
+          "end": {
+            "line": 16,
+            "column": 31
+          }
+        }
+      ]
+    },
+    "src.pages.MarkupPage.e90dd801": {
+      "source": "关闭面板",
+      "fingerprint": "e453bb7ac8e1856a",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/MarkupPage.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 15,
+            "column": 24
+          },
+          "end": {
+            "line": 15,
+            "column": 28
+          }
+        }
+      ]
+    },
+    "src.pages.ScriptPage.8c84898f": {
+      "source": "保存",
+      "fingerprint": "a3030bf8f16dc63c",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 25,
+            "column": 14
+          },
+          "end": {
+            "line": 25,
+            "column": 18
+          }
+        }
+      ]
+    },
+    "src.pages.ScriptPage.95001501": {
+      "source": "同一句出现两次",
+      "fingerprint": "669397634338ed0c",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 24,
+            "column": 12
+          },
+          "end": {
+            "line": 24,
+            "column": 21
+          }
+        },
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 33,
+            "column": 20
+          },
+          "end": {
+            "line": 33,
+            "column": 29
+          }
+        }
+      ]
+    },
+    "src.pages.ScriptPage.d4c4cc3b": {
+      "source": "这是一段写在脚本里的中文",
+      "fingerprint": "7d91ef4abab4434f",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 21,
+            "column": 15
+          },
+          "end": {
+            "line": 21,
+            "column": 29
+          }
+        }
+      ]
+    },
+    "src.pages.ScriptPage.f4721a3f": {
+      "source": "脚本字符串",
+      "fingerprint": "2091a26a01cff71e",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 20,
+            "column": 13
+          },
+          "end": {
+            "line": 20,
+            "column": 20
+          }
+        }
+      ]
+    },
+    "src.pages.StylePage.0ee12018": {
+      "source": "样式内容",
+      "fingerprint": "9f95abc7ef8e0b5a",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/StylePage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 13,
+            "column": 13
+          },
+          "end": {
+            "line": 13,
+            "column": 19
+          }
+        }
+      ]
+    },
+    "src.pages.StylePage.4d33e53d": {
+      "source": "（新）",
+      "fingerprint": "371fe16ca97a0403",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/StylePage.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 21,
+            "column": 12
+          },
+          "end": {
+            "line": 21,
+            "column": 15
+          }
+        }
+      ]
+    },
+    "src.pages.StylePage.bd167b05": {
+      "source": "收件箱",
+      "fingerprint": "63a5e7b7391191b1",
+      "origin": "derived",
+      "locations": [
+        {
+          "path": "src/pages/StylePage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 4,
+            "column": 21
+          },
+          "end": {
+            "line": 4,
+            "column": 24
+          }
+        }
+      ]
+    }
+  }
+}

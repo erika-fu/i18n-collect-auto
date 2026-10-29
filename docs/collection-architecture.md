@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-本文记录经过设计访谈确认的目标架构和分阶段实施方案。Phase 1 到 Phase 4 已经落地，本文继续作为设计记录。接入方式、配置、支持范围和故障说明见仓库 README 与 `docs/collection.md`。源码替换、翻译目录和 `i18n-collect` 命令的现行约定以 README 与 `CONTEXT.md` 为准。本文只记录收集架构。
+本文记录经过设计访谈确认的目标架构和分阶段实施方案。Phase 1 到 Phase 4 已经落地，本文继续作为设计记录，并按当前代码补上收集侧后来增加的行为：排除指令、显式本地化键、键控源语言目录，以及这一组正式产物的事务写入。接入方式、配置、支持范围和故障说明见仓库 README 与 `docs/collection.md`。`translate`、`replace`、`run` 的命令约定、翻译提供方和源码替换仍以 README 与 `CONTEXT.md` 为准。本文只记录收集架构：Loader 如何识别文案，Plugin 如何提交一轮收集并发布产物。
 
 本次设计的主要目标是：
 
@@ -34,7 +34,7 @@
 - 从当前 webpack module graph 中恢复 Loader 提交的 Resource snapshot；
 - 保留增量编译中仍有效的缓存 snapshot；
 - 淘汰已经删除或不再参与构建的资源；
-- 聚合、去重并输出正式文档。
+- 聚合、去重，并在同一事务中输出哈希词典、source map、源语言翻译目录和目录元数据。
 
 Plugin 不可以：
 
@@ -56,13 +56,13 @@ webpack 4 不再属于受支持范围，package 的 peer dependency 应相应收
 
 - `require('i18n-collect/myloader')`；
 - `require('i18n-collect/myplugin')`；
-- 运行时字典 `{ "<md5>": "<value>" }`；
-- source map 的 `version: 1` 外层结构；
+- 运行时字典 `{ "<md5>": "<value>" }`，key 仍是文案的 MD5，不是本地化键；
+- source map 的 `version: 1` 外层结构，条目仍是 `key`（MD5）、`value` 和 `locations`，不写入本地化键；
 - 已有 Semantic kind 名称；
 - 已有 JavaScript 文案和范围行为；
 - 稳定排序及相同字节不重写输出。
 
-新 HTML/CSS 支持只增加已有种类的新位置，不借机重新定义已有 JavaScript 数据。
+在此之上，成功的一轮还会写出键控源语言目录。目录的 key 是本地化键。哈希收集产物和翻译目录并存：已有哈希消费方继续读词典，翻译和源码替换读目录。新 HTML/CSS 支持只增加已有种类的新位置，不借机重新定义已有 JavaScript 数据。
 
 ---
 
@@ -75,11 +75,11 @@ Loader 负责：
 1. 识别资源路径、扩展名及 Vue block query。
 2. 规范化 Resource identity。
 3. 应用 `include` 和 `exclude`。
-4. 调用对应的纯 extractor。
-5. 为一个资源生成完整 Resource snapshot，包括空 snapshot。
+4. 调用对应的纯 extractor。Extractor 在识别文案的同时解释 `no-i18n-auto` 和 `i18n-key`，并按 `contextFilters` 丢掉被选中的 script 候选。
+5. 为一个资源生成完整 Resource snapshot，包括空 snapshot。条目可以带上显式本地化键；没有显式键的条目只保留文案和位置，派生键留到汇总阶段计算。
 6. 将 snapshot 写入当前 webpack module 的构建元数据。
-7. 向当前 compilation session 报告此次处理。
-8. 原样传递 `source`、`sourceMap` 和 `meta`。
+7. 向当前 compilation session 报告此次处理。被排除或零结果的资源仍算一次 invocation。
+8. 原样传递 `source`、`sourceMap` 和 `meta`。收集发生在 pitch，不改写模块内容。
 
 Loader 不负责：
 
@@ -98,9 +98,10 @@ Plugin 负责：
 3. 从当前 module graph 中取得 Loader 创建的 snapshots。
 4. 保留当前构建仍然有效的缓存 snapshots。
 5. 淘汰已删除、已取消引用或不再经过 Loader 的资源。
-6. 在 compilation 成功后聚合和写出两个 JSON 文件。
-7. compilation 失败时保留上一次正式输出。
-8. 检测 Loader 完全没有接入的配置错误。
+6. 在 compilation 成功后聚合快照，建成键控源语言目录，并和哈希词典、source map 一起写出。
+7. 本地化键冲突时放弃本轮，保留上一次正式输出。
+8. compilation 失败或写出失败时保留上一次正式输出；写出失败还会把已经替换的文件按 journal 恢复。
+9. 检测 Loader 完全没有接入的配置错误。
 
 ---
 
@@ -110,49 +111,34 @@ Plugin 负责：
 
 ```text
 packages/i18n-collect/
+├── bin/i18n-collect.js            # 命令入口；命令语义见 README
+├── cli/                           # collect 复用下面的 Loader；translate / replace / run 不参与 webpack 轮次
 ├── myloader/
-│   ├── index.js                   # webpack Loader adapter
+│   ├── index.js                   # webpack Loader adapter，并按 block 分派 extractor
 │   ├── resource.js                # 类型、query、identity、过滤和坐标
 │   ├── context-filter.js          # 可选的 logging / tests / analytics 策略
-│   ├── extract.js                 # 三类 extractor 的简单分派
+│   ├── directives.js              # no-i18n-auto 与 i18n-key 的扫描和关联
 │   ├── extract-script.js          # JavaScript/TypeScript/表达式
+│   ├── extract-vue-compat.js      # 从 Vue 文件中对齐 script block 后再交给 script extractor
 │   ├── extract-html.js            # HTML 和 Vue template
 │   └── extract-css.js             # 标准 CSS
 ├── myplugin/
-│   └── index.js                   # compilation 生命周期与输出
+│   └── index.js                   # compilation 生命周期、目录汇总与输出
 └── mycommon/
     ├── scope-pattern.js           # 目录边界与 glob 范围
-    ├── session.js                 # 候选 round、提交、放弃和淘汰
-    ├── store.js                   # 聚合、去重和稳定排序
+    ├── session.js                 # 候选 round、提交、放弃、回滚和淘汰
+    ├── store.js                   # 哈希词典聚合、去重和稳定排序
+    ├── catalog.js                 # 本地化键、冲突、指纹和目录差异
+    ├── catalog-format.js          # 目录格式适配器，目前只有 json
     ├── config.js                  # 配置加载、校验和字段归属
-    └── output.js                  # 相同内容跳过和成对写入
+    └── output.js                  # 相同内容跳过，以及带 journal 的成组写入
 ```
 
-不建立通用 parser registry 或插件系统。三个 extractor 共享最小 entry 数据结构，但不相互依赖。
+不建立通用 parser registry 或插件系统。三个 extractor 共享最小 entry 数据结构，但不相互依赖。分派写在 `myloader/index.js` 的 `collectedFor`，没有单独的 `extract.js`。`mycommon/translate.js` 和 `mycommon/replace-preview.js` 只服务 README 中的翻译和替换命令，不进入收集轮次。
 
 ### 4.1 Extractor 接口
 
-统一的纯函数入口：
-
-```js
-extractResource({
-  source,
-  resource,
-  config
-})
-```
-
-返回：
-
-```js
-{
-  identity,
-  entries,
-  warnings
-}
-```
-
-其中 `resource` 是规范化描述，不是 webpack 对象：
+Loader 先把 webpack 请求收成规范化的 `resource`，再调用纯函数。`resource` 不是 webpack 对象：
 
 ```js
 {
@@ -162,11 +148,31 @@ extractResource({
   block,
   styleIndex,
   lang,
-  sourceOffset
+  sourceOffset,
+  identity
 }
 ```
 
-Extractor 不读取其他文件、不访问 webpack hook、不写输出、不修改 session，也不保存全局状态。
+Script 与 Vue script 返回条目数组。HTML 与 CSS 返回 `{ entries, warnings }`。一条条目是：
+
+```js
+{ value, locations, key? }
+```
+
+`key` 只在该片段前面有格式正确的 `i18n-key` 时出现。`locations` 使用下面第 15 节的坐标。不含汉字的片段、被排除指令去掉的片段，以及被选中的 context filter 去掉的片段，都不会进入 `entries`。
+
+Loader 再把结果包成 snapshot：
+
+```js
+{
+  identity,
+  projectPath,
+  owner: { block, styleIndex, lang },
+  entries
+}
+```
+
+Extractor 不访问 webpack hook、不写输出、不修改 session，也不保存全局状态。Vue script、Vue template 和 Vue style 会读取当前正在处理的这一个 `.vue` 文件，只为了对齐原始 block；这是第 10 节的例外，不是目录扫描。普通 script 使用 Loader 已经拿到的源码字节。
 
 ---
 
@@ -194,7 +200,7 @@ src/App.vue::style[index=1;lang=scss]
 - 未显式声明语言时分别规范化为 `js`、`html` 和 `css`。
 - 忽略不改变 extractor 行为的 query 字段。
 - 每次 Loader 调用提交该 identity 的完整替换 snapshot，而不是增量追加。
-- 零条结果也必须提交空 snapshot，从而删除该资源以前存在的条目。
+- 零条结果也必须提交空 snapshot，从而删除该资源以前存在的条目。显式本地化键不是 identity 的一部分；它挂在条目上，汇总时才变成目录的 key。
 - 外部 `<script src>`、`<template src>` 或 `<style src>` 以实际提供源码字节的资源路径为位置来源。
 
 ---
@@ -221,10 +227,17 @@ HTMLWebpackPlugin 的 child compiler 必须归一到对应 root compiler 和 mai
 
 ## 6.2 Snapshot 元数据
 
-Loader 将普通、可序列化的 snapshot 写入 module metadata，例如：
+Loader 将普通、可序列化的信封写入 module metadata：
 
 ```js
-module.buildInfo.i18nCollect = snapshot
+module.buildInfo.i18nCollect = {
+  schemaVersion: 1,
+  root,            // 规范化后的项目根
+  fileConfigHash,  // 配置文件里收集字段的哈希，不含目录和翻译字段
+  invoked: true,
+  included,        // include/exclude 之后是否进入收集
+  snapshot         // included 时为完整 snapshot，否则为 null
+}
 ```
 
 这是支持以下行为所必需的：
@@ -242,21 +255,27 @@ main compilation 开始
         ↓
 建立候选 round
         ↓
-各资源经过 myloader
+myloader pitch 在主进程读取原始文件
         ↓
 extractor 生成完整 snapshot
         ↓
-snapshot 写入 module.buildInfo
+信封写入 module.buildInfo.i18nCollect
         ↓
-Plugin 从当前 module graph 重建 live snapshots
+Plugin 从 main module graph 与 child compilation 重建 snapshots
         ↓
 检查 compilation 是否有效
        / \
     失败   成功
      ↓      ↓
- 放弃候选  原子替换正式结果
+ 放弃候选  合并 live、缓存 HTML 与本轮提交
              ↓
-       聚合并写出 JSON
+       由快照构建键控目录
+             ↓
+       有键冲突？ —— 放弃候选并失败，不写文件
+             ↓
+       session.release：先提交内存，再成组写出
+             ↓
+       写出失败则回滚内存并放弃本轮
 ```
 
 Session 最少需要表达以下操作：
@@ -264,18 +283,22 @@ Session 最少需要表达以下操作：
 ```js
 session.begin(compilation)
 session.submit(compilation, module, snapshot)
+session.noteInvocation(compilation)
 session.warn(compilation, warning)
 session.commit(compilation, liveSnapshots, configHash)
+session.release(compilation, liveSnapshots, configHash, write)
 session.abandon(compilation)
 ```
 
+`release` 先做一次内存 checkpoint，再 `commit`，然后调用 `write`。`write` 抛错时用 checkpoint 回滚内存里的 committed snapshots，并放弃本轮。键冲突发生在 `release` 之前，因此不会留下半份目录。
+
 内部维护：
 
-- 上一次成功构建的 committed snapshots；
+- 上一次成功构建的 committed snapshots，以及由它们生成的哈希词典和 source map；
 - 以 Compilation 为键的 candidate round；
-- 本轮 Loader invocation 证据；
-- 本轮 warnings 的去重状态；
-- 最近一次成功的配置哈希。
+- 本轮 Loader invocation 证据，包括被排除、空快照和不支持的样式；
+- 本轮 warnings 的去重状态，键是 `code + identity`；
+- 最近一次成功的 `configHash`。本地化键和目录正文不进这枚哈希。
 
 ## 6.4 当前资源与过期淘汰
 
@@ -310,6 +333,8 @@ Plugin 以 `compilation.modules` 作为当前 module graph，而不是要求模�
 - Vue script/template/style block rules；
 - HTMLWebpackPlugin 的显式模板 Loader chain。
 
+Loader 若发现自己跑在 `thread-loader` 的 worker 里，直接失败，提示把它放在 `thread-loader` 之前。pitch 必须留在主进程，才能读到原始文件并写入主 compilation 的 metadata。`i18n-collect collect` 把这条错误，以及“Loader 未接入”、畸形 `i18n-key` 和键冲突，都归为收集失败（退出码 2）。其他构建错误是退出码 3。
+
 以下情况仍属于有效 Loader invocation：
 
 - 提取结果为零；
@@ -326,12 +351,14 @@ Loader 除收集 metadata 和报告诊断外，不改变模块内容：
 this.callback(null, source, sourceMap, meta)
 ```
 
+收集本身发生在 `pitch`。pitch 用 `fs.readFileSync(resourcePath)` 读取磁盘上的原始字节，跑完 extractor 后把 `data.collected` 设为 true。随后的普通 Loader 调用发现这个标记就不再收集，只补登记配置文件依赖，然后原样回调。pitch 没有跑过时，普通调用才用自己收到的 `source` 收集；Vue 的 script、template 和 style 即使在这条路径上，也会再读当前 `.vue` 文件来对齐 block。
+
 要求：
 
 - string 或 Buffer 的源码内容保持不变；
 - 传入 source map 原样传给后续 Loader；
 - `meta` 原样传递；
-- Loader 应最先看到当前语义资源的原始内容；
+- pitch 应最先看到当前语义资源的原始内容，并且必须在主进程执行；
 - demo 中必须用测试验证最终 Loader 顺序，不能只依赖 `.before()`、`.after()` 的注释理解。
 
 现有 JS rule 的注释与 webpack Loader 从右向左执行的实际顺序可能相反，实施时必须通过最终 webpack config 和集成测试确认。
@@ -454,6 +481,22 @@ Vue script、template 和 style block 使用独立 Resource identity，并以 Lo
 
 Vue 插值中的表达式由 HTML extractor 定位，再交给共享的 script fragment collector 解析；它不重新定义为 HTML text。
 
+## 12.1 排除指令与本地化键
+
+`directives.js` 是 script、HTML 和 CSS 共用的关联规则，不是可扩展的 directive framework。一条注释先去掉首尾空白再判断：
+
+- 文本恰好是 `no-i18n-auto` 时，它是排除指令。比较区分大小写。
+- 文本匹配 `i18n-key: <key>`，并且键以字母开头、由点分隔的段组成、每段只含字母、数字、`_` 和 `-` 时，它是键指令。`home.title` 和 `order.list-empty` 合格。以 `i18n-key` 开头但形状不对的注释，在扫描时就失败，错误锚在注释起点。
+- 其他注释既不排除，也不收集。
+
+关联只向前。一组指令是写在构造前面、彼此之间以及它们和构造之间只有空白的那些指令注释。中间出现普通注释或代码，这一组就结束。同一组里可以同时有排除和键。两条不同的键指向同一片段时失败。排除生效时，同组的键不产生目录条目。
+
+Script 把字符串字面量或模板字面量当作构造。模板字面量只把这一组指令用在第一段含有汉字的静态片段上，后面的片段不再继承。HTML 把元素或紧挨着的文本节点当作构造，按源码顺序只作用在该构造最早的一处已收集片段上：白名单属性早于文本，插值里的前一个片段早于后一个。CSS 把前一个节点是该注释的 `content` 声明，或紧挨在注释后的那个字符串，当作构造。写在规则前面的注释不会进入规则内部。
+
+没有显式键的位置，在 `catalog.js` 里得到派生键。派生键由去掉扩展名的项目相对路径做成点分 slug（其他字符换成 `_`，不以字母开头时加 `k`），再加 8 位十六进制。这 8 位是 SHA-256（路径、`\0`、semantic kind、`\0`、文案）的前 8 个字符。行号和列号不参与，所以同一文件里同一文案、同一种类移动后仍是同一键。
+
+一个键可以对应多处位置，只要源文案相同。一个键对应两段不同源文案就是键冲突，包括显式键撞上另一段文案的派生键。冲突在 Plugin 汇总之后、写文件之前失败。错误列出每个键、每段文案、它的 `explicit` 或 `derived` 来源，以及每处 `path:line:column (kind)`。
+
 ---
 
 ## 13. HTML 提取语义
@@ -549,7 +592,7 @@ Source range 仍指向原始源码拼写，例如 `保存&nbsp;成功`。哈希�
 | 独立 HTML 文本 | `static-html-text` |
 | 独立 HTML 属性 | `static-html-attribute` |
 
-动态 HTML 属性中的静态片段仍是 `html-attribute`。
+动态 HTML 属性中的静态片段仍是 `html-attribute`。HTML 注释里的排除指令和键指令使用第 12.1 节的同一组规则。插值和动态属性内部的 JavaScript 注释则按 script 规则处理那段表达式，并同样接受 `contextFilters`。
 
 ## 13.5 HTML 解析错误
 
@@ -602,7 +645,7 @@ CSS 使用 `postcss`，并将其声明为 package 的直接依赖。
 - 选择器；
 - 注释。
 
-不限制 `content` 必须位于伪元素上；只要声明本身符合规则，就处理其中的静态字符串。
+不限制 `content` 必须位于伪元素上；只要声明本身符合规则，就处理其中的静态字符串。`content` 声明和声明值内部的字符串都可以按第 12.1 节挂上排除指令或键指令。CSS 不应用 `contextFilters`。
 
 ## 14.2 空值和特殊值
 
@@ -689,7 +732,13 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
     'value'
   ],
   outputPath: 'lang/zh_hash.json',
-  sourceMapFilename: 'lang/zh_hash.map.json'
+  sourceMapFilename: 'lang/zh_hash.map.json',
+  catalogDir: 'lang/catalog',
+  sourceLocale: 'zh',
+  catalogFormat: 'json',
+  translationProvider: '',
+  targetLocales: [],
+  translationFailure: 'partial'
 }
 ```
 
@@ -697,11 +746,15 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
 
 - 删除 `htmlEntries`；
 - Loader 使用 `include`、`exclude`、`contextFilters`、`attributeAllowlist`、`styleExtensions`；
-- Plugin 使用 `outputPath`、`sourceMapFilename`；
+- Plugin 使用 `outputPath`、`sourceMapFilename`、`catalogDir`、`sourceLocale`、`catalogFormat`；
+- `translationProvider`、`targetLocales`、`translationFailure` 只属于配置文件和 `translate` 命令。它们不是 Loader 选项，也不是 Plugin 选项；
 - 显式 options 只能覆盖调用方拥有的字段；
 - 未知字段和跨职责字段继续报错；
-- `configHash` 基于规范化后的完整配置；
-- 配置文件存在时，Loader 应将其登记为 webpack dependency，以便 watch 正确失效。
+- `configHash` 和 metadata 上的 `fileConfigHash` 都只覆盖收集字段。计算前会去掉 `catalogDir`、`sourceLocale`、`catalogFormat` 和三个翻译字段，因此只改目录位置或翻译设置不会让 source map 的哈希变化，也不会因为哈希不符而丢弃缓存 snapshot；
+- `fileConfigHash` 取配置文件规范化之后、Loader/Plugin 显式选项和 CLI scope override 之前的值。`configHash` 再纳入 Loader 选项、Plugin 的输出路径选项，以及 `collect --include`、`--exclude`、`--context-filter` 对这一次运行的替换；
+- 配置文件存在时，Loader 应将其登记为 webpack dependency，以便 watch 正确失效。不存在时登记为 missing dependency。
+
+源语言目录写到 `<catalogDir>/<sourceLocale>.json`，元数据写到 `<catalogDir>/catalog.meta.json`。`sourceLocale` 是 `zh` 或 `zh-CN` 这种语言标签。`catalogFormat` 目前只能是 `json`。适配器提供 `name`、`extension`、`serialize(messages)` 和 `parse(text)`；相同的 messages 必须得到相同的文本，key 按字母序写出。目录文件不得与 `outputPath` 或 `sourceMapFilename` 重合。`collect` 命令可以替换 include、exclude 和 contextFilters，不能替换目录字段。
 
 独立 HTML 不再由配置项声明输入；它必须通过 webpack 配置显式进入 Loader 链。
 
@@ -719,7 +772,13 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
 6. glob 另外拒绝：以 `/` 结尾、花括号展开、`**` 与其他字符写在同一段、glob 段之后的 `..`、未闭合、空或多余的字符类。glob 段之前的 `..` 会先做词法折叠，且必须留在项目内。
 7. Plugin 不再次应用过滤规则。
 
-`contextFilters` 默认是 `[]`。可选值只有 `logging`、`tests`、`analytics`，可以单独选择。未选择时，收集不会按启发式丢掉文案。选择之后，只去掉该策略所描述的 script 候选，以及 Vue 插值和动态属性里的同类表达式；HTML 文本和 CSS 生成内容不在这些策略里。具体调用名单见 README。未知名称和重复项是配置错误。该字段属于 Loader。
+`contextFilters` 默认是 `[]`。可选值只有 `logging`、`tests`、`analytics`，可以单独选择。未选择时，收集不会按启发式丢掉文案。选择之后，只去掉该策略所描述的 script 候选，以及 Vue 插值和动态属性里的同类表达式；HTML 文本和 CSS 生成内容不在这些策略里。未知名称和重复项是配置错误。该字段属于 Loader。
+
+判定都看静态调用形状，不执行代码。计算属性、可选调用和标签模板都不是下面这些调用，里面的文案保留。
+
+- `logging` 去掉最近一层调用是下列名称、并且字面量位于该调用参数里的候选：`console.log`、`console.info`、`console.warn`、`console.error`、`console.debug`、`console.trace`、`log`、`logger.log`、`logger.info`、`logger.warn`、`logger.error`、`logger.debug`、`logger.trace`。`console.log(format("界面"))` 保留 `界面`，因为最近一层调用是 `format`。
+- `tests` 去掉词法上位于 `describe`、`it`、`test`、`beforeEach`、`afterEach`、`beforeAll`、`afterAll`、`expect`，以及 `describe`、`it`、`test` 的 `.only`、`.skip`、`.each`、`.todo` 之内的候选。同一文件里这些调用之外的字符串保留。这个过滤器不按文件名排除测试；排除整个测试目录要用 `exclude` glob。
+- `analytics` 去掉最近一层调用是 `gtag`、`track`、`analytics.track`、`analytics.page`、`analytics.identify`、`analytics.screen` 或 `dataLayer.push`，并且字面量位于该调用参数里的候选，包括对象参数上的字符串属性。
 
 ---
 
@@ -748,9 +807,12 @@ Package 应：
 - 标准 CSS 解析错误；
 - Vue binding 或 interpolation 表达式解析错误；
 - 被判定为 fatal 的 HTML 诊断；
-- 输出准备或成对写入失败。
+- 畸形 `i18n-key`，或同一片段上两条不同的键指令；
+- 汇总后一个本地化键对应两段不同源文案；
+- Loader 跑在 `thread-loader` worker 中；
+- 输出准备或成组写入失败，包括读不到或恢复不了残留的 commit journal。
 
-错误至少包含：
+Loader 里的解析错误和畸形键指令至少包含：
 
 - 项目相对路径；
 - semantic block；
@@ -759,15 +821,17 @@ Package 应：
 - 0-based UTF-16 列；
 - 底层错误原因。
 
+键冲突没有单一位置。它列出每个冲突键、每段源文案、`explicit` 或 `derived`，以及该文案的全部 `path:line:column (kind)`。`thread-loader` 错误只说明 pitch 必须留在主进程。
+
 失败时：
 
 - webpack 保持失败；
 - candidate round 作废；
-- committed snapshots 不变；
-- 两个正式输出保持上一次成功版本；
+- 若写入已经先改了内存，`release` 把 committed snapshots 滚回写入前的 checkpoint；键冲突和编译失败发生在写入前，内存本来就不动；
+- 哈希词典、source map、源语言目录和目录元数据保持上一次成功版本；
 - 不发布部分结果。
 
-不支持的样式方言属于 warning，不属于 parse failure。
+不支持的样式方言属于 warning，不属于 parse failure。警告码是 `unsupported-style-preprocessor`，每个 Resource identity 每轮最多一次，文案说明该方言没有被解析。
 
 ## 18.2 输出兼容性
 
@@ -779,8 +843,23 @@ Package 应：
 - 已有 Semantic kind；
 - 相同 value 跨资源合并所有 distinct locations；
 - 稳定排序；
-- 两个输出内容均相同时完全不写磁盘；
-- 两个文件成对更新并在同步错误时回滚。
+- 参与本次写入的文件内容均相同时完全不写磁盘；
+- 有变化的文件作为一组更新，并在失败时按 journal 回滚。
+
+这一组正式产物是：
+
+| 文件 | 内容 |
+| --- | --- |
+| `outputPath` | `{ "<md5>": "<解码后的文案>" }`，key 按字母序 |
+| `sourceMapFilename` | `{ version: 1, parserVersion: "babel-7", configHash, entries }`。每个 entry 是 MD5、文案和排序后的 locations |
+| `<catalogDir>/<sourceLocale>.json` | `{ "<本地化键>": "<源文案>" }`，经格式适配器序列化，key 按字母序 |
+| `<catalogDir>/catalog.meta.json` | `{ version: 1, sourceLocale, format, entries }`。每个 entry 记录 `source`、`fingerprint`、`origin` 和排序后的 locations |
+
+`fingerprint` 是源文案 SHA-256 的前 16 个十六进制字符。`origin` 是 `explicit` 或 `derived`。同一键下只要有一处显式键，origin 就是 `explicit`。比较两份元数据时：只在新文件里的键是 added，只在旧文件里的键是 removed，两边都在但 fingerprint 不同的键是 source-changed，fingerprint 相同的键是 unchanged。收集不写目标语言目录，也不写 `translation-state.json`。
+
+`writeOutputs` 先丢掉字节已经相同的文件，再对剩余文件调用 `commitFiles`。空列表直接返回，不建临时文件，也不建 journal。否则在每个将要写入的目录里先寻找残留的 `.commit-*.json`；找得到就先按它恢复，读不了或恢复不了就失败。然后写下 journal，把新内容写到临时文件，把已存在的目标改名为备份，再把临时文件换成正式文件。journal 只在全部替换成功后删除。进程在 journal 还在时退出，会尽量按 journal 恢复；没能恢复的 journal 留到下一次写入。备份文件在提交点之后删除，删不掉不会撤销已经提交的内容。
+
+本地化键不写入哈希词典，也不写入 source map。同一段文案改键时，词典字节可以不变，目录和元数据仍然变化。
 
 `parserVersion: 'babel-7'` 暂时保留以避免无必要的 schema 变化，并在文档中说明它是历史 JavaScript parser 标记。多解析器元数据留待未来明确升级 Collection schema 时处理。
 
@@ -798,11 +877,11 @@ Package 应：
 
 本期保留现有模型：
 
-- 有效 compilation 完成后写正式输出；
-- watch 中真正变化的字典允许触发一次后续 compilation；
+- 有效 compilation 完成后写正式输出，包括源语言目录；
+- watch 中这一组里任何一个文件的字节变化都允许触发一次后续 compilation。演示项目用动态 `require` 引入词典，因此 `lang` 目录被监视，写到 `lang/catalog/` 的目录文件同样可能叫醒这次后续编译；
 - 后续 compilation 看到相同字节后停止写入并保持安静；
-- 一次性生产构建生成的磁盘字典是最新结果；
-- 该次 bundle 仍可能包含构建开始时的上一版字典。
+- 一次性生产构建生成的磁盘词典和目录是最新结果；
+- 该次 bundle 仍可能包含构建开始时的上一版词典。目录本身不被演示 bundle 导入。
 
 本期不通过双阶段构建、二次编译或运行时消费方式重构来解决这一闭环。该限制必须在用户文档中明确说明，不能宣称单次 bundle 与本轮新字典强一致。
 
@@ -821,7 +900,7 @@ Package 应：
 ### 文件级改动
 
 - 重构 `packages/i18n-collect/myloader/index.js` 为透明 webpack adapter。
-- 新增 `myloader/resource.js`、`myloader/extract.js` 和 `myloader/extract-script.js`。
+- 新增 `myloader/resource.js` 和 `myloader/extract-script.js`。分派留在 `myloader/index.js`，没有单独的 `extract.js`。
 - 新增 `mycommon/session.js`。
 - 扩展 `mycommon/store.js` 的替换、淘汰和结果生成能力。
 - 删除 `myplugin/index.js` 的目录扫描、业务文件读取、Vue 正则切块及 Loader 内部函数调用。
@@ -939,25 +1018,42 @@ packages/i18n-collect/test/
 ├── script-extractor.test.js
 ├── html-extractor.test.js
 ├── css-extractor.test.js
+├── template-fragment.test.js
 ├── session.test.js
 ├── loader.test.js
+├── loader-order.test.js
+├── collection.test.js
+├── catalog.test.js
 ├── webpack-integration.test.js
-├── html-webpack-plugin.test.js
 ├── watch-loop.test.js
-└── fixtures/
+├── cli-collect.test.js
+├── cli-translate.test.js
+├── cli-replace.test.js
+├── cli-run.test.js
+├── migration-workflow.test.js
+└── fixtures/replacement/
+    ├── vue2/
+    ├── vue3/
+    └── js/
 ```
 
 职责：
 
-- `resource.test.js`：query 规范化、identity、path boundary、filter 和坐标。
-- extractor tests：源码到 entries 的纯函数契约。
-- `session.test.js`：begin、commit、abandon、保留、替换、淘汰和去重。
+- `resource.test.js`：query 规范化、identity、path boundary、glob、filter 和坐标。
+- extractor tests：源码到 entries 的纯函数契约，包括排除指令、键指令和 context filter。
+- `template-fragment.test.js`：Vue 与静态 HTML 的片段边界。
+- `session.test.js`：begin、commit、release、abandon、回滚、保留、替换、淘汰和去重。
 - `loader.test.js`：透明传递、metadata、warning 和错误格式。
-- `webpack-integration.test.js`：真实 module graph、Vue blocks 和 cache。
-- `html-webpack-plugin.test.js`：forced chain、child compiler 和缓存命中。
+- `loader-order.test.js`：最终 webpack 配置里的 Loader 顺序。
+- `collection.test.js`：MD5、配置校验、`configHash` 与 `fileConfigHash` 的差别、稳定排序，以及字节相同时不写临时文件。
+- `catalog.test.js`：派生键、显式键、冲突、指纹和目录差异。
+- `webpack-integration.test.js`：真实 module graph、Vue blocks、HTMLWebpackPlugin 和 cache。HTMLWebpackPlugin 的 forced chain、child compiler 和缓存命中也在这里覆盖。
 - `watch-loop.test.js`：相同输出不写、真正变化一次后收敛。
+- `cli-collect.test.js`：一次收集的报告、scope override、退出码，以及不发网络请求。
+- `cli-translate.test.js`、`cli-replace.test.js`、`cli-run.test.js`：翻译、替换预览和 `run` 编排。它们不是收集轮次的测试，但和收集共用配置与目录文件。
+- `migration-workflow.test.js`：用 Vue 2、Vue 3 和通用 JavaScript fixture，以及本地假提供方，把收集到目录、失败保护、dry-run、写入和回滚串起来。不需要 API key、供应商 SDK 或出站网络。
 
-测试 fixture 放在 package 测试目录内，不依赖递归扫描，也不把已提交的 demo 输出当作唯一 oracle。
+测试 fixture 放在 package 测试目录内，不依赖递归扫描，也不把已提交的 demo 输出当作唯一 oracle。`fixtures/replacement` 只示范替换适配器能改写的位置，不进入 demo 的 webpack 入口。
 
 ---
 
@@ -997,7 +1093,8 @@ HTML entity 和 CSS escape 会导致解码值长度与源码长度不同。Scann
 
 本设计不包括：
 
-- 修改业务源码或自动替换为翻译调用；
+- 在收集轮次里修改业务源码。源码替换是后来的 `replace` 命令，默认只做预览，见 README；
+- 调用翻译提供方，或写出目标语言目录和审阅状态。那是 `translate` 命令；
 - 运行时翻译方案调整；
 - final bundle 扫描；
 - Plugin 扫描业务文件；
@@ -1005,7 +1102,7 @@ HTML entity 和 CSS escape 会导致解码值长度与源码长度不同。Scann
 - 执行或复杂折叠 JavaScript/CSS 动态表达式；
 - Sass、Less、Stylus 解析；
 - webpack 4 支持；
-- 通用 directive framework。节点级 `no-i18n-auto` 排除指令见 README；
+- 通用 directive framework。已经落地的只有节点级 `no-i18n-auto` 和 `i18n-key`，规则见第 12.1 节；
 - Vite/Rollup 集成；
 - 通用 parser registry；
 - 解决一次性 bundle 消费同轮新字典的构建闭环。
@@ -1021,4 +1118,4 @@ HTML entity 和 CSS escape 会导致解码值长度与源码长度不同。Scann
 3. Phase 3 复用相同 snapshot、错误和坐标契约加入 CSS。
 4. Phase 4 在语义稳定后锁定集成、fixture 和文档。
 
-任何阶段开始前均应先确认该阶段的范围；本文保存设计，不授权立即实施。
+Phase 1 到 Phase 4 已经按这个顺序落地。其后的排除指令、context filter、键控目录和 `i18n-collect collect` 都接在同一条 Loader 提交、Plugin 发布的路径上，没有另起一套扫描。本文保存这套设计；命令行的翻译、替换和编排见 README。

@@ -1,0 +1,16 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Webpack 接入速查</title><link rel="stylesheet" href="../assets/course.css"></head><body><main><header class="masthead"><p class="eyebrow">REFERENCE · 03</p><h1>Webpack 5 接入速查</h1><p>唯一权威示例是现有 <a href="../apps/demo/vue.config.js">Vue</a> 与 <a href="../apps/react-demo/webpack.config.js">React</a> 配置；请复制结构而不是猜 loader 顺序。</p></header><section><h2>不变量</h2><ol><li>每个 compiler 正好实例化一次 <code>new MyI18nPlugin()</code>。</li><li>所有想收集的资源必须真正进入 <code>i18n-collect/myloader</code>；Plugin 不补扫漏网文件。</li><li>Collector 要在后续 JS 转换之前，并在 <code>thread-loader</code> 之前运行 pitch。</li><li>CSS <code>use</code> 中 Collector 置于最右端，令其先看到 raw CSS。</li><li>HTMLWebpackPlugin template 必须强制显式 loader request，且带 <code>force=true</code>。</li></ol></section><section><h2>最小普通 Webpack 形状</h2><pre>const loaderPath = require.resolve('i18n-collect/myloader')
+const MyI18nPlugin = require('i18n-collect/myplugin')
+const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')
+
+module.exports = {
+  module: { rules: [
+    { test: /\.jsx?$/, use: [loaderPath, babelLoader] },
+    { test: /\.css$/, use: [styleLoader, cssLoader, loaderPath] }
+  ] },
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: `!!${htmlLoader}?${JSON.stringify({ force: true })}!${loaderPath}!${template}`
+    }),
+    new MyI18nPlugin()
+  ]
+}</pre><p>Webpack normal loaders 从右向左执行；上方数组使 collector 先于 Babel 收集脚本、先于 css-loader 收集 CSS。</p></section><section><h2>Vue 2 / Vue CLI 额外接入点</h2><ul class="compact"><li>JS rule：把 collector 放在 <code>thread-loader</code> 前。</li><li>resource query：分别覆盖 <code>type=template</code>、<code>type=script</code>、<code>type=style</code>。</li><li>CSS rule 的每个有关 <code>oneOf</code> 分支：在 postcss-loader 后（或 css-loader 后）插入 collector，使它处于 raw-input 端。</li><li>遍历每个 HtmlWebpackPlugin 实例，重写 template request；不能假设只有一个名为 html 的实例。</li></ul></section><section><h2>配置所有权</h2><table><tr><th>Loader fields</th><th>Plugin fields</th><th>仅配置/translate</th></tr><tr><td><code>include</code>、<code>exclude</code>、<code>contextFilters</code>、<code>attributeAllowlist</code>、<code>styleExtensions</code></td><td><code>outputPath</code>、<code>sourceMapFilename</code>、<code>catalogDir</code>、<code>sourceLocale</code>、<code>catalogFormat</code></td><td><code>translationProvider</code>、<code>targetLocales</code>、<code>translationFailure</code></td></tr></table><p>把字段传给错误一侧是配置错误。<code>collect</code> 可以临时替换前三个 scope/filter 字段，不能改输出或翻译设定。</p></section><section><h2>排错顺序</h2><ol><li>运行配置最终形状测试/检查，不相信注释与链式 API 的直觉。</li><li>确认目标资源实际经过 loader；无 invocation 与无缓存 metadata 会导致“loader is not integrated”。</li><li>确认 HTML request 保留 HWP loader 和 <code>force=true</code>。</li><li>若 watch 多编译一次，先检查是否真实写入官方产物；下一轮相同字节应静默。</li></ol></section><footer><p>来源：<a href="../README.md">README“Webpack 5 integration / HTMLWebpackPlugin”</a>、<a href="../apps/demo/vue.config.js">Vue 配置</a>、<a href="../apps/react-demo/webpack.config.js">React 配置</a>。</p></footer></main></body></html>
