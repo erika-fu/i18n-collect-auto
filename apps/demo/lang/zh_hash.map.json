@@ -95,11 +95,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 37,
+            "line": 39,
             "column": 31
           },
           "end": {
-            "line": 37,
+            "line": 39,
             "column": 38
           }
         },
@@ -287,11 +287,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 40,
+            "line": 42,
             "column": 30
           },
           "end": {
-            "line": 40,
+            "line": 42,
             "column": 36
           }
         },
@@ -335,11 +335,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 39,
+            "line": 41,
             "column": 31
           },
           "end": {
-            "line": 39,
+            "line": 41,
             "column": 38
           }
         },
@@ -455,11 +455,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 36,
+            "line": 38,
             "column": 29
           },
           "end": {
-            "line": 36,
+            "line": 38,
             "column": 33
           }
         },
@@ -611,11 +611,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 38,
+            "line": 40,
             "column": 32
           },
           "end": {
-            "line": 38,
+            "line": 40,
             "column": 39
           }
         },

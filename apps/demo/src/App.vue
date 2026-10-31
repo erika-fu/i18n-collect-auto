@@ -18,13 +18,15 @@ import ScriptPage from './pages/ScriptPage.vue'
 import LiteralPage from './pages/LiteralPage.vue'
 import MarkupPage from './pages/MarkupPage.vue'
 import StylePage from './pages/StylePage.vue'
+import MigrationPage from './pages/MigrationPage.vue'
 
 const pages = {
   home: HomePage,
   script: ScriptPage,
   literal: LiteralPage,
   markup: MarkupPage,
-  style: StylePage
+  style: StylePage,
+  migration: MigrationPage
 }
 
 export default {
@@ -37,7 +39,8 @@ export default {
         { id: 'script', label: '脚本字符串' },
         { id: 'literal', label: '模板字符串' },
         { id: 'markup', label: '文本与属性' },
-        { id: 'style', label: '样式内容' }
+        { id: 'style', label: '样式内容' },
+        { id: 'migration', label: 'Migration' }
       ]
     }
   },

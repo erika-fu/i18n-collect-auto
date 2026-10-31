@@ -198,7 +198,7 @@ Translate writes:
 
 When a localization key leaves the current collection, catalog metadata keeps it as `orphaned` so translations and automatic-key recovery remain available. Retire it with `<catalogDir>/retirement-confirmations.json` (`{ version: 1, keys: [...] }`), or set `pruneOrphaned: true` in `i18n-collect.config.js` to retire missing and previously orphaned keys in the same collection round.
 
-The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app.
+The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app. `apps/demo/fixtures/keyed-migration` is the keyed-catalog migration fixture and is not imported by the app.
 
 ## Migration outputs
 
@@ -218,6 +218,14 @@ Migration keeps the following distinct:
 | Replacement metadata | `lang/catalog/replacements.json`, the record of committed replacements. A write commits source files, the keyed catalogs, and this record together. |
 
 The hash collection output stays so existing hash consumers keep working. Translation and source replacement use the translation catalog.
+
+## Demo runtime
+
+`apps/demo/src/lang/index.js` builds Vue I18n messages with `demoLocaleMessages`. For each locale it copies `lang/zh_hash.json` and then copies that locale's keyed catalog on top, so a localization key in the catalog wins. A replacement call such as `$t('demo.visit.banner')` resolves from the catalog. A call whose argument is still the MD5 of collected text resolves from the hash dictionary when the catalog has no such key.
+
+The migration page selects the `en` locale and shows that split. `demo.visit.banner` is "Welcome aboard" and `demo.visit.farewell` is "Welcome back", even though both keys were collected from the same source text `欢迎`. The legacy call `$t('47781b8a72bcbb7ecb1f955399a7e718')` still shows `欢迎`. The source of that pair is `apps/demo/fixtures/keyed-migration`: two explicit keys on the same text, plus one MD5 call. It is outside the demo webpack entry. `packages/i18n-collect/test/demo-runtime-migration.test.js` collects that fixture, translates it with the local provider, replaces it, and resolves the three calls through `apps/demo/src/lang/resolve.js`.
+
+Remove the hash-dictionary fallback only when every localization call passes a localization key and no call still passes an MD5. Each locale the runtime can select must already contain those keys in its keyed catalog. Until then, lookup reads the active locale's catalog first and reads `lang/zh_hash.json` only for a key that catalog does not contain. An empty catalog string is a translation and does not fall through. Collection keeps writing the hash dictionary after this fallback is removed. The fallback is the runtime compatibility layer, not the collection output.
 
 ## Source replacement
 

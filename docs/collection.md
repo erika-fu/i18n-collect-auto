@@ -4,13 +4,15 @@ Vocabulary matches `CONTEXT.md`. The design record is `docs/collection-architect
 
 ## Watch compiles again after a real collection change
 
-`apps/demo/src/lang/index.js` imports the runtime dictionary:
+`apps/demo/src/lang/index.js` imports the hash dictionary and the keyed catalogs:
 
 ```js
-require(`/lang/${locale}_hash.json`)
+require('/lang/zh_hash.json')
+require('/lang/catalog/zh.json')
+require('/lang/catalog/en.json')
 ```
 
-Webpack resolves that to `apps/demo/lang/zh_hash.json`, so the dictionary and its parent `lang` directory are watched. `MyI18nPlugin` writes the official collection set after a successful compilation:
+Webpack resolves those to `apps/demo/lang/zh_hash.json` and the catalog files under `apps/demo/lang/catalog/`, so the dictionary and its parent `lang` directory are watched. `MyI18nPlugin` writes the official collection set after a successful compilation:
 
 - `lang/zh_hash.json`, the hash dictionary. The key is the MD5 of the collected text.
 - `lang/zh_hash.map.json`, the source map. Entries stay at schema version 1 and do not carry localization keys.
@@ -19,7 +21,7 @@ Webpack resolves that to `apps/demo/lang/zh_hash.json`, so the dictionary and it
 
 `catalogDir`, `sourceLocale`, and `catalogFormat` select those last two paths. `json` is the only format. `writeOutputs` compares each file's bytes with what would be written and leaves a file that already matches out of the commit. When every file matches, it returns before creating a journal or a temporary file. An unchanged collection therefore does not schedule another compilation.
 
-A real change to any file in that set still writes the files whose bytes differ, as one commit. Watch then compiles once more so the bundle can import the new dictionary. A catalog-only write under `lang/catalog/` can schedule that same follow-up, because the watched directory is `lang`. The following compilation sees identical bytes, skips the write, and stays quiet. A real change adds at most that one follow-up compilation.
+A real change to any file in that set still writes the files whose bytes differ, as one commit. Watch then compiles once more so the bundle can import the new dictionary and catalogs. A catalog-only write under `lang/catalog/` can schedule that same follow-up, because the watched directory is `lang`. The following compilation sees identical bytes, skips the write, and stays quiet. A real change adds at most that one follow-up compilation.
 
 Changing a localization key without changing the text leaves the dictionary bytes the same and still rewrites the catalog and its metadata. That is enough to wake watch.
 
@@ -39,7 +41,7 @@ Placing the loader after `thread-loader` fails the round. The pitch must run in 
 
 ## One production build can embed the previous dictionary
 
-The application imports the dictionary, and the plugin can write the complete result only after loaders finish. The files written at the end of a one-shot production build are the latest collection, including the source-locale catalog. The bundle produced by that same compilation can still contain the dictionary from the start of the build. Watch is what pulls the new dictionary into a later compilation. This repository does not add a second compilation to close that loop. The demo bundle does not import the catalog.
+The application imports the hash dictionary and the keyed catalogs, and the plugin can write the complete result only after loaders finish. The files written at the end of a one-shot production build are the latest collection, including the source-locale catalog. The bundle produced by that same compilation can still contain the dictionary and catalogs from the start of the build. Watch is what pulls the new files into a later compilation. This repository does not add a second compilation to close that loop.
 
 ## Nothing was collected
 

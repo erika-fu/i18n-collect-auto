@@ -604,20 +604,33 @@ html-webpack-plugin/lib/loader.js?force=true
 ```js
 import Vue from 'vue'
 import VueI18n from 'vue-i18n'
+import { demoLocaleMessages } from './resolve'
 
 Vue.use(VueI18n)
 
 const locale = 'zh'
+const hashDictionary = require('/lang/zh_hash.json')
+const catalogs = {
+  zh: require('/lang/catalog/zh.json'),
+  en: require('/lang/catalog/en.json')
+}
 
 export default new VueI18n({
   locale,
   messages: {
-    [locale]: require(`/lang/${locale}_hash.json`)
+    zh: demoLocaleMessages(catalogs.zh, hashDictionary),
+    en: demoLocaleMessages(catalogs.en, hashDictionary)
   }
 })
 ```
 
-这段代码仅展示“如何把生成 JSON 作为 Vue I18n messages 的输入”。实际业务可以：
+每个区域先放入哈希词典，再放入该区域的键目录，因此目录里的本地化键优先。替换后的调用，例如 `$t('demo.visit.banner')`，从键目录取值。参数仍是文案 MD5 的旧调用，只在目录没有这个键时回退到 `lang/zh_hash.json`。空字符串是一条译文，不会继续回退。
+
+迁移页把区域切到 `en`。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个键来自同一句源文案 `欢迎`。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。对应源码在 `apps/demo/fixtures/keyed-migration`，不进入演示项目的 Webpack 入口。
+
+只有当每个本地化调用都传入本地化键、不再有调用传入 MD5，并且运行时会选中的每个区域的键目录都已经包含这些键时，才去掉哈希词典回退。在此之前，查找先读当前区域的键目录，仅当目录没有该键时才读 `lang/zh_hash.json`。去掉回退之后，收集仍会写出哈希词典。回退是运行时兼容层，不是收集产物。
+
+实际业务仍可以：
 
 - 将 `zh_hash.json` 送入翻译管理平台作为候选词条；
 - 用 `zh_hash.map.json` 建立页面、模块和词条责任人的追溯关系；
