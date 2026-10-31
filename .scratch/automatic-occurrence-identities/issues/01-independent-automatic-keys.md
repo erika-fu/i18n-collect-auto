@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Identical source text in distinct JavaScript/TypeScript, Vue template, HTML, and CSS occurrences produces distinct catalog keys and independently addressable metadata records.
-- [ ] The legacy MD5 dictionary and source map continue to deduplicate by text value without becoming the localization-key identity.
-- [ ] Collection tests cover the new occurrence behavior and prevent regressions in existing output.
+- [x] Identical source text in distinct JavaScript/TypeScript, Vue template, HTML, and CSS occurrences produces distinct catalog keys and independently addressable metadata records.
+- [x] The legacy MD5 dictionary and source map continue to deduplicate by text value without becoming the localization-key identity.
+- [x] Collection tests cover the new occurrence behavior and prevent regressions in existing output.

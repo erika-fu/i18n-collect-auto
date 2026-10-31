@@ -352,6 +352,40 @@ function derivedKeyFor(catalog, source) {
   return keys[0]
 }
 
+test('collect assigns independent automatic keys to identical text while the hash dictionary stays text-deduplicated', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-occurrence-keys-'))
+  writeWebpackProject(root, {
+    source: 'const a = "你好"\nconst b = "你好"\nmodule.exports = [a, b]\n'
+  })
+  const result = run(['collect', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+
+  assert.deepStrictEqual(readJson(root, 'lang/zh_hash.json'), { [md5('你好')]: '你好' })
+  const sourceMap = readJson(root, 'lang/zh_hash.map.json')
+  assert.strictEqual(sourceMap.entries.length, 1)
+  assert.strictEqual(sourceMap.entries[0].key, md5('你好'))
+  assert.strictEqual(sourceMap.entries[0].value, '你好')
+  assert.strictEqual(sourceMap.entries[0].locations.length, 2)
+
+  const catalog = readJson(root, 'lang/catalog/zh.json')
+  const keys = Object.keys(catalog).filter(key => catalog[key] === '你好')
+  assert.strictEqual(keys.length, 2)
+  assert.notStrictEqual(keys[0], keys[1])
+  const metadata = readJson(root, 'lang/catalog/catalog.meta.json')
+  assert.deepStrictEqual(
+    keys.map(key => metadata.entries[key].locations).flat().sort((a, b) => a.start.line - b.start.line),
+    [
+      { path: 'src/app.js', kind: 'script-string', start: { line: 1, column: 10 }, end: { line: 1, column: 14 } },
+      { path: 'src/app.js', kind: 'script-string', start: { line: 2, column: 10 }, end: { line: 2, column: 14 } }
+    ]
+  )
+  for (const key of keys) {
+    assert.strictEqual(metadata.entries[key].origin, 'derived')
+    assert.strictEqual(metadata.entries[key].locations.length, 1)
+  }
+  assert.strictEqual(JSON.parse(result.stdout).catalog.keys, 2)
+})
+
 test('collect exports a keyed source catalog beside unchanged hash outputs and reports key changes', { timeout: 30000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-catalog-'))
   writeWebpackProject(root, {

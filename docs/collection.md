@@ -61,9 +61,9 @@ An `i18n-key` comment in the same whitespace-separated group names that fragment
 
 ## A localization key conflict failed the round
 
-A key conflict means one localization key names two different source texts. The same `i18n-key: home.title` on `"首页"` in one file and `"主页"` in another is a conflict. An explicit key that equals another text's derived key is also a conflict. The error lists each text with its origin (`explicit` or `derived`) and every `path:line:column (kind)` location. Give each text its own key, or make the texts agree. The round keeps the previous dictionary, source map, and catalog.
+A key conflict means one localization key names two different source texts. The same `i18n-key: home.title` on `"首页"` in one file and `"主页"` in another is a conflict. An explicit key that equals another text's automatic key is also a conflict. The error lists each text with its origin (`explicit` or `derived`) and every `path:line:column (kind)` location. Give each text its own key, or make the texts agree. The round keeps the previous dictionary, source map, and catalog.
 
-A location without an explicit key gets a derived key from the project-relative path, the semantic kind, and the text. Line and column are not part of it, so moving that text inside the file keeps the key. The same text and kind in the same file share one key.
+A location without an explicit key gets an automatic key from the project-relative path, the semantic kind, the text, and that occurrence's source range. Identical text at separate locations therefore receives independent catalog keys and metadata records. The legacy MD5 dictionary and source map still deduplicate by text value; they are not the localization-key identity.
 
 A malformed key directive fails in the loader instead. The message names the path, block, line, and column of the comment. Use `i18n-key: <key>`, where the key starts with a letter and uses dot-separated segments of letters, digits, `_`, and `-`. Two different keys in one directive group for the same fragment fail the same way.
 

@@ -120,9 +120,9 @@ const title = /* i18n-key: home.title */ '首页'
 <p>欢迎使用</p>
 ```
 
-A location without an explicit key gets a derived key. It is built from the project-relative path without its extension, written as dot-separated segments with other characters replaced by `_` and a `k` prefix when the path does not start with a letter, plus 8 hex characters of a SHA-256 hash over the path, the semantic kind, and the collected text. For example, `欢迎` in Vue template text of `src/pages/Home.vue` gets `src.pages.Home.<hash>`. Line and column are not part of the key, so moving text inside a file keeps its key. The same text with the same kind in the same file shares one key.
+A location without an explicit key gets an automatic key. It is built from the project-relative path without its extension, written as dot-separated segments with other characters replaced by `_` and a `k` prefix when the path does not start with a letter, plus 8 hex characters of a SHA-256 hash over the path, the semantic kind, the collected text, and that occurrence's source range. For example, `欢迎` in Vue template text of `src/pages/Home.vue` gets `src.pages.Home.<hash>`. Identical text at separate locations receives independent catalog keys so each occurrence can take a different translation. The legacy MD5 dictionary and source map still deduplicate by text value.
 
-One key may appear at several locations when they all name the same source text. A key that names two different source texts is a key conflict. An explicit key that equals another text's derived key is also a conflict. A conflict fails the round, keeps every previous output, and lists each conflicting text with all of its locations.
+An explicit key may intentionally gather several locations when they all name the same source text. A key that names two different source texts is a key conflict. An explicit key that equals another text's automatic key is also a conflict. A conflict fails the round, keeps every previous output, and lists each conflicting text with all of its locations.
 
 ## Translation catalog
 

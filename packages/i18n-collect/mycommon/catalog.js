@@ -20,9 +20,22 @@ function pathSlug(projectPath) {
   return /^[A-Za-z]/.test(slug) ? slug : `k${slug}`
 }
 
-// The hash input leaves out line and column so moving text inside a file keeps its key.
-function deriveKey({ path: projectPath, kind, value }) {
-  return `${pathSlug(projectPath)}.${sha256(`${projectPath}\0${kind}\0${value}`).slice(0, 8)}`
+// Automatic keys identify one occurrence. Coordinates distinguish same-text siblings until
+// collection history can reuse a stable ID (see automatic-occurrence-identities).
+function automaticKey({ path: projectPath, kind, value, location }) {
+  if (!location || !location.start || !location.end) {
+    throw new Error('Automatic key requires a source location')
+  }
+  const material = [
+    projectPath,
+    kind,
+    value,
+    location.start.line,
+    location.start.column,
+    location.end.line,
+    location.end.column
+  ].join('\0')
+  return `${pathSlug(projectPath)}.${sha256(material).slice(0, 8)}`
 }
 
 function sortedObject(map, project) {
@@ -36,7 +49,12 @@ function buildCatalog(snapshots) {
       if (!entry || !containsHan(entry.value)) continue
       for (const raw of entry.locations || []) {
         const location = normalizeLocation(raw)
-        const key = entry.key || deriveKey({ path: location.path, kind: location.kind, value: entry.value })
+        const key = entry.key || automaticKey({
+          path: location.path,
+          kind: location.kind,
+          value: entry.value,
+          location
+        })
         const group = byKey.get(key) || { variants: new Map() }
         const variant = group.variants.get(entry.value) || { explicit: false, locations: [] }
         if (entry.key) variant.explicit = true
@@ -118,10 +136,11 @@ function conflictMessage(conflicts) {
 
 module.exports = {
   CATALOG_VERSION,
+  automaticKey,
   buildCatalog,
   catalogMetadata,
   conflictMessage,
-  deriveKey,
+  deriveKey: automaticKey,
   diffCatalog,
   fingerprintOf
 }
