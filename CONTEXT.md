@@ -30,7 +30,10 @@ The originating file, semantic kind, and source range associated with collected 
 The fixed category identifying where collected text came from: `script-string`, `template-literal`, `html-text`, `html-attribute`, `template-expression`, `css-generated-content`, `static-html-text`, or `static-html-attribute`. A static fragment inside a dynamic HTML attribute remains `html-attribute`.
 
 **Collection result**:
-The deduplicated localization data present in the current source collection, grouped by text value and retaining every distinct source location where that value occurs. Entries without a current source location are not part of the result.
+The localization data present in the current source collection, containing every collected occurrence independently. Equal source text does not cause occurrences to share a localization key unless they explicitly name the same key. Entries without a current source location are not part of the result.
+
+**Occurrence**:
+One concrete appearance of collected text in source. It has its own source location and may be independently located, replaced, and matched to collection history. An occurrence is not necessarily a translation unit.
 
 **Semantic collection stage**:
 A collection point where the source structure still identifies whether text came from a script literal, HTML text or attribute, or a CSS `content` declaration.
@@ -69,8 +72,14 @@ The stable runtime identifier used by source replacements and translation catalo
 **Key directive**:
 A syntax-valid comment `i18n-key: <key>` that gives the next associated collected fragment an explicit localization key. It associates by the same rules as the exclusion directive. A comment that starts with `i18n-key` but is not well formed fails the collection round.
 
+**Automatic key**:
+A localization key assigned to an occurrence when no adjacent key directive supplies one. Its readable semantic slug is only a diagnostic hint; its stable ID is assigned once and reused through catalog metadata rather than being recalculated from current source text or coordinates.
+
+**Structural anchor**:
+The stable source-structure description used to identify an occurrence across collection rounds. It names the nearest meaningful semantic host and the occurrence's child role; local context distinguishes otherwise identical sibling occurrences. Coordinates aid locating source but do not independently establish identity.
+
 **Derived key**:
-A localization key computed from the resource path, the semantic kind, and the collected text. It does not depend on line or column.
+A legacy localization key computed from the resource path, the semantic kind, and the collected text. It does not depend on line or column. New automatic keys replace this strategy because equal text in separate occurrences must not share a translation identity by default.
 
 **Key conflict**:
 One localization key that names two different source texts. It fails the collection round and reports every location of each text.
