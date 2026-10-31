@@ -129,7 +129,7 @@ An explicit key may intentionally gather several locations when they all name th
 After each successful round the plugin writes two catalog files in the same transaction as the hash dictionary and source map:
 
 - `<catalogDir>/<sourceLocale>.json`: the source-locale catalog, a flat `{ "<localization key>": "<source text>" }` mapping with sorted keys.
-- `<catalogDir>/catalog.meta.json`: catalog metadata, `{ version: 1, sourceLocale, format, entries }`. Each entry records the source text, a `fingerprint` (the first 16 hex characters of the SHA-256 of the source text), its `origin` (`explicit` or `derived`), and its sorted source locations.
+- `<catalogDir>/catalog.meta.json`: catalog metadata, `{ version: 2, sourceLocale, format, entries }`. Each entry records the source text, a `fingerprint` (the first 16 hex characters of the SHA-256 of the source text), its `origin` (`explicit` or `derived`), its sorted source locations, and an `occurrences` array. Each occurrence records a stable `id` (independent of source text and coordinates), `semanticHost`, `childRole`, `localContext`, `origin`, and `location`. Version 1 metadata upgrades on read; unsupported versions fail with a migration path and do not publish a partial upgrade.
 
 Comparing two metadata files tells which keys were added, removed, or source-changed: a key that remains with a different fingerprint has changed source text. Target-locale catalogs are not written by collection.
 
@@ -207,7 +207,7 @@ Migration keeps the following distinct:
 | Collected text | Chinese copy found in source. Collection records it and leaves the file unchanged. |
 | Hash collection output | `lang/zh_hash.json` and `lang/zh_hash.map.json`. The dictionary key is the MD5 of the collected text. |
 | Translation catalog | `lang/catalog/<locale>.json`, a flat map from a localization key to text. Collection writes the source locale. Translate writes each target locale. |
-| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, and source locations. |
+| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, source locations, and per-occurrence identity. |
 | Review state | `lang/catalog/translation-state.json`: for each key and target locale, the source fingerprint the translation was accepted against, and `current` or `needs-review`. |
 | Translation provider | A project module passed to translate. It is not an output file and it is not a vendor SDK. |
 | Replacement preview | The default result of replace. It reports the source that would be written and does not modify files. |

@@ -15,7 +15,7 @@ Webpack resolves that to `apps/demo/lang/zh_hash.json`, so the dictionary and it
 - `lang/zh_hash.json`, the hash dictionary. The key is the MD5 of the collected text.
 - `lang/zh_hash.map.json`, the source map. Entries stay at schema version 1 and do not carry localization keys.
 - `lang/catalog/<sourceLocale>.json`, the source-locale catalog. The default is `lang/catalog/zh.json`: a flat map from a localization key to source text.
-- `lang/catalog/catalog.meta.json`, the catalog metadata: source text, source fingerprint, `explicit` or `derived` origin, and source locations.
+- `lang/catalog/catalog.meta.json`, the catalog metadata (schema version 2): source text, source fingerprint, `explicit` or `derived` origin, source locations, and per-occurrence identity (stable ID, semantic host, child role, local context, origin). Version 1 metadata upgrades on read; unsupported or unreadable versions fail the round and leave formal outputs unchanged.
 
 `catalogDir`, `sourceLocale`, and `catalogFormat` select those last two paths. `json` is the only format. `writeOutputs` compares each file's bytes with what would be written and leaves a file that already matches out of the commit. When every file matches, it returns before creating a journal or a temporary file. An unchanged collection therefore does not schedule another compilation.
 

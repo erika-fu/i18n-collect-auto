@@ -2,7 +2,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { diffCatalog } = require('../mycommon/catalog')
+const { diffCatalog, upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 
 const EXIT = {
@@ -241,10 +241,19 @@ function humanReport(report) {
 function readCatalogMetadata(root, config) {
   const file = path.join(root, catalogFiles(config).metadata)
   if (!fs.existsSync(file)) return null
+  let parsed
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'))
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch (error) {
-    return null
+    throw commandError(
+      'collection',
+      `catalog metadata could not be read; restore a valid version 1 or 2 catalog.meta.json (${error.message})`
+    )
+  }
+  try {
+    return upgradeCatalogMetadata(parsed)
+  } catch (error) {
+    throw commandError('collection', error.message)
   }
 }
 
@@ -304,12 +313,7 @@ async function execute(parsed) {
       throw commandError('configuration', 'collect accepts one webpack configuration object')
     }
     const pluginOptions = pluginOptionsFrom(webpackConfig)
-    let previousCatalog
-    try {
-      previousCatalog = readCatalogMetadata(root, loadConfig({ root, pluginOptions }))
-    } catch (error) {
-      throw commandError('configuration', error.message)
-    }
+    const previousCatalog = readCatalogMetadata(root, loadConfig({ root, pluginOptions }))
     emitDir = redirectEmit(webpackConfig)
     const { error, stats } = await runCompiler(webpackConfig)
     const failed = classifyBuild(error, stats)

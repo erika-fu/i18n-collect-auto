@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
+const { upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { catalogFiles, loadConfig, translationSettings } = require('../mycommon/config')
 const { commitFiles, recoverCommits, unchanged } = require('../mycommon/output')
@@ -138,9 +139,15 @@ function readState(root, relative) {
 }
 
 function alignedEntries(messages, metadata, metadataFile) {
-  const entries = metadata && metadata.version === 1 && metadata.entries
+  let entries
+  try {
+    const upgraded = upgradeCatalogMetadata(metadata)
+    entries = upgraded && upgraded.entries
+  } catch (error) {
+    throw commandError('configuration', error.message || `catalog metadata ${metadataFile} is not a supported catalog schema`)
+  }
   if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
-    throw commandError('configuration', `catalog metadata ${metadataFile} must be version 1`)
+    throw commandError('configuration', `catalog metadata ${metadataFile} is not a supported catalog schema`)
   }
   const messageKeys = Object.keys(messages).sort()
   const entryKeys = Object.keys(entries).sort()

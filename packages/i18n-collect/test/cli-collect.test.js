@@ -382,7 +382,14 @@ test('collect assigns independent automatic keys to identical text while the has
   for (const key of keys) {
     assert.strictEqual(metadata.entries[key].origin, 'derived')
     assert.strictEqual(metadata.entries[key].locations.length, 1)
+    assert.strictEqual(metadata.entries[key].occurrences.length, 1)
+    assert.strictEqual(metadata.entries[key].occurrences[0].semanticHost, 'src/app.js::script')
+    assert.strictEqual(metadata.entries[key].occurrences[0].childRole, 'script-string')
+    assert.match(metadata.entries[key].occurrences[0].id, /^[0-9a-f]{16}$/)
   }
+  assert.strictEqual(metadata.version, 2)
+  const contexts = keys.map(key => metadata.entries[key].occurrences[0].localContext).sort()
+  assert.deepStrictEqual(contexts, ['sibling:0', 'sibling:1'])
   assert.strictEqual(JSON.parse(result.stdout).catalog.keys, 2)
 })
 
@@ -404,7 +411,7 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
   const helloKey = derivedKeyFor(catalog, '你好')
   assert.deepStrictEqual(catalog, { [helloKey]: '你好', 'home.title': '首页' })
   const metadata = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(metadata.version, 1)
+  assert.strictEqual(metadata.version, 2)
   assert.strictEqual(metadata.sourceLocale, 'zh')
   assert.strictEqual(metadata.format, 'json')
   assert.strictEqual(metadata.entries['home.title'].origin, 'explicit')
@@ -415,6 +422,9 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
     start: { line: 1, column: 41 },
     end: { line: 1, column: 45 }
   }])
+  assert.strictEqual(metadata.entries['home.title'].occurrences[0].semanticHost, 'src/app.js::script')
+  assert.strictEqual(metadata.entries['home.title'].occurrences[0].childRole, 'script-string')
+  assert.deepStrictEqual(metadata.entries['home.title'].occurrences[0].location, metadata.entries['home.title'].locations[0])
 
   assert.deepStrictEqual(JSON.parse(first.stdout).catalog, {
     format: 'json',
@@ -498,6 +508,35 @@ test('collect fails on a localization key conflict and keeps every previous outp
   assert.strictEqual(malformed.status, 2, malformed.stderr)
   assert.match(malformed.stderr, /i18n-collect failed for src\/other\.js, script, line 1, column 17: malformed i18n-key directive/)
   outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+})
+
+test('collect refuses unsupported catalog metadata and keeps every previous output', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-meta-schema-'))
+  writeWebpackProject(root, {
+    source: 'module.exports = "你好"\n'
+  })
+  const first = run(['collect'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const outputs = ['lang/zh_hash.json', 'lang/zh_hash.map.json', 'lang/catalog/zh.json', 'lang/catalog/catalog.meta.json']
+  const before = Object.fromEntries(outputs.map(file => [file, fs.readFileSync(path.join(root, file))]))
+
+  const metadata = JSON.parse(before['lang/catalog/catalog.meta.json'].toString('utf8'))
+  metadata.version = 99
+  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), `${JSON.stringify(metadata, null, 2)}\n`)
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = "改写"\n')
+
+  const refused = run(['collect', '--json'], root)
+  assert.strictEqual(refused.status, 2, refused.stderr)
+  assert.strictEqual(JSON.parse(refused.stdout).failure, 'collection')
+  assert.match(refused.stderr, /cannot be upgraded to version 2/)
+  assert.match(refused.stderr, /restore a version 1 or 2 catalog\.meta\.json/)
+  for (const file of outputs) {
+    if (file === 'lang/catalog/catalog.meta.json') {
+      assert.strictEqual(readJson(root, file).version, 99)
+      continue
+    }
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[file])
+  }
 })
 
 test('collect writes the dictionary configured on the webpack plugin', { timeout: 20000 }, () => {

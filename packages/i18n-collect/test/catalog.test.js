@@ -1,6 +1,6 @@
 const assert = require('assert')
 const test = require('node:test')
-const { automaticKey, buildCatalog, catalogMetadata, conflictMessage, diffCatalog } = require('../mycommon/catalog')
+const { automaticKey, buildCatalog, catalogMetadata, conflictMessage, diffCatalog, upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { isLocalizationKey } = require('../myloader/directives')
 
@@ -9,8 +9,58 @@ function at(path, kind, line, column, length = 2) {
 }
 
 function snapshot(identity, entries) {
-  return { identity, entries }
+  return { identity, projectPath: identity.split('::')[0], entries }
 }
+
+test('catalog metadata records a stable occurrence identity apart from source text and coordinates', () => {
+  const first = at('src/a.js', 'script-string', 1, 0)
+  const second = at('src/a.js', 'script-string', 3, 4)
+  const movedFirst = at('src/a.js', 'script-string', 8, 0)
+  const movedSecond = at('src/a.js', 'script-string', 12, 4)
+  const catalog = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [first] },
+      { value: '你好', locations: [second] }
+    ])
+  ])
+  const metadata = catalogMetadata(catalog, { sourceLocale: 'zh', format: 'json' })
+  assert.strictEqual(metadata.version, 2)
+  const keys = Object.keys(metadata.entries).sort()
+  assert.strictEqual(keys.length, 2)
+
+  const [earlier, later] = keys.map(key => metadata.entries[key]).sort((a, b) => (
+    a.occurrences[0].location.start.line - b.occurrences[0].location.start.line
+  ))
+  assert.strictEqual(earlier.occurrences.length, 1)
+  assert.strictEqual(later.occurrences.length, 1)
+  assert.deepStrictEqual(earlier.occurrences[0].location, first)
+  assert.deepStrictEqual(later.occurrences[0].location, second)
+  assert.strictEqual(earlier.occurrences[0].semanticHost, 'src/a.js::script')
+  assert.strictEqual(later.occurrences[0].semanticHost, 'src/a.js::script')
+  assert.strictEqual(earlier.occurrences[0].childRole, 'script-string')
+  assert.strictEqual(later.occurrences[0].childRole, 'script-string')
+  assert.strictEqual(earlier.occurrences[0].localContext, 'sibling:0')
+  assert.strictEqual(later.occurrences[0].localContext, 'sibling:1')
+  assert.strictEqual(earlier.occurrences[0].origin, 'derived')
+  assert.strictEqual(later.occurrences[0].origin, 'derived')
+  assert.match(earlier.occurrences[0].id, /^[0-9a-f]{16}$/)
+  assert.match(later.occurrences[0].id, /^[0-9a-f]{16}$/)
+  assert.notStrictEqual(earlier.occurrences[0].id, later.occurrences[0].id)
+
+  const movedCatalog = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '改写', locations: [movedFirst] },
+      { value: '你好', locations: [movedSecond] }
+    ])
+  ])
+  const movedMeta = catalogMetadata(movedCatalog, { sourceLocale: 'zh', format: 'json' })
+  const movedEarlier = Object.values(movedMeta.entries).find(entry => entry.occurrences[0].localContext === 'sibling:0')
+  const movedLater = Object.values(movedMeta.entries).find(entry => entry.occurrences[0].localContext === 'sibling:1')
+  assert.strictEqual(movedEarlier.occurrences[0].id, earlier.occurrences[0].id)
+  assert.strictEqual(movedLater.occurrences[0].id, later.occurrences[0].id)
+  assert.notStrictEqual(movedEarlier.source, earlier.source)
+  assert.notDeepStrictEqual(movedEarlier.occurrences[0].location, earlier.occurrences[0].location)
+})
 
 test('an automatic key is readable, deterministic, and unique per occurrence', () => {
   const here = at('src/pages/Home.vue', 'html-text', 4, 2)
@@ -121,12 +171,10 @@ test('every collected location gets an explicit or automatic key, and an explici
     'home.title': '首页'
   })
   assert.deepStrictEqual(Object.keys(catalog.messages), [helloA, helloB1, helloB3, 'home.title'].sort())
-  assert.deepStrictEqual(catalog.entries['home.title'], {
-    source: '首页',
-    fingerprint: catalog.entries['home.title'].fingerprint,
-    origin: 'explicit',
-    locations: [at('src/a.js', 'script-string', 5, 4), at('src/b.js', 'script-string', 2, 0)]
-  })
+  assert.strictEqual(catalog.entries['home.title'].source, '首页')
+  assert.strictEqual(catalog.entries['home.title'].origin, 'explicit')
+  assert.deepStrictEqual(catalog.entries['home.title'].locations, [at('src/a.js', 'script-string', 5, 4), at('src/b.js', 'script-string', 2, 0)])
+  assert.strictEqual(catalog.entries['home.title'].occurrences.length, 2)
   assert.match(catalog.entries['home.title'].fingerprint, /^[0-9a-f]{16}$/)
   assert.strictEqual(catalog.entries[helloB1].origin, 'derived')
   assert.deepStrictEqual(catalog.entries[helloB1].locations, [at('src/b.js', 'script-string', 1, 0)])
@@ -176,10 +224,11 @@ test('catalog metadata records source identity so a later round can tell what ch
     { value: '删除', key: 'gone', locations: [at('src/a.js', 'script-string', 3, 0)] }
   ])
   assert.deepStrictEqual(Object.keys(before), ['version', 'sourceLocale', 'format', 'entries'])
-  assert.strictEqual(before.version, 1)
+  assert.strictEqual(before.version, 2)
   assert.strictEqual(before.sourceLocale, 'zh')
   assert.strictEqual(before.format, 'json')
   assert.deepStrictEqual(before.entries.same.locations, [at('src/a.js', 'script-string', 1, 0)])
+  assert.strictEqual(before.entries.same.occurrences.length, 1)
 
   const after = metadataOf([
     { value: '不变', key: 'same', locations: [at('src/a.js', 'script-string', 8, 0)] },
@@ -192,13 +241,77 @@ test('catalog metadata records source identity so a later round can tell what ch
     changed: ['edited'],
     unchanged: ['same']
   })
-  assert.deepStrictEqual(diffCatalog({ version: 99, entries: before.entries }, after).removed, [])
+  assert.throws(
+    () => diffCatalog({ version: 99, entries: before.entries }, after),
+    /cannot be upgraded to version 2/
+  )
   assert.deepStrictEqual(diffCatalog(null, after), {
     added: ['edited', 'fresh', 'same'],
     removed: [],
     changed: [],
     unchanged: []
   })
+})
+
+test('catalog metadata upgrades version 1 entries and rejects unsupported schemas', () => {
+  const location = at('src/a.js', 'script-string', 1, 0)
+  const v1 = {
+    version: 1,
+    sourceLocale: 'zh',
+    format: 'json',
+    entries: {
+      'home.title': {
+        source: '首页',
+        fingerprint: 'abc',
+        origin: 'explicit',
+        locations: [location]
+      }
+    }
+  }
+  const upgraded = upgradeCatalogMetadata(v1)
+  assert.strictEqual(upgraded.version, 2)
+  assert.deepStrictEqual(upgraded.entries['home.title'].locations, [location])
+  assert.strictEqual(upgraded.entries['home.title'].occurrences.length, 1)
+  assert.strictEqual(upgraded.entries['home.title'].occurrences[0].semanticHost, 'src/a.js::script')
+  assert.strictEqual(upgraded.entries['home.title'].occurrences[0].childRole, 'script-string')
+  assert.strictEqual(upgraded.entries['home.title'].occurrences[0].localContext, 'sibling:0')
+  assert.strictEqual(upgraded.entries['home.title'].occurrences[0].origin, 'explicit')
+  assert.match(upgraded.entries['home.title'].occurrences[0].id, /^[0-9a-f]{16}$/)
+  assert.deepStrictEqual(upgraded.entries['home.title'].occurrences[0].location, location)
+  assert.deepStrictEqual(upgradeCatalogMetadata(upgraded), upgraded)
+
+  assert.throws(
+    () => upgradeCatalogMetadata({ version: 99, entries: {} }),
+    /cannot be upgraded to version 2.*restore a version 1 or 2 catalog\.meta\.json/
+  )
+  assert.deepStrictEqual(
+    upgradeCatalogMetadata({
+      version: 1,
+      entries: { sparse: { source: '首页', fingerprint: 'abc', origin: 'derived' } }
+    }).entries.sparse.occurrences,
+    []
+  )
+  assert.throws(
+    () => upgradeCatalogMetadata({
+      version: 1,
+      entries: { broken: { source: '首页', fingerprint: 'abc', origin: 'derived', locations: 'nope' } }
+    }),
+    /invalid source locations/
+  )
+  assert.throws(
+    () => upgradeCatalogMetadata({
+      version: 2,
+      entries: {
+        broken: {
+          source: '首页',
+          fingerprint: 'abc',
+          origin: 'derived',
+          locations: [location]
+        }
+      }
+    }),
+    /missing occurrence identities/
+  )
 })
 
 test('the default json adapter writes a stable flat locale mapping and reads it back', () => {

@@ -88,7 +88,7 @@ One localization key that names two different source texts. It fails the collect
 A hash of a key's source text recorded in catalog metadata. A key whose fingerprint differs between two catalogs has source-changed text.
 
 **Catalog metadata**:
-The per-key record next to the source-locale catalog: source text, source fingerprint, explicit or derived origin, and source locations.
+The per-key record next to the source-locale catalog: source text, source fingerprint, explicit or derived origin, source locations, and per-occurrence identity. Each occurrence records a stable ID, semantic host, child role, local context, and source location. The metadata document is versioned; unsupported versions fail with a clear migration path rather than publishing a partial upgrade.
 
 **Resource identity**:
 The normalized project resource path plus its semantic block or resource query, used to replace one resource snapshot without overwriting another block from the same file.

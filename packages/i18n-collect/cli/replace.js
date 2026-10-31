@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const { CATALOG_VERSION } = require('../mycommon/catalog')
+const { upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
 const { commitFiles, recoverCommits } = require('../mycommon/output')
 const { SCRIPT_EXTENSIONS, exportsLocalizationFunction, planPreview, runtimeCalls } = require('../mycommon/replace-preview')
@@ -95,10 +95,16 @@ function readMetadata(root, config) {
   } catch (error) {
     throw commandError('configuration', 'source catalog metadata could not be read')
   }
-  if (!metadata || metadata.version !== CATALOG_VERSION || !metadata.entries || typeof metadata.entries !== 'object' || Array.isArray(metadata.entries)) {
-    throw commandError('configuration', 'source catalog metadata is not version 1')
+  try {
+    const upgraded = upgradeCatalogMetadata(metadata)
+    if (!upgraded || !upgraded.entries || typeof upgraded.entries !== 'object' || Array.isArray(upgraded.entries)) {
+      throw commandError('configuration', 'source catalog metadata is not a supported catalog schema')
+    }
+    return upgraded
+  } catch (error) {
+    if (error && error.kind === 'configuration') throw error
+    throw commandError('configuration', error && error.message ? error.message : 'source catalog metadata is not a supported catalog schema')
   }
-  return metadata
 }
 
 function catalogItems(metadata) {

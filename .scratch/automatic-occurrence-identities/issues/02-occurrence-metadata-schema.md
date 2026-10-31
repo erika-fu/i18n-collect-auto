@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Every automatic occurrence has a stable metadata identity distinct from its source text and coordinates.
-- [ ] Metadata schema versioning and migration behavior preserve formal outputs on upgrade failure.
-- [ ] Tests cover schema compatibility, deterministic output, atomic output behavior, and recovery from failed metadata publication.
+- [x] Every automatic occurrence has a stable metadata identity distinct from its source text and coordinates.
+- [x] Metadata schema versioning and migration behavior preserve formal outputs on upgrade failure.
+- [x] Tests cover schema compatibility, deterministic output, atomic output behavior, and recovery from failed metadata publication.

@@ -493,7 +493,7 @@ Vue 插值中的表达式由 HTML extractor 定位，再交给共享的 script f
 
 Script 把字符串字面量或模板字面量当作构造。模板字面量只把这一组指令用在第一段含有汉字的静态片段上，后面的片段不再继承。HTML 把元素或紧挨着的文本节点当作构造，按源码顺序只作用在该构造最早的一处已收集片段上：白名单属性早于文本，插值里的前一个片段早于后一个。CSS 把前一个节点是该注释的 `content` 声明，或紧挨在注释后的那个字符串，当作构造。写在规则前面的注释不会进入规则内部。
 
-没有显式键的位置，在 `catalog.js` 里得到自动键。自动键由去掉扩展名的项目相对路径做成点分 slug（其他字符换成 `_`，不以字母开头时加 `k`），再加 8 位十六进制。这 8 位是 SHA-256（路径、semantic kind、文案、以及该 occurrence 的起止行列）的前 8 个字符。相同文案出现在不同位置时各自有独立目录键与元数据记录；遗留 MD5 词典与 source map 仍按文案去重，不充当本地化键身份。元数据里无自动键的 `origin` 仍记为 `derived`。
+没有显式键的位置，在 `catalog.js` 里得到自动键。自动键由去掉扩展名的项目相对路径做成点分 slug（其他字符换成 `_`，不以字母开头时加 `k`），再加 8 位十六进制。这 8 位是 SHA-256（路径、semantic kind、文案、以及该 occurrence 的起止行列）的前 8 个字符。相同文案出现在不同位置时各自有独立目录键与元数据记录；遗留 MD5 词典与 source map 仍按文案去重，不充当本地化键身份。元数据里无自动键的 `origin` 仍记为 `derived`。每条元数据 entry 还带 `occurrences`：稳定 `id`（由 semantic host、child role、local context 派生，不含文案与坐标）、`semanticHost`（snapshot identity）、`childRole`（semantic kind）、`localContext`（同 host+role 下按文档顺序的 `sibling:n`）、`origin`，以及 `location`。catalog metadata schema 为 version 2；version 1 在读取时按 semantic kind 推断 host 并升级；不支持的版本或无法解析的元数据使本轮失败并保留既有正式输出。
 
 显式键可以有意把多处相同源文案收拢到同一键。一个键对应两段不同源文案就是键冲突，包括显式键撞上另一段文案的自动键。冲突在 Plugin 汇总之后、写文件之前失败。错误列出每个键、每段文案、它的 `explicit` 或 `derived` 来源，以及每处 `path:line:column (kind)`。
 
@@ -853,7 +853,7 @@ Loader 里的解析错误和畸形键指令至少包含：
 | `outputPath` | `{ "<md5>": "<解码后的文案>" }`，key 按字母序 |
 | `sourceMapFilename` | `{ version: 1, parserVersion: "babel-7", configHash, entries }`。每个 entry 是 MD5、文案和排序后的 locations |
 | `<catalogDir>/<sourceLocale>.json` | `{ "<本地化键>": "<源文案>" }`，经格式适配器序列化，key 按字母序 |
-| `<catalogDir>/catalog.meta.json` | `{ version: 1, sourceLocale, format, entries }`。每个 entry 记录 `source`、`fingerprint`、`origin` 和排序后的 locations |
+| `<catalogDir>/catalog.meta.json` | `{ version: 2, sourceLocale, format, entries }`。每个 entry 记录 `source`、`fingerprint`、`origin`、排序后的 locations，以及带稳定身份的 `occurrences` |
 
 `fingerprint` 是源文案 SHA-256 的前 16 个十六进制字符。`origin` 是 `explicit` 或 `derived`。同一键下只要有一处显式键，origin 就是 `explicit`。比较两份元数据时：只在新文件里的键是 added，只在旧文件里的键是 removed，两边都在但 fingerprint 不同的键是 source-changed，fingerprint 相同的键是 unchanged。收集不写目标语言目录，也不写 `translation-state.json`。
 

@@ -5,6 +5,7 @@ const path = require('path')
 const test = require('node:test')
 const { loadConfig, validate } = require('../mycommon/config')
 const { CollectionStore, keyFor } = require('../mycommon/store')
+const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
 const { writeOutputs } = require('../mycommon/output')
 
 test('uses the MD5 of the final decoded value', () => {
@@ -135,5 +136,81 @@ test('writes stable pretty JSON output', async () => {
   assert.match(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), /"a"/)
   assert.match(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), /乙/)
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, config.sourceMapFilename)), null), { version: 1, entries: [] })
+})
+
+test('a failed catalog metadata publish restores dictionary, source map, and metadata', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-meta-publish-'))
+  const config = {
+    outputPath: 'lang/zh_hash.json',
+    sourceMapFilename: 'lang/zh_hash.map.json'
+  }
+  const previousDictionary = '{\n  "old": "旧"\n}\n'
+  const previousMap = '{\n  "version": 1,\n  "entries": []\n}\n'
+  const previousMetadata = '{\n  "version": 1,\n  "entries": {}\n}\n'
+  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
+  fs.writeFileSync(path.join(root, config.outputPath), previousDictionary)
+  fs.writeFileSync(path.join(root, config.sourceMapFilename), previousMap)
+  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), previousMetadata)
+
+  const catalog = buildCatalog([{
+    identity: 'src/a.js::script',
+    entries: [{
+      value: '你好',
+      locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 2 } }]
+    }]
+  }])
+  const nextMetadata = `${JSON.stringify(catalogMetadata(catalog, { sourceLocale: 'zh', format: 'json' }), null, 2)}\n`
+  const realRename = fs.renameSync.bind(fs)
+  let failed = false
+  fs.renameSync = (from, to) => {
+    if (!failed && String(to).endsWith('catalog.meta.json')) {
+      failed = true
+      throw new Error('forced metadata publish failure')
+    }
+    return realRename(from, to)
+  }
+  try {
+    await assert.rejects(
+      () => writeOutputs(
+        root,
+        config,
+        { next: '新' },
+        { version: 1, entries: [{ value: '你好' }] },
+        fs,
+        [
+          { path: 'lang/catalog/zh.json', content: '{\n  "k": "你好"\n}\n' },
+          { path: 'lang/catalog/catalog.meta.json', content: nextMetadata }
+        ]
+      ),
+      /forced metadata publish failure/
+    )
+  } finally {
+    fs.renameSync = realRename
+  }
+
+  assert.strictEqual(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), previousDictionary)
+  assert.strictEqual(fs.readFileSync(path.join(root, config.sourceMapFilename), 'utf8'), previousMap)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'), previousMetadata)
+  assert.deepStrictEqual(
+    fs.readdirSync(path.join(root, 'lang')).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
+    []
+  )
+  assert.deepStrictEqual(
+    fs.readdirSync(path.join(root, 'lang/catalog')).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
+    []
+  )
+})
+
+test('catalog metadata serialization is deterministic for the same snapshots', () => {
+  const snapshots = [{
+    identity: 'src/a.js::script',
+    entries: [
+      { value: '乙', locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 2, column: 0 }, end: { line: 2, column: 1 } }] },
+      { value: '甲', locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 1 } }] }
+    ]
+  }]
+  const first = JSON.stringify(catalogMetadata(buildCatalog(snapshots), { sourceLocale: 'zh', format: 'json' }))
+  const second = JSON.stringify(catalogMetadata(buildCatalog(snapshots), { sourceLocale: 'zh', format: 'json' }))
+  assert.strictEqual(first, second)
 })
 
