@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Multiple viable historical candidates generate an inspectable ambiguity report and a non-zero collection result.
-- [ ] Source key directives provide a durable resolution, and a version-controlled confirmation manifest supports sources that cannot be edited.
-- [ ] Tests cover repeated siblings, refactors with multiple candidates, resolved reruns, and preservation of prior formal outputs on failure.
+- [x] Multiple viable historical candidates generate an inspectable ambiguity report and a non-zero collection result.
+- [x] Source key directives provide a durable resolution, and a version-controlled confirmation manifest supports sources that cannot be edited.
+- [x] Tests cover repeated siblings, refactors with multiple candidates, resolved reruns, and preservation of prior formal outputs on failure.

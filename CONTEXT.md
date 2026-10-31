@@ -75,14 +75,35 @@ A syntax-valid comment `i18n-key: <key>` that gives the next associated collecte
 **Automatic key**:
 A localization key assigned to an occurrence when no adjacent key directive supplies one. Its readable semantic slug is only a diagnostic hint; its stable ID is assigned once and reused through catalog metadata rather than being recalculated from current source text or coordinates.
 
+**Occurrence identity ambiguity**:
+Collection history has more than one viable historical candidate for an occurrence, so the occurrence cannot keep a previous automatic key. Collection assigns a new automatic key, writes an ambiguity report, and fails the round until a durable confirmation.
+
+**Ambiguity report**:
+The machine-readable record of occurrence identity ambiguities for a failed round. It names each current occurrence, its proposed new automatic key, and the historical candidates. It is not a formal collection output. A failed round still preserves the previous dictionary, source map, and catalog.
+
+**Identity confirmation**:
+A durable choice of localization key for an occurrence whose identity is ambiguous. An `i18n-key` directive confirms it in source. A confirmation manifest confirms it when the source cannot be edited. The chosen key is either one historical candidate or the proposed new automatic key.
+
+**Confirmation manifest**:
+The versioned document `identity-confirmations.json` beside the catalog metadata. Each confirmation names a semantic host, child role, local context, and localization key. Collection reads it and does not rewrite it.
+
 **Structural anchor**:
 The stable source-structure description used to identify an occurrence across collection rounds. It names the nearest meaningful semantic host and the occurrence's child role; local context distinguishes otherwise identical sibling occurrences. Coordinates aid locating source but do not independently establish identity.
 
 **Derived key**:
 A legacy localization key computed from the resource path, the semantic kind, and the collected text. It does not depend on line or column. New automatic keys replace this strategy because equal text in separate occurrences must not share a translation identity by default.
 
+**Message pattern**:
+The normalized shape of collected source text used when comparing occurrences that share a localization key. Today the literal static text is kept as-is except that simple `{identifier}` tokens become positional slots; whitespace, ICU selects, and non-identifier braces are not folded.
+
+**Placeholder contract**:
+The ordered list of placeholder names taken from those `{identifier}` tokens in the source text. Two messages with the same pattern but different names are incompatible.
+
+**Message contract**:
+The pair of a message pattern and its placeholder contract. Occurrences may share one localization key only when their message contracts match.
+
 **Key conflict**:
-One localization key that names two different source texts. It fails the collection round and reports every location of each text.
+One localization key that names incompatible message contracts. It fails the collection round before publication and reports every location of each conflicting source text.
 
 **Source fingerprint**:
 A hash of a key's source text recorded in catalog metadata. A key whose fingerprint differs between two catalogs has source-changed text.
@@ -110,6 +131,18 @@ A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the nex
 
 **Existing translation**:
 Target-locale catalog text already stored for a localization key. Translate keeps that text unless the caller sets `--retranslate`. The kept text may be a human translation or an earlier translation draft that was already accepted. A source-text change keeps the text and sets its review state to `needs-review`.
+
+**Orphaned key**:
+A localization key whose occurrences are missing from the current collection round. Catalog metadata keeps the key with status `orphaned` so translation history and automatic-key recovery remain available. The source-locale catalog omits orphaned keys. Target-locale text stays until the key is retired.
+
+**Retired key**:
+An orphaned localization key removed from catalog metadata after a retirement confirmation or prune policy. Retirement is recorded by leaving the metadata (and by collect's `removed` report), not as a persistent metadata status. The next translate removes that key from target-locale catalogs and review state.
+
+**Retirement confirmation**:
+The versioned document `retirement-confirmations.json` beside the catalog metadata. Version 1 lists localization keys to retire. Collection reads it and does not rewrite it. Active keys named there are ignored.
+
+**Prune policy**:
+When `pruneOrphaned` is true in collection configuration, missing and previously orphaned keys are retired in the same round instead of staying orphaned.
 
 **Hash collection output**:
 The hash dictionary and its source map written by collection. The dictionary maps the MD5 of collected text to that text. It stays beside the translation catalog during migration. Source replacement does not use the hash as a localization key.

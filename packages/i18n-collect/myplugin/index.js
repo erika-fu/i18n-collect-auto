@@ -1,9 +1,17 @@
 const fs = require('fs')
 const path = require('path')
-const { buildCatalog, catalogMetadata, conflictMessage, readCatalogMetadataFile } = require('../mycommon/catalog')
+const {
+  ambiguityMessage,
+  buildCatalog,
+  catalogMetadata,
+  conflictMessage,
+  readCatalogMetadataFile,
+  readIdentityConfirmations,
+  readRetirementConfirmations
+} = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
-const { canonicalRoot, catalogFiles, loadConfig } = require('../mycommon/config')
-const { json, writeOutputs } = require('../mycommon/output')
+const { canonicalRoot, catalogFiles, identityFiles, loadConfig } = require('../mycommon/config')
+const { json, unchanged, writeOutputs } = require('../mycommon/output')
 const {
   assembleLiveSet,
   getSession,
@@ -146,12 +154,35 @@ class MyI18nPlugin {
         committed: session.committedSnapshots(),
         activeTemplates: activeHtmlTemplates(compiler, compilation, config)
       })
+      const identities = identityFiles(config)
+      let confirmations
+      let retirements
+      try {
+        confirmations = readIdentityConfirmations(path.join(config.root, identities.confirmations))
+        retirements = readRetirementConfirmations(path.join(config.root, identities.retirements))
+      } catch (error) {
+        session.abandon(compilation)
+        throw new Error(`i18n-collect failed: ${error.message}`)
+      }
       const catalog = buildCatalog(snapshots, {
-        previousMetadata: readCatalogMetadataFile(path.join(config.root, catalogFiles(config).metadata))
+        previousMetadata: readCatalogMetadataFile(path.join(config.root, catalogFiles(config).metadata)),
+        confirmations,
+        retirements,
+        prune: config.pruneOrphaned
       })
       if (catalog.conflicts.length > 0) {
         session.abandon(compilation)
         throw new Error(conflictMessage(catalog.conflicts))
+      }
+      if (catalog.ambiguities.length > 0) {
+        const reportFile = path.join(config.root, identities.ambiguities)
+        const report = json({ version: 1, ambiguities: catalog.ambiguities })
+        if (!unchanged(fs, reportFile, report)) {
+          fs.mkdirSync(path.dirname(reportFile), { recursive: true })
+          fs.writeFileSync(reportFile, report)
+        }
+        session.abandon(compilation)
+        throw new Error(ambiguityMessage(catalog.ambiguities, identities.ambiguities))
       }
       await session.release(compilation, snapshots, config.configHash, () =>
         writeOutputs(
@@ -163,6 +194,8 @@ class MyI18nPlugin {
           catalogOutputs(config, catalog)
         )
       )
+      const reportFile = path.join(config.root, identities.ambiguities)
+      if (fs.existsSync(reportFile)) fs.unlinkSync(reportFile)
     })
   }
 }

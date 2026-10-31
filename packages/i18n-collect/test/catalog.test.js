@@ -1,6 +1,9 @@
 const assert = require('assert')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 const test = require('node:test')
-const { automaticKey, buildCatalog, catalogMetadata, conflictMessage, diffCatalog, upgradeCatalogMetadata } = require('../mycommon/catalog')
+const { automaticKey, buildCatalog, catalogMetadata, conflictMessage, diffCatalog, messageContract, readIdentityConfirmations, upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { isLocalizationKey } = require('../myloader/directives')
 
@@ -220,17 +223,19 @@ test('unmatched occurrences receive new keys without reusing an unsafe historica
   )
   // Equal sibling counts: structural contexts uniquely match, so keys reuse despite text changes.
   assert.deepStrictEqual(Object.keys(replaced.messages).sort(), previousKeys)
+  assert.deepStrictEqual(replaced.ambiguities, [])
 
-  const ambiguous = buildCatalog(
+  const collapsed = buildCatalog(
     [snapshot('src/a.js::script', [
       { value: '新文案', locations: [at('src/a.js', 'script-string', 1, 0)] }
     ])],
     { previousMetadata }
   )
-  // One current vs two historical candidates with no unique text match: allocate a fresh key.
-  const [onlyKey] = Object.keys(ambiguous.messages)
-  assert.strictEqual(ambiguous.messages[onlyKey], '新文案')
+  // Text no longer matches either historical sibling, so neither is a viable candidate.
+  const [onlyKey] = Object.keys(collapsed.messages)
+  assert.strictEqual(collapsed.messages[onlyKey], '新文案')
   assert.ok(!previousKeys.includes(onlyKey))
+  assert.deepStrictEqual(collapsed.ambiguities, [])
 
   const multiFileAmbiguous = buildCatalog(
     [
@@ -250,6 +255,199 @@ test('unmatched occurrences receive new keys without reusing an unsafe historica
   const multiKeys = Object.keys(multiFileAmbiguous.messages).sort()
   assert.strictEqual(multiKeys.length, 2)
   assert.ok(multiKeys.every(key => key.startsWith('src.b.') || key.startsWith('src.c.')))
+})
+
+test('repeated siblings with several historical candidates report an identity ambiguity and allocate new automatic keys', () => {
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const historicalKeys = Object.keys(first.messages).sort()
+  assert.strictEqual(historicalKeys.length, 2)
+  assert.deepStrictEqual(first.ambiguities, [])
+
+  const third = at('src/a.js', 'script-string', 3, 0)
+  const repeated = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] },
+      { value: '你好', locations: [third] }
+    ])],
+    { previousMetadata }
+  )
+
+  const freshKeys = Object.keys(repeated.messages).sort()
+  assert.strictEqual(freshKeys.length, 3)
+  assert.ok(freshKeys.every(key => !historicalKeys.includes(key)))
+  assert.strictEqual(repeated.ambiguities.length, 3)
+  assert.deepStrictEqual(
+    repeated.ambiguities.map(item => item.localContext),
+    ['sibling:0', 'sibling:1', 'sibling:2']
+  )
+  for (const ambiguity of repeated.ambiguities) {
+    assert.strictEqual(ambiguity.source, '你好')
+    assert.strictEqual(ambiguity.semanticHost, 'src/a.js::script')
+    assert.strictEqual(ambiguity.childRole, 'script-string')
+    assert.deepStrictEqual(ambiguity.candidates.map(candidate => candidate.key).sort(), historicalKeys)
+    assert.ok(freshKeys.includes(ambiguity.proposedKey))
+    assert.ok(!historicalKeys.includes(ambiguity.proposedKey))
+  }
+  assert.strictEqual(
+    repeated.ambiguities.find(item => item.localContext === 'sibling:2').proposedKey,
+    automaticKey({ path: 'src/a.js', kind: 'script-string', value: '你好', location: third })
+  )
+})
+
+test('a refactor with several historical file candidates reports an identity ambiguity and allocates new automatic keys', () => {
+  const previous = buildCatalog([
+    snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] }]),
+    snapshot('src/d.js::script', [{ value: '你好', locations: [at('src/d.js', 'script-string', 1, 0)] }])
+  ])
+  const previousMetadata = catalogMetadata(previous, { sourceLocale: 'zh', format: 'json' })
+  const historicalKeys = Object.keys(previous.messages).sort()
+
+  const here = at('src/b.js', 'script-string', 4, 1)
+  const refactored = buildCatalog(
+    [
+      snapshot('src/b.js::script', [{ value: '你好', locations: [here] }]),
+      snapshot('src/c.js::script', [{ value: '你好', locations: [at('src/c.js', 'script-string', 1, 0)] }])
+    ],
+    { previousMetadata }
+  )
+
+  const freshKeys = Object.keys(refactored.messages).sort()
+  assert.strictEqual(freshKeys.length, 2)
+  assert.ok(freshKeys.every(key => !historicalKeys.includes(key)))
+  assert.strictEqual(refactored.ambiguities.length, 2)
+  for (const ambiguity of refactored.ambiguities) {
+    assert.strictEqual(ambiguity.source, '你好')
+    assert.strictEqual(ambiguity.childRole, 'script-string')
+    assert.deepStrictEqual(ambiguity.candidates.map(candidate => candidate.key).sort(), historicalKeys)
+    assert.ok(freshKeys.includes(ambiguity.proposedKey))
+  }
+  const moved = refactored.ambiguities.find(item => item.semanticHost === 'src/b.js::script')
+  assert.strictEqual(moved.localContext, 'sibling:0')
+  assert.deepStrictEqual(moved.location, here)
+  assert.strictEqual(
+    moved.proposedKey,
+    automaticKey({ path: 'src/b.js', kind: 'script-string', value: '你好', location: here })
+  )
+})
+
+test('an explicit key resolves an occurrence identity ambiguity', () => {
+  const previousMetadata = catalogMetadata(buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ]), { sourceLocale: 'zh', format: 'json' })
+
+  const resolved = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { key: 'home.one', value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { key: 'home.two', value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] },
+      { key: 'home.three', value: '你好', locations: [at('src/a.js', 'script-string', 3, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  assert.deepStrictEqual(resolved.ambiguities, [])
+  assert.deepStrictEqual(Object.keys(resolved.messages).sort(), ['home.one', 'home.three', 'home.two'])
+  assert.strictEqual(resolved.entries['home.one'].origin, 'explicit')
+})
+
+test('a confirmation manifest resolves an occurrence identity ambiguity and a later round keeps that key', () => {
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const historicalKeys = Object.keys(first.messages).sort()
+  const locations = [
+    at('src/a.js', 'script-string', 1, 0),
+    at('src/a.js', 'script-string', 2, 0),
+    at('src/a.js', 'script-string', 3, 0)
+  ]
+  const snapshots = [snapshot('src/a.js::script', locations.map(location => ({ value: '你好', locations: [location] })))]
+  const ambiguous = buildCatalog(snapshots, { previousMetadata })
+  const proposed = ambiguous.ambiguities.find(item => item.localContext === 'sibling:2').proposedKey
+  const confirmations = [
+    { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:0', key: historicalKeys[0] },
+    { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:1', key: historicalKeys[1] },
+    { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:2', key: proposed }
+  ]
+
+  const confirmed = buildCatalog(snapshots, { previousMetadata, confirmations })
+  assert.deepStrictEqual(confirmed.ambiguities, [])
+  assert.strictEqual(confirmed.messages[historicalKeys[0]], '你好')
+  assert.strictEqual(confirmed.messages[historicalKeys[1]], '你好')
+  assert.strictEqual(confirmed.messages[proposed], '你好')
+  assert.strictEqual(confirmed.entries[historicalKeys[0]].origin, 'derived')
+  assert.strictEqual(confirmed.entries[proposed].occurrences[0].localContext, 'sibling:2')
+
+  const again = buildCatalog(snapshots, {
+    previousMetadata: catalogMetadata(confirmed, { sourceLocale: 'zh', format: 'json' }),
+    confirmations
+  })
+  assert.deepStrictEqual(again.ambiguities, [])
+  assert.deepStrictEqual(Object.keys(again.messages).sort(), [historicalKeys[0], historicalKeys[1], proposed].sort())
+})
+
+test('unrelated file replacements are not occurrence identity ambiguities', () => {
+  const previousMetadata = catalogMetadata(buildCatalog([
+    snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] }]),
+    snapshot('src/d.js::script', [{ value: '欢迎', locations: [at('src/d.js', 'script-string', 1, 0)] }])
+  ]), { sourceLocale: 'zh', format: 'json' })
+  const next = buildCatalog([
+    snapshot('src/b.js::script', [{ value: '订单', locations: [at('src/b.js', 'script-string', 1, 0)] }]),
+    snapshot('src/c.js::script', [{ value: '设置', locations: [at('src/c.js', 'script-string', 1, 0)] }])
+  ], { previousMetadata })
+  assert.deepStrictEqual(next.ambiguities, [])
+  assert.deepStrictEqual(Object.keys(next.messages).sort().map(key => key.split('.').slice(0, 2).join('.')), ['src.b', 'src.c'])
+})
+
+test('a confirmation that names an unrelated key leaves the occurrence ambiguous', () => {
+  const previousMetadata = catalogMetadata(buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ]), { sourceLocale: 'zh', format: 'json' })
+  const snapshots = [snapshot('src/a.js::script', [
+    { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] }
+  ])]
+  const rejected = buildCatalog(snapshots, {
+    previousMetadata,
+    confirmations: [{
+      semanticHost: 'src/a.js::script',
+      childRole: 'script-string',
+      localContext: 'sibling:0',
+      key: 'home.other'
+    }]
+  })
+  assert.strictEqual(rejected.ambiguities.length, 1)
+  assert.match(rejected.ambiguities[0].rejectedConfirmation, /"home\.other"/)
+  assert.ok(!Object.prototype.hasOwnProperty.call(rejected.messages, 'home.other'))
+})
+
+test('identity confirmations reject an unsupported manifest and duplicate occurrences', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-confirmations-'))
+  const file = path.join(root, 'identity-confirmations.json')
+  assert.deepStrictEqual(readIdentityConfirmations(path.join(root, 'missing.json')), [])
+  fs.writeFileSync(file, '{"version":99,"confirmations":[]}\n')
+  assert.throws(() => readIdentityConfirmations(file), /version 99 is unsupported/)
+  fs.writeFileSync(file, `${JSON.stringify({
+    version: 1,
+    confirmations: [
+      { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:0', key: 'home.a' },
+      { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:0', key: 'home.b' }
+    ]
+  })}\n`)
+  assert.throws(() => readIdentityConfirmations(file), /duplicate identity confirmation/)
 })
 
 test('identical text at distinct occurrences gets independent automatic keys across semantic kinds', () => {
@@ -329,7 +527,82 @@ test('every collected location gets an explicit or automatic key, and an explici
   assert.strictEqual(catalog.entries[helloA].fingerprint, catalog.entries[helloB1].fingerprint)
 })
 
-test('a key that names different source text is a conflict with every location reported', () => {
+test('messageContract keeps literal text and extracts a positional placeholder contract', () => {
+  assert.deepStrictEqual(messageContract('首页'), { pattern: '首页', placeholders: [] })
+  assert.deepStrictEqual(messageContract('你好，{name}'), { pattern: '你好，{0}', placeholders: ['name'] })
+  assert.deepStrictEqual(messageContract('a{x}b{y}a'), { pattern: 'a{0}b{1}a', placeholders: ['x', 'y'] })
+  assert.deepStrictEqual(messageContract('进度{50%}'), { pattern: '进度{50%}', placeholders: [] })
+  assert.deepStrictEqual(messageContract('你好，{name}'), messageContract('你好，{name}'))
+  assert.notDeepStrictEqual(messageContract('你好，{name}'), messageContract('你好，{user}'))
+  assert.notDeepStrictEqual(messageContract('你好，{name}'), messageContract('你好， {name}'))
+})
+
+test('an explicit key overrides automatic identity and joins compatible message contracts', () => {
+  const first = at('src/a.js', 'script-string', 1, 0, 8)
+  const second = at('src/b.js', 'script-string', 2, 0, 8)
+  const alone = at('src/a.js', 'script-string', 3, 0)
+  const catalog = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好，{name}', key: 'greet.user', locations: [first] },
+      { value: '旁路', locations: [alone] }
+    ]),
+    snapshot('src/b.js::script', [
+      { value: '你好，{name}', key: 'greet.user', locations: [second] }
+    ])
+  ])
+  assert.deepStrictEqual(catalog.conflicts, [])
+  assert.strictEqual(catalog.messages['greet.user'], '你好，{name}')
+  assert.strictEqual(catalog.entries['greet.user'].origin, 'explicit')
+  assert.deepStrictEqual(catalog.entries['greet.user'].locations, [first, second])
+  assert.strictEqual(catalog.entries['greet.user'].occurrences.length, 2)
+  const aloneKey = automaticKey({ path: 'src/a.js', kind: 'script-string', value: '旁路', location: alone })
+  assert.strictEqual(catalog.messages[aloneKey], '旁路')
+  assert.strictEqual(catalog.entries[aloneKey].origin, 'derived')
+  assert.ok(!Object.prototype.hasOwnProperty.call(catalog.messages, automaticKey({
+    path: 'src/a.js',
+    kind: 'script-string',
+    value: '你好，{name}',
+    location: first
+  })))
+})
+
+test('incompatible message patterns or placeholder contracts under one key fail with every occurrence reported', () => {
+  const patternA = at('src/a.js', 'script-string', 1, 0, 6)
+  const patternB = at('src/b.js', 'script-string', 1, 0, 6)
+  const nameSlot = at('src/c.js', 'script-string', 1, 0, 10)
+  const userSlot = at('src/d.js', 'script-string', 1, 0, 10)
+  const spaceSlot = at('src/e.js', 'script-string', 1, 0, 11)
+  const catalog = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '首页', key: 'nav.title', locations: [patternA] }
+    ]),
+    snapshot('src/b.js::script', [
+      { value: '主页', key: 'nav.title', locations: [patternB] }
+    ]),
+    snapshot('src/c.js::script', [
+      { value: '你好，{name}', key: 'greet.user', locations: [nameSlot] }
+    ]),
+    snapshot('src/d.js::script', [
+      { value: '你好，{user}', key: 'greet.user', locations: [userSlot] }
+    ]),
+    snapshot('src/e.js::script', [
+      { value: '你好， {name}', key: 'greet.user', locations: [spaceSlot] }
+    ])
+  ])
+  assert.deepStrictEqual(catalog.conflicts.map(conflict => conflict.key), ['greet.user', 'nav.title'])
+  assert.deepStrictEqual(Object.keys(catalog.messages), [])
+  const message = conflictMessage(catalog.conflicts)
+  assert.match(message, /^i18n-collect failed: 2 localization key conflicts/)
+  assert.match(message, /"nav\.title" names incompatible message contracts/)
+  assert.match(message, /"首页" \(explicit\) at src\/a\.js:1:0 \(script-string\)/)
+  assert.match(message, /"主页" \(explicit\) at src\/b\.js:1:0 \(script-string\)/)
+  assert.match(message, /"greet\.user" names incompatible message contracts/)
+  assert.match(message, /"你好，\{name\}" \(explicit\) at src\/c\.js:1:0 \(script-string\)/)
+  assert.match(message, /"你好，\{user\}" \(explicit\) at src\/d\.js:1:0 \(script-string\)/)
+  assert.match(message, /"你好， \{name\}" \(explicit\) at src\/e\.js:1:0 \(script-string\)/)
+})
+
+test('a key that names incompatible message contracts is a conflict with every location reported', () => {
   const keptLocation = at('src/a.js', 'script-string', 2, 0)
   const automaticLocation = at('src/c.js', 'script-string', 4, 2)
   const colliding = automaticKey({ path: 'src/c.js', kind: 'script-string', value: '派生', location: automaticLocation })
@@ -353,7 +626,7 @@ test('a key that names different source text is a conflict with every location r
   )
   const message = conflictMessage(catalog.conflicts)
   assert.match(message, /^i18n-collect failed: 2 localization key conflicts/)
-  assert.match(message, /"home\.title" names different source text/)
+  assert.match(message, /"home\.title" names incompatible message contracts/)
   assert.match(message, /"首页" \(explicit\) at src\/a\.js:1:16 \(script-string\)/)
   assert.match(message, /"主页" \(explicit\) at src\/b\.vue:3:4 \(html-text\)/)
   assert.match(message, /"派生" \(derived\) at src\/c\.js:4:2 \(script-string\)/)
@@ -386,7 +659,9 @@ test('catalog metadata records source identity so a later round can tell what ch
     added: ['fresh'],
     removed: ['gone'],
     changed: ['edited'],
-    unchanged: ['same']
+    unchanged: ['same'],
+    orphaned: [],
+    recovered: []
   })
   assert.throws(
     () => diffCatalog({ version: 99, entries: before.entries }, after),
@@ -396,7 +671,9 @@ test('catalog metadata records source identity so a later round can tell what ch
     added: ['edited', 'fresh', 'same'],
     removed: [],
     changed: [],
-    unchanged: []
+    unchanged: [],
+    orphaned: [],
+    recovered: []
   })
 })
 

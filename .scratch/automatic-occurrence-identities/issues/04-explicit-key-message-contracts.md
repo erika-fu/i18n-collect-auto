@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Explicit keys can override an automatic key and can intentionally join multiple compatible occurrences.
-- [ ] One key naming incompatible source messages or placeholder contracts fails with all relevant occurrences reported.
-- [ ] Tests cover compatible sharing, source conflicts, automatic/explicit conflicts, and extensible message-pattern normalization boundaries.
+- [x] Explicit keys can override an automatic key and can intentionally join multiple compatible occurrences.
+- [x] One key naming incompatible source messages or placeholder contracts fails with all relevant occurrences reported.
+- [x] Tests cover compatible sharing, source conflicts, automatic/explicit conflicts, and extensible message-pattern normalization boundaries.

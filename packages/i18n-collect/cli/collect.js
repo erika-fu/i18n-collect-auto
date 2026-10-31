@@ -2,7 +2,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { diffCatalog, readCatalogMetadataFile } = require('../mycommon/catalog')
+const { diffCatalog, entryStatus, readCatalogMetadataFile } = require('../mycommon/catalog')
 const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 
 const EXIT = {
@@ -229,7 +229,7 @@ function humanReport(report) {
     `Collected ${report.entries} ${noun}.`,
     `Dictionary: ${report.dictionary}`,
     `Source map: ${report.sourceMap}`,
-    `Catalog: ${catalog.messages} (${catalog.keys} ${keyNoun}: ${catalog.added.length} added, ${catalog.removed.length} removed, ${catalog.changed.length} changed, ${catalog.unchanged.length} unchanged)`,
+    `Catalog: ${catalog.messages} (${catalog.keys} ${keyNoun}: ${catalog.added.length} added, ${catalog.removed.length} removed, ${catalog.changed.length} changed, ${catalog.unchanged.length} unchanged, ${(catalog.orphaned || []).length} orphaned, ${(catalog.recovered || []).length} recovered)`,
     `Catalog metadata: ${catalog.metadata}`,
     `Scope include: ${include}`,
     `Scope exclude: ${exclude}`,
@@ -251,10 +251,12 @@ function reportFrom(config, dictionaryFile, previousCatalog) {
   const files = catalogFiles(config)
   const nextCatalog = readCatalogMetadata(config.root, config)
   if (!nextCatalog) throw commandError('collection', 'collection finished without a catalog')
+  const entries = nextCatalog.entries || {}
+  const activeKeys = Object.keys(entries).filter(key => entryStatus(entries[key]) === 'active').length
   return {
     catalog: {
       format: config.catalogFormat,
-      keys: Object.keys(nextCatalog.entries || {}).length,
+      keys: activeKeys,
       messages: files.messages,
       metadata: files.metadata,
       sourceLocale: config.sourceLocale,

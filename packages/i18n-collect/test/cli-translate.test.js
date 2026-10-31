@@ -203,6 +203,91 @@ test('--retranslate replaces existing translations that the default run keeps', 
   assert.deepStrictEqual(report.kept, [])
 })
 
+test('translate keeps orphaned translations and prunes retired keys', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-retire-translate-'))
+  const liveFingerprint = fingerprintOf('在线')
+  const orphanFingerprint = fingerprintOf('孤儿')
+  const location = {
+    path: 'src/a.js',
+    kind: 'script-string',
+    start: { line: 1, column: 0 },
+    end: { line: 1, column: 2 }
+  }
+  writeProject(root, {
+    messages: { 'home.live': '在线' },
+    targets: {
+      en: {
+        'home.live': 'Live',
+        'home.orphan': 'Orphan',
+        'home.retired': 'Gone'
+      }
+    },
+    state: {
+      version: 1,
+      locales: {
+        en: {
+          'home.live': { sourceFingerprint: liveFingerprint, review: 'current' },
+          'home.orphan': { sourceFingerprint: orphanFingerprint, review: 'current' },
+          'home.retired': { sourceFingerprint: orphanFingerprint, review: 'needs-review' }
+        }
+      }
+    },
+    provider: `module.exports = {
+      translate() {
+        throw new Error('provider should not be called')
+      }
+    }
+    `
+  })
+  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json({
+    version: 2,
+    sourceLocale: 'zh',
+    format: 'json',
+    entries: {
+      'home.live': {
+        source: '在线',
+        fingerprint: liveFingerprint,
+        origin: 'explicit',
+        status: 'active',
+        locations: [location],
+        occurrences: [{
+          id: 'aaaaaaaaaaaaaaaa',
+          semanticHost: 'src/a.js::script',
+          childRole: 'script-string',
+          localContext: 'sibling:0',
+          origin: 'explicit',
+          location
+        }]
+      },
+      'home.orphan': {
+        source: '孤儿',
+        fingerprint: orphanFingerprint,
+        origin: 'explicit',
+        status: 'orphaned',
+        locations: [location],
+        occurrences: [{
+          id: 'bbbbbbbbbbbbbbbb',
+          semanticHost: 'src/a.js::script',
+          childRole: 'script-string',
+          localContext: 'sibling:0',
+          origin: 'explicit',
+          location
+        }]
+      }
+    }
+  }))
+  const result = run(['translate', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8')), {
+    'home.live': 'Live',
+    'home.orphan': 'Orphan'
+  })
+  const state = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'), 'utf8'))
+  assert.strictEqual(state.locales.en['home.retired'], undefined)
+  assert.strictEqual(state.locales.en['home.orphan'].review, 'current')
+  assert.deepStrictEqual(JSON.parse(result.stdout).pruned, [{ key: 'home.retired', locale: 'en' }])
+})
+
 test('a changed source keeps the target text and marks it as needing review', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-'))
   const previous = fingerprintOf('首页')

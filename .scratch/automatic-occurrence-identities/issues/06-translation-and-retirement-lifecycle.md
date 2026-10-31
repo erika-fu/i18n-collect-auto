@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Source message changes preserve target translation text and mark the relevant locale translation as needing review.
-- [ ] Missing occurrences become orphaned and only retire after the agreed confirmation or prune policy; returning occurrences recover safely.
-- [ ] Tests cover multiple collection rounds, review-state consistency, pruning, return from orphaned status, and catalog/metadata consistency.
+- [x] Source message changes preserve target translation text and mark the relevant locale translation as needing review.
+- [x] Missing occurrences become orphaned and only retire after the agreed confirmation or prune policy; returning occurrences recover safely.
+- [x] Tests cover multiple collection rounds, review-state consistency, pruning, return from orphaned status, and catalog/metadata consistency.

@@ -22,7 +22,7 @@ Options:
 Exit codes:
   0  collection finished
   1  configuration failure
-  2  collection failure, including a malformed i18n-key directive or a localization key conflict
+  2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
   3  build failure
 `
 

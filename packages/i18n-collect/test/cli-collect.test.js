@@ -191,7 +191,7 @@ test('collect prints a stable human report', { timeout: 20000 }, () => {
     'Collected 1 entry.',
     'Dictionary: lang/zh_hash.json',
     'Source map: lang/zh_hash.map.json',
-    'Catalog: lang/catalog/zh.json (1 key: 1 added, 0 removed, 0 changed, 0 unchanged)',
+    'Catalog: lang/catalog/zh.json (1 key: 1 added, 0 removed, 0 changed, 0 unchanged, 0 orphaned, 0 recovered)',
     'Catalog metadata: lang/catalog/catalog.meta.json',
     'Scope include: (all resources that enter the loader)',
     'Scope exclude: (none)',
@@ -435,7 +435,9 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
     added: ['home.title', helloKey],
     removed: [],
     changed: [],
-    unchanged: []
+    unchanged: [],
+    orphaned: [],
+    recovered: []
   })
 
   const catalogBytes = fs.readFileSync(path.join(root, 'lang/catalog/zh.json'))
@@ -460,7 +462,7 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
 
   const human = run(['collect'], root)
   assert.strictEqual(human.status, 0, human.stderr)
-  assert.match(human.stdout, /Catalog: lang\/catalog\/zh\.json \(2 keys: 0 added, 0 removed, 0 changed, 2 unchanged\)/)
+  assert.match(human.stdout, /Catalog: lang\/catalog\/zh\.json \(2 keys: 0 added, 0 removed, 0 changed, 2 unchanged, 0 orphaned, 0 recovered\)/)
   assert.match(human.stdout, /Catalog metadata: lang\/catalog\/catalog\.meta\.json/)
 })
 
@@ -499,7 +501,7 @@ test('collect fails on a localization key conflict and keeps every previous outp
   assert.strictEqual(conflict.status, 2, conflict.stderr)
   assert.strictEqual(JSON.parse(conflict.stdout).failure, 'collection')
   assert.match(conflict.stderr, /localization key conflict/)
-  assert.match(conflict.stderr, /"shared\.title" names different source text/)
+  assert.match(conflict.stderr, /"shared\.title" names incompatible message contracts/)
   assert.match(conflict.stderr, /"首页" \(explicit\) at src\/app\.js:2:\d+ \(script-string\)/)
   assert.match(conflict.stderr, /"主页" \(explicit\) at src\/other\.js:1:\d+ \(script-string\)/)
   outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
@@ -509,6 +511,54 @@ test('collect fails on a localization key conflict and keeps every previous outp
   assert.strictEqual(malformed.status, 2, malformed.stderr)
   assert.match(malformed.stderr, /i18n-collect failed for src\/other\.js, script, line 1, column 17: malformed i18n-key directive/)
   outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+})
+
+test('collect fails on an occurrence identity ambiguity, keeps formal outputs, and accepts a confirmation manifest', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-ambiguity-'))
+  writeWebpackProject(root, {
+    source: 'const a = "你好"\nconst b = "你好"\nmodule.exports = [a, b]\n'
+  })
+  const first = run(['collect'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const outputs = ['lang/zh_hash.json', 'lang/zh_hash.map.json', 'lang/catalog/zh.json', 'lang/catalog/catalog.meta.json']
+  const before = outputs.map(file => fs.readFileSync(path.join(root, file)))
+  const historicalKeys = Object.keys(readJson(root, 'lang/catalog/zh.json')).sort()
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'const a = "你好"\nconst b = "你好"\nconst c = "你好"\nmodule.exports = [a, b, c]\n')
+  const ambiguous = run(['collect', '--json'], root)
+  assert.strictEqual(ambiguous.status, 2, ambiguous.stderr)
+  assert.strictEqual(JSON.parse(ambiguous.stdout).failure, 'collection')
+  assert.match(ambiguous.stderr, /occurrence identity/)
+  assert.match(ambiguous.stderr, /identity-ambiguities\.json/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+
+  const report = readJson(root, 'lang/catalog/identity-ambiguities.json')
+  assert.strictEqual(report.version, 1)
+  assert.strictEqual(report.ambiguities.length, 3)
+  for (const item of report.ambiguities) {
+    assert.strictEqual(item.source, '你好')
+    assert.deepStrictEqual(item.candidates.map(candidate => candidate.key).sort(), historicalKeys)
+    assert.ok(!historicalKeys.includes(item.proposedKey))
+  }
+
+  fs.writeFileSync(path.join(root, 'lang/catalog/identity-confirmations.json'), `${JSON.stringify({
+    version: 1,
+    confirmations: report.ambiguities.map(item => ({
+      semanticHost: item.semanticHost,
+      childRole: item.childRole,
+      localContext: item.localContext,
+      key: item.proposedKey
+    }))
+  }, null, 2)}\n`)
+  const resolved = run(['collect', '--json'], root)
+  assert.strictEqual(resolved.status, 0, resolved.stderr)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/identity-ambiguities.json')), false)
+  const catalog = readJson(root, 'lang/catalog/zh.json')
+  assert.deepStrictEqual(
+    Object.keys(catalog).sort(),
+    report.ambiguities.map(item => item.proposedKey).sort()
+  )
+  assert.ok(Object.values(catalog).every(value => value === '你好'))
 })
 
 test('collect refuses unsupported catalog metadata and keeps every previous output', { timeout: 30000 }, () => {

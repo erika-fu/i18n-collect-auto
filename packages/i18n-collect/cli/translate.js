@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
-const { upgradeCatalogMetadata } = require('../mycommon/catalog')
+const { entryStatus, upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { catalogFiles, loadConfig, translationSettings } = require('../mycommon/config')
 const { commitFiles, recoverCommits, unchanged } = require('../mycommon/output')
@@ -149,13 +149,21 @@ function alignedEntries(messages, metadata, metadataFile) {
   if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
     throw commandError('configuration', `catalog metadata ${metadataFile} is not a supported catalog schema`)
   }
+  const active = {}
+  const retainedKeys = []
+  for (const key of Object.keys(entries).sort()) {
+    const entry = entries[key]
+    retainedKeys.push(key)
+    if (entryStatus(entry) === 'orphaned') continue
+    active[key] = entry
+  }
   const messageKeys = Object.keys(messages).sort()
-  const entryKeys = Object.keys(entries).sort()
+  const entryKeys = Object.keys(active).sort()
   if (messageKeys.join('\0') !== entryKeys.join('\0')) {
     throw commandError('configuration', 'source catalog and catalog metadata name different keys')
   }
   for (const key of entryKeys) {
-    const entry = entries[key]
+    const entry = active[key]
     if (!entry || messages[key] !== entry.source) {
       throw commandError('configuration', `source catalog and catalog metadata disagree on "${key}"`)
     }
@@ -163,7 +171,7 @@ function alignedEntries(messages, metadata, metadataFile) {
       throw commandError('configuration', `catalog metadata entry "${key}" has no source fingerprint`)
     }
   }
-  return entries
+  return { active, retainedKeys }
 }
 
 function loadProvider(root, specifier) {
@@ -223,8 +231,9 @@ async function authorizeNetwork(provider, parsed, terminal) {
 }
 
 function humanReport(report) {
+  const pruned = report.pruned || []
   const lines = [
-    `Created ${report.created.length}, replaced ${report.replaced.length}, kept ${report.kept.length}, marked ${report.needsReview.length} for review, failed ${report.failures.length}.`,
+    `Created ${report.created.length}, replaced ${report.replaced.length}, kept ${report.kept.length}, marked ${report.needsReview.length} for review, pruned ${pruned.length}, failed ${report.failures.length}.`,
     `Retranslate: ${report.retranslate ? 'yes' : 'no'}`,
     `Policy: ${report.policy}`,
     `Applied: ${report.applied ? 'yes' : 'no'}`,
@@ -241,6 +250,7 @@ function humanReport(report) {
   list('Replaced', report.replaced)
   list('Kept', report.kept)
   list('Needs review', report.needsReview)
+  list('Pruned', pruned)
   if (!report.applied) lines.push('Catalogs were left unchanged.')
   list('Withheld', report.withheld)
   if (report.failures.length > 0) {
@@ -288,7 +298,7 @@ async function execute(parsed, terminal) {
   } catch (error) {
     throw commandError('configuration', `cannot read catalog metadata ${files.metadata}: ${error.message}`)
   }
-  const entries = alignedEntries(messages, metadata, files.metadata)
+  const { active: entries, retainedKeys } = alignedEntries(messages, metadata, files.metadata)
   recoverCommits(path.join(root, config.catalogDir))
   const targets = {}
   for (const locale of config.targetLocales) {
@@ -299,6 +309,7 @@ async function execute(parsed, terminal) {
   const state = readState(root, stateRelative)
   const plan = planTranslation({
     entries,
+    retainedKeys,
     targets,
     state,
     locales: config.targetLocales,
@@ -352,6 +363,7 @@ async function execute(parsed, terminal) {
     needsReview: needsReview(blocked ? state : plan.nextState, entries, config.targetLocales),
     ok: failures.length === 0,
     policy: config.translationFailure,
+    pruned: blocked ? [] : plan.pruned,
     replaced: blocked ? [] : replaced,
     retranslate: parsed.retranslate,
     review: stateRelative,

@@ -7,6 +7,9 @@ const { isGlobPattern, normalizeGlobPattern } = require('./scope-pattern')
 const CONFIG_FILE = 'i18n-collect.config.js'
 const CONTEXT_FILTERS = new Set(['logging', 'tests', 'analytics'])
 const CATALOG_METADATA_FILE = 'catalog.meta.json'
+const IDENTITY_CONFIRMATIONS_FILE = 'identity-confirmations.json'
+const IDENTITY_AMBIGUITIES_FILE = 'identity-ambiguities.json'
+const RETIREMENT_CONFIRMATIONS_FILE = 'retirement-confirmations.json'
 const LOCALE = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$/
 
 const DEFAULTS = {
@@ -22,12 +25,13 @@ const DEFAULTS = {
   catalogFormat: 'json',
   translationProvider: '',
   targetLocales: [],
-  translationFailure: 'partial'
+  translationFailure: 'partial',
+  pruneOrphaned: false
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
 const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])
-const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat']
+const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrphaned']
 const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
@@ -150,6 +154,7 @@ function validate(root, input) {
   if (!FAILURE_POLICIES.has(config.translationFailure)) {
     fail('translationFailure must be "partial" or "strict"')
   }
+  if (typeof config.pruneOrphaned !== 'boolean') fail('pruneOrphaned must be a boolean')
   return config
 }
 
@@ -158,6 +163,14 @@ function catalogFiles(config) {
   return {
     messages: path.posix.join(config.catalogDir, `${config.sourceLocale}${extension}`),
     metadata: path.posix.join(config.catalogDir, CATALOG_METADATA_FILE)
+  }
+}
+
+function identityFiles(config) {
+  return {
+    confirmations: path.posix.join(config.catalogDir, IDENTITY_CONFIRMATIONS_FILE),
+    ambiguities: path.posix.join(config.catalogDir, IDENTITY_AMBIGUITIES_FILE),
+    retirements: path.posix.join(config.catalogDir, RETIREMENT_CONFIRMATIONS_FILE)
   }
 }
 
@@ -241,6 +254,7 @@ module.exports = {
   canonicalRoot,
   catalogFiles,
   clearCollectionOverrides,
+  identityFiles,
   loadConfig,
   setCollectionOverrides,
   translationSettings,

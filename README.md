@@ -45,7 +45,7 @@ npx i18n-collect collect --json
 npx i18n-collect collect --help
 ```
 
-Exit 0 means collection finished. Exit 1 is a configuration failure, exit 2 is a collection failure, and exit 3 is a build failure. A malformed `i18n-key` directive and a localization key conflict are collection failures. A collection failure keeps the previous dictionary, source map, and catalog. The Vue demo is wired through Vue CLI, so its checked-in dictionary still comes from `npm run update-demo-collection`.
+Exit 0 means collection finished. Exit 1 is a configuration failure, exit 2 is a collection failure, and exit 3 is a build failure. A malformed `i18n-key` directive, a localization key conflict, and an occurrence identity ambiguity are collection failures. A collection failure keeps the previous dictionary, source map, and catalog. The Vue demo is wired through Vue CLI, so its checked-in dictionary still comes from `npm run update-demo-collection`.
 
 ## Webpack 5 integration
 
@@ -120,9 +120,9 @@ const title = /* i18n-key: home.title */ '首页'
 <p>欢迎使用</p>
 ```
 
-A location without an explicit key gets an automatic key. On first sighting it is built from the project-relative path without its extension, written as dot-separated segments with other characters replaced by `_` and a `k` prefix when the path does not start with a letter, plus 8 hex characters of a SHA-256 hash over the path, the semantic kind, the collected text, and that occurrence's source range. For example, `欢迎` in Vue template text of `src/pages/Home.vue` gets `src.pages.Home.<hash>`. Later rounds reuse that key when catalog metadata uniquely matches the occurrence by structural anchors (semantic host, child role, local context), using source text only as auxiliary evidence when sibling counts change; unmatched occurrences receive a new key rather than an unsafe historical identity. Identical text at separate locations receives independent catalog keys so each occurrence can take a different translation. The legacy MD5 dictionary and source map still deduplicate by text value.
+A location without an explicit key gets an automatic key. On first sighting it is built from the project-relative path without its extension, written as dot-separated segments with other characters replaced by `_` and a `k` prefix when the path does not start with a letter, plus 8 hex characters of a SHA-256 hash over the path, the semantic kind, the collected text, and that occurrence's source range. For example, `欢迎` in Vue template text of `src/pages/Home.vue` gets `src.pages.Home.<hash>`. Later rounds reuse that key when catalog metadata uniquely matches the occurrence by structural anchors (semantic host, child role, local context), using source text only as auxiliary evidence when sibling counts change. An unmatched occurrence receives a new automatic key. If that fresh hash collides with a historical key this round did not uniquely match, collection salts the hash so the old translation identity is not reused. When several historical candidates remain viable, collection still allocates that new key, writes `<catalogDir>/identity-ambiguities.json`, and fails the round until the ambiguity has a durable confirmation. An `i18n-key` directive confirms it in source. A source that cannot be edited is confirmed in `<catalogDir>/identity-confirmations.json` instead: version 1, with one entry per occurrence naming `semanticHost`, `childRole`, `localContext`, and either a historical candidate key or the report's `proposedKey`. A resolved round deletes the ambiguity report. Identical text at separate locations receives independent catalog keys so each occurrence can take a different translation. The legacy MD5 dictionary and source map still deduplicate by text value.
 
-An explicit key may intentionally gather several locations when they all name the same source text. A key that names two different source texts is a key conflict. An explicit key that equals another text's automatic key is also a conflict. A conflict fails the round, keeps every previous output, and lists each conflicting text with all of its locations.
+An explicit key may intentionally gather several locations when they all share the same message contract (normalized message pattern and placeholder contract). A key that names incompatible message contracts is a key conflict. An explicit key that equals another text's automatic key with a different message contract is also a conflict. A conflict fails the round, keeps every previous output, and lists each conflicting text with all of its locations.
 
 ## Translation catalog
 
@@ -193,8 +193,10 @@ Translate prepares every target catalog and the review state that this run will 
 
 Translate writes:
 
-- `<catalogDir>/<locale>.json`: the target catalog, through the same format adapter as the source catalog. Keys that are not in the source catalog are left in place.
+- `<catalogDir>/<locale>.json`: the target catalog, through the same format adapter as the source catalog. Keys retained in catalog metadata (active or orphaned) stay. Keys absent from metadata are pruned from the target catalog and review state.
 - `<catalogDir>/translation-state.json`: review state, `{ version: 1, locales }`. Each locale maps a localization key to `{ sourceFingerprint, review }`. `review` is `current` or `needs-review`. The recorded fingerprint stays at the source the translation was accepted against, so a later source change can be told apart from the current catalog metadata.
+
+When a localization key leaves the current collection, catalog metadata keeps it as `orphaned` so translations and automatic-key recovery remain available. Retire it with `<catalogDir>/retirement-confirmations.json` (`{ version: 1, keys: [...] }`), or set `pruneOrphaned: true` in `i18n-collect.config.js` to retire missing and previously orphaned keys in the same collection round.
 
 The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app.
 
@@ -207,8 +209,9 @@ Migration keeps the following distinct:
 | Collected text | Chinese copy found in source. Collection records it and leaves the file unchanged. |
 | Hash collection output | `lang/zh_hash.json` and `lang/zh_hash.map.json`. The dictionary key is the MD5 of the collected text. |
 | Translation catalog | `lang/catalog/<locale>.json`, a flat map from a localization key to text. Collection writes the source locale. Translate writes each target locale. |
-| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, source locations, and per-occurrence identity. |
+| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, source locations, per-occurrence identity, and `active` or `orphaned` status. |
 | Review state | `lang/catalog/translation-state.json`: for each key and target locale, the source fingerprint the translation was accepted against, and `current` or `needs-review`. |
+| Retirement confirmations | `lang/catalog/retirement-confirmations.json`: durable list of orphaned localization keys to retire. |
 | Translation provider | A project module passed to translate. It is not an output file and it is not a vendor SDK. |
 | Replacement preview | The default result of replace. It reports the source that would be written and does not modify files. |
 | Source replacement | The rewrite of a supported location into a runtime localization call. Source files change only with `--write`. |
@@ -331,7 +334,7 @@ Each loader call submits a complete replacement snapshot for that identity, incl
 ## Limits
 
 - SCSS, Sass, Less, and Stylus are warning and skip only. There is no parser for them.
-- A parse error, a malformed `i18n-key` directive, or a localization key conflict fails the round and keeps the previous official output.
+- A parse error, a malformed `i18n-key` directive, a localization key conflict, or an occurrence identity ambiguity fails the round and keeps the previous official output.
 - A key directive that does not associate with a collected fragment is ignored, like an unattached `no-i18n-auto`.
 - Watch may compile one extra time after a real dictionary change, then become quiet.
 - A one-shot production build writes the latest dictionary, but that same bundle can still embed the previous dictionary.

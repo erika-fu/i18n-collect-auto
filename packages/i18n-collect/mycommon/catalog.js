@@ -15,6 +15,25 @@ function fingerprintOf(source) {
   return sha256(source).slice(0, 16)
 }
 
+// Current normalization boundary: literal static text is kept as-is; only simple
+// `{identifier}` tokens become positional slots. Whitespace, ICU selects, and
+// non-identifier braces are not folded — extend here when those rules land.
+const PLACEHOLDER_TOKEN = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+
+function messageContract(source) {
+  const placeholders = []
+  const pattern = String(source).replace(PLACEHOLDER_TOKEN, (_match, name) => {
+    const index = placeholders.length
+    placeholders.push(name)
+    return `{${index}}`
+  })
+  return { pattern, placeholders }
+}
+
+function compatibilityKey(contract) {
+  return `${contract.pattern}\0${contract.placeholders.join('\0')}`
+}
+
 function pathSlug(projectPath) {
   const parsed = path.posix.parse(projectPath)
   const segments = (parsed.dir ? parsed.dir.split('/') : []).concat(parsed.name || parsed.base)
@@ -38,6 +57,27 @@ function automaticKey({ path: projectPath, kind, value, location }) {
     location.end.column
   ].join('\0')
   return `${pathSlug(projectPath)}.${sha256(material).slice(0, 8)}`
+}
+
+// An unmoved occurrence hashes to the same automatic key as its first sighting.
+// When this round did not uniquely match that history, keep the new assignment
+// off every historical key so an old translation identity is not reused by collision.
+function automaticKeyAvoiding(draft, forbidden) {
+  const natural = automaticKey({
+    path: draft.location.path,
+    kind: draft.location.kind,
+    value: draft.value,
+    location: draft.location
+  })
+  if (!forbidden.has(natural)) return natural
+  const slug = natural.slice(0, natural.lastIndexOf('.'))
+  let salt = 1
+  let key = natural
+  while (forbidden.has(key)) {
+    key = `${slug}.${sha256(`${natural}\0${salt}`).slice(0, 8)}`
+    salt += 1
+  }
+  return key
 }
 
 function sortedObject(map, project) {
@@ -195,6 +235,34 @@ function hostCorrespondence(previousHosts, currentHosts) {
   return currentToPrevious
 }
 
+function candidateOf(item) {
+  return {
+    key: item.key,
+    source: item.source,
+    semanticHost: item.semanticHost,
+    childRole: item.childRole,
+    localContext: item.localContext
+  }
+}
+
+function confirmationIdentity(item) {
+  return `${item.semanticHost}\0${item.childRole}\0${item.localContext}`
+}
+
+function ambiguityView(draft, proposedKey, candidates, rejectedConfirmation) {
+  const view = {
+    proposedKey,
+    source: draft.value,
+    semanticHost: draft.semanticHost,
+    childRole: draft.childRole,
+    localContext: draft.localContext,
+    location: draft.location,
+    candidates
+  }
+  if (rejectedConfirmation) view.rejectedConfirmation = rejectedConfirmation
+  return view
+}
+
 function matchGroup(previous, current, reused, claimedKeys) {
   const unmatchedPrevious = new Set(previous)
   const unmatchedCurrent = new Set(current)
@@ -232,14 +300,20 @@ function matchGroup(previous, current, reused, claimedKeys) {
       unmatchedCurrent.delete(next[0])
     }
   }
+
+  return {
+    unmatchedPrevious: [...unmatchedPrevious],
+    unmatchedCurrent: [...unmatchedCurrent]
+  }
 }
 
 function matchAutomaticKeys(drafts, previousMetadata) {
   const reused = new Map()
-  if (!previousMetadata || drafts.length === 0) return reused
+  const ambiguities = []
+  if (!previousMetadata || drafts.length === 0) return { reused, ambiguities }
 
   const previous = historicalDerivedOccurrences(previousMetadata)
-  if (previous.length === 0) return reused
+  if (previous.length === 0) return { reused, ambiguities }
 
   const hostMap = hostCorrespondence(
     new Set(previous.map(item => item.semanticHost)),
@@ -258,9 +332,37 @@ function matchAutomaticKeys(drafts, previousMetadata) {
 
   const claimedKeys = new Set()
   for (const [groupKey, current] of currentByGroup) {
-    matchGroup(previousByGroup.get(groupKey) || [], current, reused, claimedKeys)
+    const groupMatch = matchGroup(previousByGroup.get(groupKey) || [], current, reused, claimedKeys)
+    for (const draft of groupMatch.unmatchedCurrent) {
+      const candidates = groupMatch.unmatchedPrevious
+        .filter(item => item.source === draft.value)
+        .map(candidateOf)
+        .sort(compareCandidates)
+      if (candidates.length >= 2) ambiguities.push({ draft, candidates })
+    }
   }
-  return reused
+
+  const mappedPreviousHosts = new Set(hostMap.values())
+  const unmappedPrevious = previous.filter(item =>
+    !claimedKeys.has(item.key) && !mappedPreviousHosts.has(item.semanticHost)
+  )
+  for (const draft of drafts) {
+    if (reused.has(draft) || hostMap.has(draft.semanticHost)) continue
+    const candidates = unmappedPrevious
+      .filter(item =>
+        item.childRole === draft.childRole &&
+        semanticBlockSuffix(item.semanticHost) === semanticBlockSuffix(draft.semanticHost) &&
+        item.source === draft.value
+      )
+      .map(candidateOf)
+      .sort(compareCandidates)
+    if (candidates.length >= 2) ambiguities.push({ draft, candidates })
+  }
+  return { reused, ambiguities }
+}
+
+function compareCandidates(a, b) {
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0
 }
 
 function buildCatalog(snapshots, options = {}) {
@@ -295,41 +397,78 @@ function buildCatalog(snapshots, options = {}) {
   }))
   assignOccurrenceIdentities(indexingDrafts)
   const automaticDrafts = indexingDrafts.filter(draft => !draft.placement.explicitKey)
-  const reusedKeys = matchAutomaticKeys(automaticDrafts, previousMetadata)
-  const keyByPlacement = new Map()
+  const matched = matchAutomaticKeys(automaticDrafts, previousMetadata)
+  const proposalReserved = new Set(
+    historicalDerivedOccurrences(previousMetadata).map(item => item.key)
+  )
+  const proposedByDraft = new Map()
   for (const draft of automaticDrafts) {
-    keyByPlacement.set(
-      draft.placement,
-      reusedKeys.get(draft) || automaticKey({
-        path: draft.location.path,
-        kind: draft.location.kind,
-        value: draft.value,
-        location: draft.location
-      })
-    )
+    const key = matched.reused.has(draft)
+      ? matched.reused.get(draft)
+      : automaticKeyAvoiding(draft, proposalReserved)
+    proposalReserved.add(key)
+    proposedByDraft.set(draft, key)
+  }
+  const confirmationByIdentity = new Map(
+    (options.confirmations || []).map(item => [confirmationIdentity(item), item])
+  )
+  const candidatesByDraft = new Map(matched.ambiguities.map(item => [item.draft, item.candidates]))
+  const assignedKeys = new Set()
+  const keyByPlacement = new Map()
+  const ambiguities = []
+  for (const draft of automaticDrafts) {
+    const proposedKey = proposedByDraft.get(draft)
+    const candidates = candidatesByDraft.get(draft)
+    let key = matched.reused.get(draft) || proposedKey
+    if (candidates && !matched.reused.has(draft)) {
+      const confirmation = confirmationByIdentity.get(confirmationIdentity(draft))
+      if (!confirmation) {
+        ambiguities.push(ambiguityView(draft, proposedKey, candidates))
+      } else if (confirmation.key !== proposedKey && !candidates.some(candidate => candidate.key === confirmation.key)) {
+        ambiguities.push(ambiguityView(
+          draft,
+          proposedKey,
+          candidates,
+          `"${confirmation.key}" is not a historical candidate or the proposed key`
+        ))
+      } else if (assignedKeys.has(confirmation.key)) {
+        ambiguities.push(ambiguityView(
+          draft,
+          proposedKey,
+          candidates,
+          `"${confirmation.key}" is already confirmed for another occurrence`
+        ))
+      } else {
+        key = confirmation.key
+      }
+    }
+    if (!matched.reused.has(draft) && assignedKeys.has(key)) key = automaticKeyAvoiding(draft, assignedKeys)
+    assignedKeys.add(key)
+    keyByPlacement.set(draft.placement, key)
   }
 
   const byKey = new Map()
   for (const placement of placements) {
     const key = placement.explicitKey || keyByPlacement.get(placement)
     const group = byKey.get(key) || { variants: new Map() }
-    const variant = group.variants.get(placement.value) || { explicit: false, placements: [] }
+    const id = compatibilityKey(messageContract(placement.value))
+    const variant = group.variants.get(id) || { explicit: false, source: placement.value, placements: [] }
     if (placement.explicitKey) variant.explicit = true
     variant.placements.push({ location: placement.location, semanticHost: placement.semanticHost })
-    group.variants.set(placement.value, variant)
+    group.variants.set(id, variant)
     byKey.set(key, group)
   }
   const conflicts = []
   const entries = new Map()
   for (const [key, group] of byKey) {
-    const variants = [...group.variants].map(([source, variant]) => {
+    const variants = [...group.variants.values()].map(variant => {
       const unique = new Map()
       for (const placement of variant.placements) {
         unique.set(locationId(placement.location), placement)
       }
       const placements = [...unique.values()].sort((a, b) => sortLocations(a.location, b.location))
       return {
-        source,
+        source: variant.source,
         origin: variant.explicit ? 'explicit' : 'derived',
         locations: placements.map(placement => placement.location),
         hostByLocation: new Map(placements.map(placement => [locationId(placement.location), placement.semanticHost]))
@@ -356,15 +495,74 @@ function buildCatalog(snapshots, options = {}) {
     })
   }
   attachOccurrences(entries)
+  ambiguities.sort((a, b) => sortLocations(a.location, b.location))
+  const active = sortedObject(entries, entry => ({ ...entry, status: 'active' }))
+  const lifecycle = applyOccurrenceLifecycle(active, previousMetadata, {
+    retirements: options.retirements || [],
+    prune: Boolean(options.prune)
+  })
   return {
+    ambiguities,
     conflicts: conflicts.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+    entries: lifecycle.entries,
+    messages: sortedObject(
+      new Map(Object.entries(lifecycle.entries).filter(([, entry]) => entryStatus(entry) === 'active')),
+      entry => entry.source
+    ),
+    orphaned: lifecycle.orphaned,
+    retired: lifecycle.retired
+  }
+}
+
+function entryStatus(entry) {
+  return entry && entry.status === 'orphaned' ? 'orphaned' : 'active'
+}
+
+function cloneMetadataEntry(entry, status) {
+  return {
+    source: entry.source,
+    fingerprint: entry.fingerprint,
+    origin: entry.origin,
+    locations: entry.locations,
+    occurrences: entry.occurrences,
+    status
+  }
+}
+
+function applyOccurrenceLifecycle(activeEntries, previousMetadata, { retirements = [], prune = false } = {}) {
+  const retiredKeys = new Set(retirements)
+  const previous = previousMetadata ? previousMetadata.entries || {} : {}
+  const entries = new Map()
+  for (const [key, entry] of Object.entries(activeEntries || {})) {
+    entries.set(key, cloneMetadataEntry(entry, 'active'))
+  }
+  const orphaned = []
+  const retired = []
+  for (const key of Object.keys(previous).sort()) {
+    if (entries.has(key)) continue
+    const prior = previous[key]
+    if (!prior) continue
+    if (retiredKeys.has(key) || prune) {
+      retired.push(key)
+      continue
+    }
+    entries.set(key, cloneMetadataEntry(prior, 'orphaned'))
+    orphaned.push(key)
+  }
+  return {
     entries: sortedObject(entries, entry => entry),
-    messages: sortedObject(entries, entry => entry.source)
+    orphaned,
+    retired
   }
 }
 
 function catalogMetadata(catalog, { sourceLocale, format }) {
-  return { version: CATALOG_VERSION, sourceLocale, format, entries: catalog.entries }
+  const entries = {}
+  for (const key of Object.keys(catalog.entries || {}).sort()) {
+    const entry = catalog.entries[key]
+    entries[key] = cloneMetadataEntry(entry, entryStatus(entry))
+  }
+  return { version: CATALOG_VERSION, sourceLocale, format, entries }
 }
 
 function migrationError(message) {
@@ -456,6 +654,9 @@ function assertCurrentEntry(entry, key) {
   if (entry.origin !== 'explicit' && entry.origin !== 'derived') {
     throw migrationError(`catalog metadata entry "${key}" has an unknown origin`)
   }
+  if (entry.status != null && entry.status !== 'active' && entry.status !== 'orphaned') {
+    throw migrationError(`catalog metadata entry "${key}" has an unknown status`)
+  }
   if (!Array.isArray(entry.locations)) {
     throw migrationError(`catalog metadata entry "${key}" has invalid source locations`)
   }
@@ -513,10 +714,17 @@ function metadataEntries(metadata) {
 function diffCatalog(previous, next) {
   const before = metadataEntries(previous)
   const after = metadataEntries(next)
-  const diff = { added: [], removed: [], changed: [], unchanged: [] }
+  const diff = { added: [], removed: [], changed: [], unchanged: [], orphaned: [], recovered: [] }
   for (const key of Object.keys(after).sort()) {
-    if (!Object.prototype.hasOwnProperty.call(before, key)) diff.added.push(key)
-    else if (before[key].fingerprint !== after[key].fingerprint) diff.changed.push(key)
+    const afterEntry = after[key]
+    if (entryStatus(afterEntry) === 'orphaned') {
+      diff.orphaned.push(key)
+      continue
+    }
+    const beforeEntry = before[key]
+    if (!beforeEntry) diff.added.push(key)
+    else if (entryStatus(beforeEntry) === 'orphaned') diff.recovered.push(key)
+    else if (beforeEntry.fingerprint !== afterEntry.fingerprint) diff.changed.push(key)
     else diff.unchanged.push(key)
   }
   for (const key of Object.keys(before).sort()) {
@@ -529,18 +737,105 @@ function where(location) {
   return `${location.path}:${location.start.line}:${location.start.column} (${location.kind})`
 }
 
+function ambiguityMessage(ambiguities, reportPath) {
+  const noun = ambiguities.length === 1 ? 'ambiguity' : 'ambiguities'
+  const lines = [`i18n-collect failed: ${ambiguities.length} occurrence identity ${noun}`]
+  if (reportPath) lines.push(`  Ambiguity report: ${reportPath}`)
+  for (const item of ambiguities) {
+    lines.push(`  ${where(item.location)} ${JSON.stringify(item.source)} proposed ${item.proposedKey}`)
+    for (const candidate of item.candidates) {
+      lines.push(`    candidate ${candidate.key} ${JSON.stringify(candidate.source)} at ${candidate.semanticHost} ${candidate.localContext}`)
+    }
+    if (item.rejectedConfirmation) lines.push(`    confirmation rejected: ${item.rejectedConfirmation}`)
+  }
+  lines.push('  Add an i18n-key directive, or record the chosen key in identity-confirmations.json.')
+  return lines.join('\n')
+}
+
+const CONFIRMATION_VERSION = 1
+const RETIREMENT_VERSION = 1
+
+function readRetirementConfirmations(file) {
+  if (!fs.existsSync(file)) return []
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`retirement confirmations could not be read (${error.message})`)
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('retirement confirmations must be an object')
+  }
+  if (parsed.version !== RETIREMENT_VERSION) {
+    throw new Error(`retirement confirmations version ${parsed.version} is unsupported; use version ${RETIREMENT_VERSION}`)
+  }
+  if (!Array.isArray(parsed.keys)) {
+    throw new Error('retirement confirmations must include a keys array')
+  }
+  const seen = new Set()
+  return parsed.keys.map((key, index) => {
+    if (typeof key !== 'string' || key.length === 0) {
+      throw new Error(`retirement confirmation ${index} must be a non-empty localization key`)
+    }
+    if (seen.has(key)) throw new Error(`duplicate retirement confirmation for "${key}"`)
+    seen.add(key)
+    return key
+  })
+}
+
+function readIdentityConfirmations(file) {
+  if (!fs.existsSync(file)) return []
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`identity confirmations could not be read (${error.message})`)
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('identity confirmations must be an object')
+  }
+  if (parsed.version !== CONFIRMATION_VERSION) {
+    throw new Error(`identity confirmations version ${parsed.version} is unsupported; use version ${CONFIRMATION_VERSION}`)
+  }
+  if (!Array.isArray(parsed.confirmations)) {
+    throw new Error('identity confirmations must include a confirmations array')
+  }
+  const seen = new Set()
+  return parsed.confirmations.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`identity confirmation ${index} must be an object`)
+    }
+    for (const field of ['semanticHost', 'childRole', 'localContext', 'key']) {
+      if (typeof item[field] !== 'string' || item[field].length === 0) {
+        throw new Error(`identity confirmation ${index} is missing ${field}`)
+      }
+    }
+    const id = confirmationIdentity(item)
+    if (seen.has(id)) {
+      throw new Error(`duplicate identity confirmation for ${item.semanticHost} ${item.childRole} ${item.localContext}`)
+    }
+    seen.add(id)
+    return {
+      semanticHost: item.semanticHost,
+      childRole: item.childRole,
+      localContext: item.localContext,
+      key: item.key
+    }
+  })
+}
+
 function conflictMessage(conflicts) {
   const noun = conflicts.length === 1 ? 'conflict' : 'conflicts'
   const lines = [`i18n-collect failed: ${conflicts.length} localization key ${noun}`]
   for (const conflict of conflicts) {
-    lines.push(`  "${conflict.key}" names different source text:`)
+    lines.push(`  "${conflict.key}" names incompatible message contracts:`)
     for (const variant of conflict.variants) {
       for (const location of variant.locations) {
         lines.push(`    ${JSON.stringify(variant.source)} (${variant.origin}) at ${where(location)}`)
       }
     }
   }
-  lines.push('  Give each source text its own i18n-key, or make the directives agree.')
+  lines.push('  Give each message its own i18n-key, or make the message patterns and placeholders agree.')
   return lines.join('\n')
 }
 
@@ -560,12 +855,17 @@ function readCatalogMetadataFile(file) {
 module.exports = {
   CATALOG_VERSION,
   automaticKey,
+  ambiguityMessage,
   buildCatalog,
   catalogMetadata,
   conflictMessage,
   deriveKey: automaticKey,
   diffCatalog,
+  entryStatus,
   fingerprintOf,
+  messageContract,
   readCatalogMetadataFile,
+  readIdentityConfirmations,
+  readRetirementConfirmations,
   upgradeCatalogMetadata
 }
