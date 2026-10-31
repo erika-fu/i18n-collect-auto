@@ -149,7 +149,7 @@ done(stats)
     <li><code>snapshotsForRelease()</code>：汇总 live、recovered、submitted，并合并 diagnostics/integrated 状态。</li>
     <li><code>activeHtmlTemplates()</code>：确认 HTMLWebpackPlugin 当前真正活动的模板。</li>
     <li><code>retainStaticHtmlSnapshots()</code>：按 active template、live、submitted 和 committed 规则处理静态 HTML。</li>
-    <li><code>buildCatalog()</code>：把最终 snapshots 转换为目录、hash dictionary 与 source map 所需的聚合数据。</li>
+    <li><code>buildCatalog()</code>：把最终 snapshots 转换为目录、hash dictionary 与 source map 所需的聚合数据，并基于 previous catalog metadata 恢复 automatic key；ambiguity 或 key conflict 会阻止发布。</li>
     <li><code>session.release()</code>：先 checkpoint/commit 内存状态，再调用输出写入；写失败时 rollback。</li>
   </ul>
 </section>
@@ -184,7 +184,7 @@ session.release
 session.release()
     ↓ 写出成功
 committed + dictionary + source map + catalog</pre>
-  <p>如果构建失败，当前 round 被放弃，上一成功的 committed 和磁盘产物保持不变。如果写文件中途失败，<code>release()</code> 使用 checkpoint 回滚内存；<a href="../packages/i18n-collect/mycommon/output.js">output.js</a> 使用 journal 保证多文件成组替换能够恢复，避免出现半新半旧的输出。</p>
+  <p>如果构建失败，当前 round 被放弃，上一成功的 committed 和磁盘产物保持不变；identity ambiguity、message-contract key conflict 也属于不能发布的 collection failure。如果写文件中途失败，<code>release()</code> 使用 checkpoint 回滚内存；<a href="../packages/i18n-collect/mycommon/output.js">output.js</a> 使用 journal 保证多文件成组替换能够恢复，避免出现半新半旧的输出。</p>
 </section>
 
 <section>

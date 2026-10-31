@@ -18,10 +18,12 @@
     <dt>Collection round（收集轮次）</dt><dd>一次 compilation 的候选收集；只有无错误、无键冲突且文件提交成功时才成为正式结果。</dd>
   </dl></section>
   <section><h2>键、目录与翻译域</h2><dl>
-    <dt>Hash collection output（哈希收集产物）</dt><dd><code>MD5(text) → text</code> 的运行时字典及其 source map。为旧消费者保持兼容；它不是翻译运行时键。</dd>
-    <dt>Localization key（本地化键）</dt><dd>翻译目录和源码替换使用的稳定键。来自紧邻的 <code>i18n-key</code> 指令，或由 path、kind、text 派生；移动文本不改变派生键。</dd>
-    <dt>Translation catalog（翻译目录）</dt><dd>按 locale 保存的 <code>key → text</code> 平面映射。收集写源语言目录；translate 写目标语言目录。</dd>
-    <dt>Catalog metadata（目录元数据）</dt><dd>每个键的源文案、指纹、键来源和位置；用于计算新增、删除、源码变化和未变化。</dd>
+    <dt>Hash collection output（哈希收集产物）</dt><dd><code>MD5(text) → text</code> 的运行时字典及其 source map。相同文案按值去重，为旧消费者保持兼容；它不是翻译运行时键，也不能表达 occurrence identity。</dd>
+    <dt>Occurrence（出现）</dt><dd>源码中一次具体的文案出现；它有自己的位置，并可独立匹配、替换，但不一定等于一个翻译单元。</dd>
+    <dt>Localization key（本地化键）</dt><dd>翻译目录和源码替换使用的稳定键。显式 <code>i18n-key</code> 可以指定它；没有 directive 时，automatic key 首次按 occurrence 分配，并通过 catalog metadata/history 复用，而不是按当前文本或坐标重新推导。</dd>
+    <dt>Automatic key（自动键）</dt><dd>无显式 key 的 occurrence 获得的 localization key。可读 slug 只是诊断提示；若历史匹配不唯一，系统分配避开旧 key 的 proposed key，并等待确认。</dd>
+    <dt>Translation catalog（翻译目录）</dt><dd>按 locale 保存的 <code>key → text</code> 平面映射。收集写源语言目录；translate 写目标语言目录。相同文本的不同 occurrence 默认可以拥有不同 key。</dd>
+    <dt>Catalog metadata（目录元数据）</dt><dd>每个键的源文案、指纹、键来源、位置和 occurrence identity；用于恢复自动键、计算新增/删除/源码变化，并追踪 active/orphaned 生命周期。</dd>
     <dt>Review state（审阅状态）</dt><dd>目标翻译所接受源指纹及 <code>current</code>/<code>needs-review</code> 状态，防止源文案变更时静默误认为翻译仍正确。</dd>
     <dt>Translation provider（翻译提供方）</dt><dd>项目本地模块，输入待翻译项并返回 drafts/failures。包不内置厂商 SDK；会外发文案的提供方必须显式网络授权。</dd>
   </dl></section>

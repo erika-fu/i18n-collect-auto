@@ -25,7 +25,7 @@ diffCatalog(previous, next)
   ↓
 humanReport 或 JSON report
   ↓
-clearCollectionOverrides</div><p>注意临时 override 只允许 <code>include</code>、<code>exclude</code>、<code>contextFilters</code>。CLI 不应临时改输出路径、parser 或翻译设置来改变 collection 的语义。</p></section>
+clearCollectionOverrides</div><p>注意临时 override 只允许 <code>include</code>、<code>exclude</code>、<code>contextFilters</code>。CLI 不应临时改输出路径、parser 或翻译设置来改变 collection 的语义。</p><p>如果上一轮已有 catalog metadata，collect 会把它交给 <code>buildCatalog</code> 用于恢复 automatic key。匹配不唯一时会生成 ambiguity report 并失败，而不是让报告阶段偷偷选择一个旧 key；需要先用 <code>i18n-key</code> 或确认 manifest 消除歧义。</p></section>
 <section><h2>5. 退出码不是“有没有 Webpack error”</h2><table><tr><th>码</th><th>类别</th><th>例子</th></tr><tr><td>0</td><td>成功</td><td>报告生成；即使 entries 为 0 也可能成功</td></tr><tr><td>1</td><td>configuration</td><td>未知 flag、缺少 flag value、配置非法</td></tr><tr><td>2</td><td>collection</td><td>key conflict、Loader 未接入、Loader 不在主进程</td></tr><tr><td>3</td><td>build</td><td>普通 Webpack 编译错误、用户 config 加载错误</td></tr></table><p>分类器会检查错误消息：已知的 <code>i18n-collect failed</code>、integration 和 thread-loader 错误属于 collection；其他构建错误不能被伪装成“收集失败”。</p></section>
 <section><h2>6. run 如何编排阶段</h2><p><a href="../packages/i18n-collect/cli/run.js">run.js</a> 识别用户选中的 stage，但无论 flags 出现顺序如何，都按：</p><pre>collect → translate → replace</pre><p>每个 stage 的专属参数只转发给它；例如 <code>--adapter</code> 没有 <code>--replace</code> 就是 configuration failure。前一阶段非零时立即停止，后续阶段不会消费不完整输入。<code>--write</code> 也必须显式属于 replace，而不会因为选了 run 就自动写源码。</p></section>
 <section><h2>7. 一个重要时序限制</h2><p>collect 运行的是普通构建：应用模块可能在 compilation 早期读取旧 dictionary，Plugin 在末尾才把新 dictionary 写到磁盘。因此 collect 保证“磁盘上的收集产物是本轮成功结果”，不保证“同一次生成的 bundle 已嵌入这份新 dictionary”。watch 的下一轮才会消费它。</p></section>

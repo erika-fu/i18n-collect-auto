@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 9：替换预览与写入</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
 <body><main><header class="masthead"><p class="eyebrow">COURSE · 09 / 10 · DEEP DIVE</p><h1>源码替换：先验证，再生成，再决定是否写入</h1><p>本课逐步解释为什么 replacement 不重新收集、如何从 metadata 定位原文、adapter 如何选择调用，以及 preview/strict/write 的差异。</p></header>
-<section><h2>1. replacement 的事实来源是什么</h2><p><a href="../packages/i18n-collect/cli/replace.js">replace.js</a> 读取 catalog metadata 中的 key、source、location，而不是再次扫描整个项目寻找中文：</p><pre>catalog.meta.json
-  home.title → source: "首页"
-              location: src/App.vue:5:4..5:6 (html-text)
+<section><h2>1. replacement 的事实来源是什么</h2><p><a href="../packages/i18n-collect/cli/replace.js">replace.js</a> 读取 catalog metadata 中的 localization key、source、occurrence location，而不是再次扫描整个项目寻找中文。两个相同的文案 occurrence 可能拥有不同 key，因此 replacement 绝不能按文本值或 MD5 统一替换：</p><pre>catalog.meta.json
+  src.pages.Order.8f31a2c4 → source: "保存"
+    occurrence location: src/Order.vue:5:4..5:6 (html-text)
                 ↓
-replace 读取当前 src/App.vue
+replace 读取当前 src/Order.vue
   → 按 line/column 计算 offset
   → 检查当前 slice 是否仍等于“首页”
   → 再决定 edit / skip / already localized</pre><p>如果源码在 collect 之后被手工改动，range 仍在但文本不匹配，就 skip <code>catalog location does not match the current source</code>，而不是盲目替换新内容。这样 collection 和 replacement 的事实边界分开：collection 发现，replacement 验证并编辑已发现的位置。</p></section>
@@ -22,6 +22,6 @@ CSS generated content 或独立 HTML 不在 replacement scope
 已有 t/$t/this.$t</pre><p>“collect 能识别”只代表能静态记录；“replace 能编辑”还要求知道运行时调用、语法位置、作用域和生成代码。宁可报告 skip，也不生成表面上合理但运行时错误的代码。</p></section>
 <section><h2>6. preview、strict、write 三个开关</h2><table><tr><th>模式</th><th>行为</th><th>源码是否写入</th></tr><tr><td>默认 preview</td><td>输出每文件新 content、replacements、skipped、already localized</td><td>否</td></tr><tr><td><code>--strict</code></td><td>只要有 skipped，整个 replace 不提交</td><td>否；退出 7</td></tr><tr><td><code>--write</code></td><td>准备 source、catalog artifacts、<code>replacements.json</code> 的完整目标集</td><td>是；通过 journal 原子提交</td></tr></table><p><code>--strict --write</code> 是“全部候选都能安全处理才写”的门。非 strict write 可以提交已规划的 replacements，但 skipped 会保留在报告里供审阅。</p></section>
 <section><h2>7. 写入为什么仍然是事务</h2><p>替换不只改源码，还可能更新 catalog 和 replacement metadata。<a href="../packages/i18n-collect/mycommon/output.js">commitFiles</a> 对整组目标使用同一 journal：任何文件写入失败都恢复 source、catalog 和 metadata，不能留下“源码已替换但目录没更新”的半迁移状态。</p><p>重复运行时，已生成的 <code>t()</code>/<code>$t()</code> 会被识别为 already localized；不再套一层调用，因此 replacement 具有幂等性。</p></section>
-<section class="exercise"><h2>检索练习</h2><p>metadata 记录的文本是“首页”，但开发者在 replace 前把源码改成“主页”。默认 preview、<code>--strict</code> 和 <code>--write</code> 分别应该发生什么？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>三者都会先发现当前 slice 与 metadata source 不匹配并产生 skip；默认 preview 输出 skip 但不写；strict 因 skip 退出 7 且零写入；write 也不能绕过验证，因此不会把“主页”误替换成 home.title。</p></div></section>
+<section class="exercise"><h2>检索练习</h2><p>metadata 记录的 key 是 <code>src.pages.Order.8f31a2c4</code>、文本是“首页”，但开发者在 replace 前把源码改成“主页”。默认 preview、<code>--strict</code> 和 <code>--write</code> 分别应该发生什么？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>三者都会先发现当前 slice 与 metadata source 不匹配并产生 skip；默认 preview 输出 skip 但不写；strict 因 skip 退出 7 且零写入；write 也不能绕过验证，因此不会把“主页”误替换成 home.title。</p></div></section>
 <nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0008-translation.html">← 上一课：翻译状态机</a><a class="map" href="index.html">课程地图</a><a class="next" href="0010-testing-and-mastery.html">下一课：测试与掌握路径 →</a></nav><footer><p>主来源：<a href="../packages/i18n-collect/mycommon/replace-preview.js">replace-preview.js</a>、<a href="../packages/i18n-collect/cli/replace.js">CLI replace</a>、<a href="../README.zh-CN.md#L742-L778">替换流程</a>。预览中出现 skip 时，请先理解理由再考虑扩大支持范围。</p></footer>
 </main></body></html>

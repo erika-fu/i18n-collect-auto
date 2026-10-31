@@ -1,19 +1,157 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 6：Catalog 与本地化键</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
-<body><main><header class="masthead"><p class="eyebrow">COURSE · 06 / 10 · DEEP DIVE</p><h1>从文本集合到可迁移的键控目录</h1><p>本课用同一条“首页”对照 MD5、localization key、metadata fingerprint 和 location，解释它们为什么必须并存。</p></header>
-<section><h2>1. 四种输出，各自回答一个问题</h2><table><tr><th>产物</th><th>主键</th><th>回答的问题</th></tr><tr><td><code>zh_hash.json</code></td><td>MD5(source text)</td><td>运行时兼容字典里有哪些文本值？</td></tr><tr><td><code>zh_hash.map.json</code></td><td>MD5(source text)</td><td>这个文本出现在哪些源码位置？</td></tr><tr><td><code>catalog/zh.json</code></td><td>localization key</td><td>哪些稳定语义单元需要翻译？</td></tr><tr><td><code>catalog.meta.json</code></td><td>localization key</td><td>源文案、来源、指纹和位置是否发生变化？</td></tr></table><p>“同一句出现两次”在 hash 字典里只需一个值，但在 metadata 里必须保留两个 location；同一业务 key 的源文案改变时，catalog 还要知道这是 changed，而不是无关的新文本。</p></section>
-<section><h2>2. <code>buildCatalog</code> 如何从 snapshot 构建目录</h2><p><a href="../packages/i18n-collect/mycommon/catalog.js">buildCatalog</a> 遍历 snapshot → entry → location。每个 location 选择 key：</p><pre>entry.key 存在且合法
-  → 使用显式 i18n-key
-否则
-  → deriveKey({ path, kind, value })</pre><p>派生 key 的形状是 <code>pathSlug.sha256(projectPath + NUL + kind + NUL + value)</code> 的前缀。它不加入 line/column，所以移动同一个文件里的同一语义文案不会因为位置变化而换 key；同文件、同 kind、同文本也会自然共享 key。</p><p>显式 key 和派生 key 的来源会在 metadata 中记成 <code>explicit</code> 或 <code>derived</code>，这对审计和冲突报错很重要。</p></section>
-<section><h2>3. 同 key 的多位置不是冲突</h2><pre>home.title → “首页” at App.vue:5
-home.title → “首页” at Header.vue:9</pre><p>这是同一个 source variant 的多个 locations，可以合并。真正的冲突是：</p><pre>home.title → “首页” at App.vue:5
-home.title → “主页” at Header.vue:9</pre><p><code>buildCatalog</code> 会按 key 建 group，再按 source text 建 variants。variants 多于一个时，<code>conflictMessage</code> 列出每个源文本、origin 和所有位置；Plugin 在写任何正式文件前失败。它不能擅自选择“第一个”，因为两个位置都是真实输入。</p><p>显式 key 恰好撞上另一条文案的派生 key，也属于同样的冲突。修复方式是给不同语义不同显式 key，或让同 key 的源文本一致。</p></section>
-<section><h2>4. fingerprint 不是 MD5</h2><p><code>fingerprintOf</code> 对源文本做 SHA-256，再取前 16 个 hex。它是 catalog metadata 中用于比较源文案版本的短指纹：</p><table><tr><th>变化</th><th>dictionary</th><th>catalog diff</th></tr><tr><td>只移动文字，文本不变</td><td>可能位置变化</td><td>unchanged</td></tr><tr><td>同 key 的“首页”→“主页”</td><td>两个文本 hash 变化</td><td>changed</td></tr><tr><td>新增 key</td><td>新增文本 hash</td><td>added</td></tr><tr><td>key 从 A 改成 B，文本不变</td><td>文本字节可不变</td><td>A removed，B added</td></tr></table><p>因此上一课说的“只改 i18n-key 会改 catalog、不必改 MD5 字典”是有条件的：源文本未变时，hash 字典确实可不变，但键控目录和 metadata 会变。</p></section>
-<section><h2>5. source catalog 是翻译输入，不是运行时 hash map</h2><p><code>catalog/zh.json</code> 是平面映射：</p><pre>{
-  "home.title": "首页",
-  "order.submit": "提交"
-}</pre><p>翻译命令按这些 localization keys 请求 provider，替换命令也用 key 生成 <code>t('home.title')</code>。它不把 MD5 当业务键，因为 MD5 只表达文本内容，不表达“这是哪个稳定翻译单元”。</p></section>
-<section class="exercise"><h2>检索练习</h2><p>两个文件都写了 <code>i18n-key: home.title</code>，一个文本是“首页”，另一个是“主页”。为什么这不是“同 key 的两个位置”，而是必须失败的 conflict？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>同 key 多位置只有在 source text 相同才可合并；这里一个 key 有两个 variants。自动选择一个会让另一个位置丢失真实源文案，也无法安全决定目标译文，故在 writeOutputs 前放弃整轮。</p></div></section>
-<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0005-session-plugin-output.html">← 上一课：Session 与输出事务</a><a class="map" href="index.html">课程地图</a><a class="next" href="0007-cli-and-collect.html">下一课：CLI 与 collect →</a></nav><footer><p>主来源：<a href="../packages/i18n-collect/mycommon/catalog.js">catalog.js</a>、<a href="../README.zh-CN.md#L478-L506">source map 结构</a>、<a href="../docs/collection.md#L62-L68">key conflict 规则</a>。请用具体 key/text/location 继续练习推演。</p></footer>
-</main></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>课程 6：Occurrence 与本地化键</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script defer src="../assets/lesson.js"></script>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <p class="eyebrow">COURSE · 06 / 10 · KEY MODEL</p>
+    <h1>从“文案值”到稳定的翻译 occurrence</h1>
+    <p>本课重新整理 key 的完整生命周期：旧的 MD5 字典如何兼容，新 catalog 如何为每次 occurrence 分配独立身份，以及源码移动、改文案或发生歧义时，系统如何安全地复用或放弃旧 key。</p>
+  </header>
+
+  <section>
+    <h2>1. 先分清四种身份</h2>
+    <table>
+      <tr><th>身份</th><th>示例</th><th>它回答的问题</th></tr>
+      <tr><td>Resource identity</td><td><code>src/App.vue::template[lang=html]</code></td><td>这次提交替换的是哪一个资源快照？</td></tr>
+      <tr><td>文案值的 MD5</td><td><code>md5("保存")</code></td><td>旧的 hash dictionary 中有哪些文本值？</td></tr>
+      <tr><td>Occurrence</td><td><code>Order.vue</code> 中某个具体的“保存”</td><td>源码中是哪一次出现，可以精确定位和替换？</td></tr>
+      <tr><td>Localization key</td><td><code>src.pages.Order.8f31a2c4</code> 或 <code>order.save</code></td><td>运行时和翻译 catalog 使用哪个稳定翻译单元？</td></tr>
+    </table>
+    <aside class="callout"><strong>记忆句：</strong>Resource identity 认资源，MD5 认文案值，Occurrence 认一次出现，localization key 认翻译身份。相同文本不等于相同翻译单元。</aside>
+  </section>
+
+  <section>
+    <h2>2. 现在仍然有两条输出轨道</h2>
+    <p><a href="../packages/i18n-collect/mycommon/store.js">CollectionStore</a> 继续按文案值生成 hash collection output；<a href="../packages/i18n-collect/mycommon/catalog.js">buildCatalog</a> 则为 catalog 中的每个 occurrence 生成或复用 localization key。</p>
+    <pre>源码 occurrence A：“保存"
+源码 occurrence B：“保存"
+
+zh_hash.json                 // 兼容旧运行时：按值去重
+  md5("保存") → "保存"
+
+catalog/zh.json              // 新运行时：按翻译身份区分
+  order.save → "保存"
+  toolbar.save → "保存"
+</pre>
+    <p>因此 MD5 dictionary 可以只有一个“保存”，而 catalog 可以有两个 key。源替换也优先使用 key；尚未迁移的旧调用仍可通过 MD5 compatibility fallback 工作。</p>
+    <p>这也是为什么不能把 MD5 当作业务 key：它没有表达来源位置、语义意图或“这两次出现是否应该独立翻译”。</p>
+  </section>
+
+  <section>
+    <h2>3. Automatic key：新 occurrence 先获得独立身份</h2>
+    <p>没有相邻 <code>i18n-key</code> directive 时，代码会调用 <code>automaticKey({ path, kind, value, location })</code>。首次 collection 的 key 形如：</p>
+    <pre>pathSlug + "." + sha256(path, kind, value, start, end).slice(0, 8)
+
+src/pages/Order.vue 中的“保存”  → src.pages.Order.8f31a2c4
+同文件中的第二个“保存”      → src.pages.Order.39b7e110
+另一个文件中的“保存”        → 另一个独立 key
+</pre>
+    <ul class="compact">
+      <li>key 的可读前缀只是诊断提示；hash 中包含首次位置，所以同一文件的重复 occurrence 不会在首次 collection 时自动合并。</li>
+      <li>位置变化后，不能单靠重新计算当前坐标得到稳定身份；稳定性来自上一轮的 catalog metadata。</li>
+      <li>代码仍导出 <code>deriveKey</code> 作为兼容名称，但它指向当前的 automatic-key 实现；“按 path + kind + value 去重”的旧算法已经不是当前模型。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 下一轮 collection 如何复用旧 key</h2>
+    <p>每个 occurrence 的 metadata 记录 <code>semanticHost</code>、<code>childRole</code>、<code>localContext</code>、source location 和稳定 occurrence id。重新 collection 时，<code>matchAutomaticKeys</code> 按以下顺序寻找历史身份：</p>
+    <ol>
+      <li><strong>先对应 semantic host。</strong> 未改变的 host 直接对应；源码文件或语义块安全地一对一移动时，也可以建立 host correspondence。</li>
+      <li><strong>再比对 sibling context。</strong> 在历史和当前 occurrence 数量相同的组中，唯一的 <code>sibling:0</code>、<code>sibling:1</code> 等 context 可以复用对应 key。</li>
+      <li><strong>最后使用 source text。</strong> 未匹配的候选只有在历史 occurrence 和当前 occurrence 的文本都唯一时才复用；文本是辅助证据，不是唯一身份。</li>
+      <li><strong>无法唯一判断就不猜。</strong> 当前 occurrence 获得一个避开所有历史 key 的新 proposed key，并产生 ambiguity report。</li>
+    </ol>
+    <pre>上一轮：A“你好”  B“欢迎”
+本轮：  X“新增”  A“你好”  B“欢迎”
+
+X → 新 key
+A → 复用旧 key
+B → 复用旧 key
+</pre>
+    <p>插入源码行本身不会破坏 A、B 的身份，因为匹配依赖 structural anchor 和历史 metadata，而不是把当前 line/column 当成永久身份。</p>
+  </section>
+
+  <section>
+    <h2>5. Ambiguity：宁可暂停，也不把译文贴错位置</h2>
+    <p>例如上一轮同一 semantic host 有两个相同的“保存”，本轮变成三个相同 occurrence。任何一个当前片段都可能对应两个历史 key；系统没有足够证据知道哪份译文属于哪一次出现。</p>
+    <pre>当前 occurrence：“保存” at sibling:0
+  candidate: old-key-1
+  candidate: old-key-2
+
+结果：分配新的 proposed key + 写 ambiguity report + collection round 失败
+</pre>
+    <p>失败轮次不会发布半成品：上一轮 dictionary、source map 和 catalog 保持不变。开发者可以：</p>
+    <ul class="compact">
+      <li>在源码中添加明确的 <code>i18n-key</code>；或</li>
+      <li>在 catalog metadata 旁的 <code>identity-confirmations.json</code> 中持久化选择的历史 key 或 proposed key。</li>
+    </ul>
+    <p>这不是多余的流程，而是在保护已有译文：错误复用一个 key，通常比生成一个需要重新翻译的新 key 更危险。</p>
+  </section>
+
+  <section>
+    <h2>6. Explicit key：覆盖自动身份，也可以有意共享</h2>
+    <pre>// i18n-key: order.save
+buttonText = '保存'
+</pre>
+    <p>directive 表达的是稳定的业务意图，而不是给当前字符串起一个漂亮别名。多个 occurrence 可以显式共享 <code>order.save</code>，但必须满足相同的 <strong>message contract</strong>：</p>
+    <pre>同一个 key： “你好，{name}”   ✓
+同一个 key： “你好，{user}”   ✗ placeholder contract 不同
+同一个 key： “保存”           ✗
+             “保存 {count} 个”  message pattern 不同
+</pre>
+    <p><a href="../packages/i18n-collect/mycommon/catalog.js">buildCatalog</a> 会按 key 分组，再按 message contract 分 variants。一个 key 出现不兼容 variants 就是 key conflict；冲突会列出所有相关位置，并在正式输出前失败，不能静默选择第一条文案。</p>
+  </section>
+
+  <section>
+    <h2>7. Fingerprint 与 occurrence 生命周期</h2>
+    <p><code>fingerprintOf(source)</code> 是源文案的 SHA-256 前 16 位。它回答“这个 key 的 source text 是否改变”，不回答“这是不是同一个 occurrence”。</p>
+    <table>
+      <tr><th>事件</th><th>key / metadata</th><th>目标译文状态</th></tr>
+      <tr><td>只移动源码，文本不变</td><td>通过 history 复用 key；location 更新</td><td>保持 current</td></tr>
+      <tr><td>同 occurrence 改成“提交”</td><td>key 保持；fingerprint changed</td><td>保留译文，但标记 needs-review</td></tr>
+      <tr><td>一处 occurrence 消失</td><td>key 进入 orphaned；metadata 暂留</td><td>译文暂留，等待退休策略</td></tr>
+      <tr><td>确认退休或启用 prune</td><td>key 从 active metadata 移除，并出现在 removed report</td><td>下一次 translate 移除目标译文和 review state</td></tr>
+      <tr><td>相同文本新增到另一处</td><td>MD5 值不增加；新增 occurrence key</td><td>可与原位置独立翻译</td></tr>
+    </table>
+    <p>所以 catalog metadata 不只是 <code>key → source + locations[]</code>，还保存 occurrence identity、来源 origin、状态和审阅所需的 fingerprint。</p>
+  </section>
+
+  <section>
+    <h2>8. 替换时，key 必须跟着 occurrence 走</h2>
+    <p>替换器不能再“找到文本就全部替换”。它必须读取当前 occurrence 的 location 和 localization key，并检查位置是否 stale、ambiguous 或 unsupported：</p>
+    <pre>Order.vue:   $t('order.save')
+Toolbar.vue: $t('toolbar.save')
+
+未迁移的旧调用：仍可走 MD5 compatibility fallback
+</pre>
+    <p>默认 replace 是 preview；只有显式 <code>--write</code> 才写源码。写入时，源码、keyed catalogs 和 replacement metadata 作为一个事务提交，避免只替换部分文件。</p>
+  </section>
+
+  <section class="exercise">
+    <h2>检索练习</h2>
+    <p>假设同一个 Vue template 中有两个没有 directive 的“保存”。第一轮 collection 后又插入一段源码，第二轮变成三个“保存”。请回答：<strong>为什么 MD5、当前坐标和 source text 都不足以安全决定旧 key？系统何时可以复用，何时必须暂停？</strong></p>
+    <button data-answer="answer">显示答案</button>
+    <div id="answer" class="answer">
+      <p>MD5 只认文案值；当前坐标会随插入而改变；source text 相同也无法区分三个 occurrence。系统应先用 semantic host、child role 和 local context 对照 collection history；只有候选唯一时才复用旧 key。若两个或更多历史 occurrence 都可能匹配当前片段，就为当前 occurrence 生成避开历史 key 的 proposed key，写 ambiguity report，并等待 i18n-key 或 identity-confirmations.json 的明确确认。这样不会把已有译文静默贴到错误位置。</p>
+    </div>
+  </section>
+
+  <nav class="lesson-nav" aria-label="课程导航">
+    <a class="previous" href="0005-session-plugin-output.html">← 上一课：Session 与输出事务</a>
+    <a class="map" href="index.html">课程地图</a>
+    <a class="next" href="0007-cli-and-collect.html">下一课：CLI 与 collect →</a>
+  </nav>
+  <footer>
+    <p>推荐主来源：<a href="../CONTEXT.md">CONTEXT.md</a> 中的 Localization key、Automatic key、Structural anchor、Key conflict 与 occurrence lifecycle 定义；实现可对照 <a href="../packages/i18n-collect/mycommon/catalog.js">catalog.js</a>、<a href="../packages/i18n-collect/mycommon/store.js">store.js</a> 和 <a href="../packages/i18n-collect/test/catalog.test.js">catalog.test.js</a>。如果有不清楚的地方，请继续拿一个具体的源码移动、重复 occurrence 或 key conflict 案例来提问。</p>
+  </footer>
+</main>
+</body>
+</html>

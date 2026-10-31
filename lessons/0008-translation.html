@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 8：翻译状态机</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
 <body><main><header class="masthead"><p class="eyebrow">COURSE · 08 / 10 · DEEP DIVE</p><h1>翻译：先计划，再应用草稿</h1><p>本课追踪一个 source key 在目标目录中从缺失、待审阅到 current 的状态变化，并解释 provider 为什么只返回 drafts。</p></header>
-<section><h2>1. translate 的输入不是 hash map</h2><p><a href="../packages/i18n-collect/cli/translate.js">translate.js</a> 读取源 catalog 和 v1 <code>catalog.meta.json</code>，按 localization key 对齐 source text 与 fingerprint。它还读取已有目标目录和 <code>translation-state.json</code>。</p><pre>source catalog：{ "home.title": "首页" }
-metadata：home.title → sourceFingerprint: a1b2...
-en.json：{ "home.title": "Home" }
-state：en/home.title → { sourceFingerprint: a1b2..., review: "current" }</pre><p>如果 source catalog 和 metadata 无法按相同 key 对齐，命令不能安全翻译；这不是“少一行提示”，而是输入版本不一致。</p></section>
+<section><h2>1. translate 的输入不是 hash map</h2><p><a href="../packages/i18n-collect/cli/translate.js">translate.js</a> 读取 source catalog 和 version 2 <code>catalog.meta.json</code>；旧 version 1 metadata 会先升级。它按 localization key 对齐 source text 与 fingerprint，并读取已有目标目录和 <code>translation-state.json</code>。自动 key 的身份已经由 collection history 决定，translate 不会再按文案值或 MD5 重新合并 occurrence。</p><pre>source catalog：{ "src.pages.Order.8f31a2c4": "保存" }
+metadata：same key → sourceFingerprint: a1b2...
+en.json：{ "src.pages.Order.8f31a2c4": "Save" }
+state：en/same key → { sourceFingerprint: a1b2..., review: "current" }</pre><p>如果 source catalog 和 metadata 无法按相同 key 对齐，命令不能安全翻译；这不是“少一行提示”，而是输入版本不一致。</p></section>
 <section><h2>2. provider 契约：输入 item，输出 drafts/failures</h2><p>provider 得到的是待处理的语义项，不是整个源码文件：</p><pre>{
   sourceLocale: 'zh',
   locales: ['en'],
