@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const { buildCatalog, catalogMetadata, conflictMessage } = require('../mycommon/catalog')
+const { buildCatalog, catalogMetadata, conflictMessage, readCatalogMetadataFile } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { canonicalRoot, catalogFiles, loadConfig } = require('../mycommon/config')
 const { json, writeOutputs } = require('../mycommon/output')
@@ -146,7 +146,9 @@ class MyI18nPlugin {
         committed: session.committedSnapshots(),
         activeTemplates: activeHtmlTemplates(compiler, compilation, config)
       })
-      const catalog = buildCatalog(snapshots)
+      const catalog = buildCatalog(snapshots, {
+        previousMetadata: readCatalogMetadataFile(path.join(config.root, catalogFiles(config).metadata))
+      })
       if (catalog.conflicts.length > 0) {
         session.abandon(compilation)
         throw new Error(conflictMessage(catalog.conflicts))

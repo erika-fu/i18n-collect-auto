@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Matching uses structural anchors and context as primary evidence, with source text only as auxiliary evidence.
-- [ ] Text edits, coordinate shifts, source moves, and safe resource moves retain the appropriate automatic key.
-- [ ] Tests prove safe reuse and prove unmatched occurrences receive new keys without reusing an unsafe historical identity.
+- [x] Matching uses structural anchors and context as primary evidence, with source text only as auxiliary evidence.
+- [x] Text edits, coordinate shifts, source moves, and safe resource moves retain the appropriate automatic key.
+- [x] Tests prove safe reuse and prove unmatched occurrences receive new keys without reusing an unsafe historical identity.

@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const fs = require('fs')
 const path = require('path')
 const { containsHan } = require('../myloader/resource')
 const { normalizeLocation, sortLocations, uniqueLocations } = require('./store')
@@ -21,8 +22,8 @@ function pathSlug(projectPath) {
   return /^[A-Za-z]/.test(slug) ? slug : `k${slug}`
 }
 
-// Automatic keys identify one occurrence. Coordinates distinguish same-text siblings until
-// collection history can reuse a stable ID (see automatic-occurrence-identities).
+// Automatic keys identify one occurrence. Fresh assignment uses coordinates; later rounds
+// reuse a prior key when collection history uniquely matches the occurrence.
 function automaticKey({ path: projectPath, kind, value, location }) {
   if (!location || !location.start || !location.end) {
     throw new Error('Automatic key requires a source location')
@@ -141,27 +142,182 @@ function locationId(location) {
   return JSON.stringify(location)
 }
 
-function buildCatalog(snapshots) {
-  const byKey = new Map()
+function semanticBlockSuffix(semanticHost) {
+  const index = String(semanticHost).lastIndexOf('::')
+  return index === -1 ? '' : semanticHost.slice(index)
+}
+
+function indexBy(items, keyOf) {
+  const groups = new Map()
+  for (const item of items) {
+    const key = keyOf(item)
+    const list = groups.get(key) || []
+    list.push(item)
+    groups.set(key, list)
+  }
+  return groups
+}
+
+function historicalDerivedOccurrences(metadata) {
+  const entries = metadataEntries(metadata)
+  const list = []
+  for (const key of Object.keys(entries).sort()) {
+    const entry = entries[key]
+    if (!entry || entry.origin !== 'derived') continue
+    for (const occurrence of entry.occurrences || []) {
+      if (!occurrence || occurrence.origin === 'explicit') continue
+      list.push({
+        key,
+        source: entry.source,
+        semanticHost: occurrence.semanticHost,
+        childRole: occurrence.childRole,
+        localContext: occurrence.localContext
+      })
+    }
+  }
+  return list
+}
+
+function hostCorrespondence(previousHosts, currentHosts) {
+  const currentToPrevious = new Map()
+  for (const host of currentHosts) {
+    if (previousHosts.has(host)) currentToPrevious.set(host, host)
+  }
+  const vanished = [...previousHosts].filter(host => !currentHosts.has(host))
+  const appeared = [...currentHosts].filter(host => !previousHosts.has(host))
+  const vanishedByBlock = indexBy(vanished, semanticBlockSuffix)
+  const appearedByBlock = indexBy(appeared, semanticBlockSuffix)
+  for (const block of new Set([...vanishedByBlock.keys(), ...appearedByBlock.keys()])) {
+    const lost = vanishedByBlock.get(block) || []
+    const gained = appearedByBlock.get(block) || []
+    if (lost.length === 1 && gained.length === 1) currentToPrevious.set(gained[0], lost[0])
+  }
+  return currentToPrevious
+}
+
+function matchGroup(previous, current, reused, claimedKeys) {
+  const unmatchedPrevious = new Set(previous)
+  const unmatchedCurrent = new Set(current)
+
+  if (previous.length === current.length && previous.length > 0) {
+    const previousByContext = indexBy(previous, item => item.localContext)
+    const currentByContext = indexBy(current, item => item.localContext)
+    for (const context of currentByContext.keys()) {
+      const prior = previousByContext.get(context) || []
+      const next = currentByContext.get(context) || []
+      if (
+        prior.length === 1 &&
+        next.length === 1 &&
+        unmatchedPrevious.has(prior[0]) &&
+        unmatchedCurrent.has(next[0]) &&
+        !claimedKeys.has(prior[0].key)
+      ) {
+        reused.set(next[0], prior[0].key)
+        claimedKeys.add(prior[0].key)
+        unmatchedPrevious.delete(prior[0])
+        unmatchedCurrent.delete(next[0])
+      }
+    }
+  }
+
+  const previousByText = indexBy([...unmatchedPrevious], item => item.source)
+  const currentByText = indexBy([...unmatchedCurrent], item => item.value)
+  for (const text of currentByText.keys()) {
+    const prior = (previousByText.get(text) || []).filter(item => unmatchedPrevious.has(item))
+    const next = (currentByText.get(text) || []).filter(item => unmatchedCurrent.has(item))
+    if (prior.length === 1 && next.length === 1 && !claimedKeys.has(prior[0].key)) {
+      reused.set(next[0], prior[0].key)
+      claimedKeys.add(prior[0].key)
+      unmatchedPrevious.delete(prior[0])
+      unmatchedCurrent.delete(next[0])
+    }
+  }
+}
+
+function matchAutomaticKeys(drafts, previousMetadata) {
+  const reused = new Map()
+  if (!previousMetadata || drafts.length === 0) return reused
+
+  const previous = historicalDerivedOccurrences(previousMetadata)
+  if (previous.length === 0) return reused
+
+  const hostMap = hostCorrespondence(
+    new Set(previous.map(item => item.semanticHost)),
+    new Set(drafts.map(item => item.semanticHost))
+  )
+  const previousByGroup = indexBy(previous, item => siblingKey(item.semanticHost, item.childRole))
+  const currentByGroup = new Map()
+  for (const draft of drafts) {
+    const previousHost = hostMap.get(draft.semanticHost)
+    if (!previousHost) continue
+    const groupKey = siblingKey(previousHost, draft.childRole)
+    const group = currentByGroup.get(groupKey) || []
+    group.push(draft)
+    currentByGroup.set(groupKey, group)
+  }
+
+  const claimedKeys = new Set()
+  for (const [groupKey, current] of currentByGroup) {
+    matchGroup(previousByGroup.get(groupKey) || [], current, reused, claimedKeys)
+  }
+  return reused
+}
+
+function buildCatalog(snapshots, options = {}) {
+  const previousMetadata = options && options.previousMetadata != null
+    ? upgradeCatalogMetadata(options.previousMetadata)
+    : null
+  const placements = []
   for (const snapshot of snapshots || []) {
     for (const entry of (snapshot && snapshot.entries) || []) {
       if (!entry || !containsHan(entry.value)) continue
       for (const raw of entry.locations || []) {
         const location = normalizeLocation(raw)
-        const key = entry.key || automaticKey({
-          path: location.path,
-          kind: location.kind,
+        placements.push({
           value: entry.value,
-          location
+          explicitKey: entry.key || null,
+          location,
+          semanticHost: semanticHostOf(snapshot, location)
         })
-        const group = byKey.get(key) || { variants: new Map() }
-        const variant = group.variants.get(entry.value) || { explicit: false, placements: [] }
-        if (entry.key) variant.explicit = true
-        variant.placements.push({ location, semanticHost: semanticHostOf(snapshot, location) })
-        group.variants.set(entry.value, variant)
-        byKey.set(key, group)
       }
     }
+  }
+
+  // Index siblings the same way metadata does (explicit + automatic), then match only automatic ones.
+  const indexingDrafts = placements.map(placement => ({
+    placement,
+    value: placement.value,
+    origin: placement.explicitKey ? 'explicit' : 'derived',
+    semanticHost: placement.semanticHost,
+    childRole: placement.location.kind,
+    location: placement.location,
+    key: placement.explicitKey || ''
+  }))
+  assignOccurrenceIdentities(indexingDrafts)
+  const automaticDrafts = indexingDrafts.filter(draft => !draft.placement.explicitKey)
+  const reusedKeys = matchAutomaticKeys(automaticDrafts, previousMetadata)
+  const keyByPlacement = new Map()
+  for (const draft of automaticDrafts) {
+    keyByPlacement.set(
+      draft.placement,
+      reusedKeys.get(draft) || automaticKey({
+        path: draft.location.path,
+        kind: draft.location.kind,
+        value: draft.value,
+        location: draft.location
+      })
+    )
+  }
+
+  const byKey = new Map()
+  for (const placement of placements) {
+    const key = placement.explicitKey || keyByPlacement.get(placement)
+    const group = byKey.get(key) || { variants: new Map() }
+    const variant = group.variants.get(placement.value) || { explicit: false, placements: [] }
+    if (placement.explicitKey) variant.explicit = true
+    variant.placements.push({ location: placement.location, semanticHost: placement.semanticHost })
+    group.variants.set(placement.value, variant)
+    byKey.set(key, group)
   }
   const conflicts = []
   const entries = new Map()
@@ -388,6 +544,19 @@ function conflictMessage(conflicts) {
   return lines.join('\n')
 }
 
+function readCatalogMetadataFile(file) {
+  if (!fs.existsSync(file)) return null
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(
+      `catalog metadata could not be read; restore a valid version 1 or 2 catalog.meta.json (${error.message})`
+    )
+  }
+  return upgradeCatalogMetadata(parsed)
+}
+
 module.exports = {
   CATALOG_VERSION,
   automaticKey,
@@ -397,5 +566,6 @@ module.exports = {
   deriveKey: automaticKey,
   diffCatalog,
   fingerprintOf,
+  readCatalogMetadataFile,
   upgradeCatalogMetadata
 }

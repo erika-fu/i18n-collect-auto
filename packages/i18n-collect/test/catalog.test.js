@@ -105,6 +105,153 @@ test('an automatic key is readable, deterministic, and unique per occurrence', (
   assert.notDeepStrictEqual(Object.keys(moved.messages), Object.keys(first.messages))
 })
 
+test('subsequent collection reuses an automatic key when structural anchors uniquely match history', () => {
+  const firstLocation = at('src/a.js', 'script-string', 1, 10)
+  const first = buildCatalog([snapshot('src/a.js::script', [{ value: '你好', locations: [firstLocation] }])])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const [originalKey] = Object.keys(first.messages)
+  assert.strictEqual(first.messages[originalKey], '你好')
+
+  const edited = buildCatalog(
+    [snapshot('src/a.js::script', [{ value: '您好', locations: [at('src/a.js', 'script-string', 4, 2)] }])],
+    { previousMetadata }
+  )
+  assert.deepStrictEqual(Object.keys(edited.messages), [originalKey])
+  assert.strictEqual(edited.messages[originalKey], '您好')
+  assert.strictEqual(edited.entries[originalKey].occurrences[0].localContext, 'sibling:0')
+  assert.strictEqual(
+    edited.entries[originalKey].occurrences[0].id,
+    previousMetadata.entries[originalKey].occurrences[0].id
+  )
+
+  const withoutHistory = buildCatalog([
+    snapshot('src/a.js::script', [{ value: '您好', locations: [at('src/a.js', 'script-string', 4, 2)] }])
+  ])
+  assert.notDeepStrictEqual(Object.keys(withoutHistory.messages), [originalKey])
+})
+
+test('automatic key reuse keeps sibling context aligned when an explicit key shares the host', () => {
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { key: 'home.title', value: '首页', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const helloKey = Object.keys(first.messages).find(key => first.messages[key] === '你好')
+  assert.strictEqual(previousMetadata.entries[helloKey].occurrences[0].localContext, 'sibling:1')
+
+  const edited = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { key: 'home.title', value: '主页', locations: [at('src/a.js', 'script-string', 3, 0)] },
+      { value: '您好', locations: [at('src/a.js', 'script-string', 4, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  assert.strictEqual(edited.messages[helloKey], '您好')
+  assert.strictEqual(edited.messages['home.title'], '主页')
+})
+
+test('collection history reuses keys across sibling inserts, ordinary moves, and safe file moves', () => {
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '欢迎', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const helloKey = Object.keys(first.messages).find(key => first.messages[key] === '你好')
+  const welcomeKey = Object.keys(first.messages).find(key => first.messages[key] === '欢迎')
+
+  const withInsert = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { value: '新增', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 3, 0)] },
+      { value: '欢迎', locations: [at('src/a.js', 'script-string', 4, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  assert.strictEqual(withInsert.messages[helloKey], '你好')
+  assert.strictEqual(withInsert.messages[welcomeKey], '欢迎')
+  const insertedKey = Object.keys(withInsert.messages).find(key => withInsert.messages[key] === '新增')
+  assert.ok(insertedKey)
+  assert.notStrictEqual(insertedKey, helloKey)
+  assert.notStrictEqual(insertedKey, welcomeKey)
+
+  const shifted = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 8, 4)] },
+      { value: '欢迎', locations: [at('src/a.js', 'script-string', 20, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  assert.strictEqual(shifted.messages[helloKey], '你好')
+  assert.strictEqual(shifted.messages[welcomeKey], '欢迎')
+
+  const movedFile = buildCatalog(
+    [snapshot('src/b.js::script', [
+      { value: '改写', locations: [at('src/b.js', 'script-string', 1, 0)] },
+      { value: '欢迎', locations: [at('src/b.js', 'script-string', 2, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  assert.strictEqual(movedFile.messages[helloKey], '改写')
+  assert.strictEqual(movedFile.messages[welcomeKey], '欢迎')
+  assert.strictEqual(movedFile.entries[helloKey].occurrences[0].semanticHost, 'src/b.js::script')
+})
+
+test('unmatched occurrences receive new keys without reusing an unsafe historical identity', () => {
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const previousKeys = Object.keys(first.messages).sort()
+  assert.strictEqual(previousKeys.length, 2)
+
+  const replaced = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { value: '甲', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '乙', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  // Equal sibling counts: structural contexts uniquely match, so keys reuse despite text changes.
+  assert.deepStrictEqual(Object.keys(replaced.messages).sort(), previousKeys)
+
+  const ambiguous = buildCatalog(
+    [snapshot('src/a.js::script', [
+      { value: '新文案', locations: [at('src/a.js', 'script-string', 1, 0)] }
+    ])],
+    { previousMetadata }
+  )
+  // One current vs two historical candidates with no unique text match: allocate a fresh key.
+  const [onlyKey] = Object.keys(ambiguous.messages)
+  assert.strictEqual(ambiguous.messages[onlyKey], '新文案')
+  assert.ok(!previousKeys.includes(onlyKey))
+
+  const multiFileAmbiguous = buildCatalog(
+    [
+      snapshot('src/b.js::script', [{ value: '你好', locations: [at('src/b.js', 'script-string', 1, 0)] }]),
+      snapshot('src/c.js::script', [{ value: '你好', locations: [at('src/c.js', 'script-string', 1, 0)] }])
+    ],
+    {
+      previousMetadata: catalogMetadata(
+        buildCatalog([
+          snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] }]),
+          snapshot('src/d.js::script', [{ value: '你好', locations: [at('src/d.js', 'script-string', 1, 0)] }])
+        ]),
+        { sourceLocale: 'zh', format: 'json' }
+      )
+    }
+  )
+  const multiKeys = Object.keys(multiFileAmbiguous.messages).sort()
+  assert.strictEqual(multiKeys.length, 2)
+  assert.ok(multiKeys.every(key => key.startsWith('src.b.') || key.startsWith('src.c.')))
+})
+
 test('identical text at distinct occurrences gets independent automatic keys across semantic kinds', () => {
   const scriptA = at('src/a.js', 'script-string', 1, 0)
   const scriptB = at('src/a.ts', 'script-string', 2, 8)

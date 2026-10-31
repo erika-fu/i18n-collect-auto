@@ -2,7 +2,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { diffCatalog, upgradeCatalogMetadata } = require('../mycommon/catalog')
+const { diffCatalog, readCatalogMetadataFile } = require('../mycommon/catalog')
 const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 
 const EXIT = {
@@ -239,19 +239,8 @@ function humanReport(report) {
 }
 
 function readCatalogMetadata(root, config) {
-  const file = path.join(root, catalogFiles(config).metadata)
-  if (!fs.existsSync(file)) return null
-  let parsed
   try {
-    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (error) {
-    throw commandError(
-      'collection',
-      `catalog metadata could not be read; restore a valid version 1 or 2 catalog.meta.json (${error.message})`
-    )
-  }
-  try {
-    return upgradeCatalogMetadata(parsed)
+    return readCatalogMetadataFile(path.join(root, catalogFiles(config).metadata))
   } catch (error) {
     throw commandError('collection', error.message)
   }

@@ -450,11 +450,12 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
   const edited = run(['collect', '--json'], root)
   assert.strictEqual(edited.status, 0, edited.stderr)
   const next = readJson(root, 'lang/catalog/zh.json')
-  const greetingKey = derivedKeyFor(next, '您好')
+  assert.strictEqual(next[helloKey], '您好')
+  assert.strictEqual(derivedKeyFor(next, '您好'), helloKey)
   const report = JSON.parse(edited.stdout).catalog
   assert.deepStrictEqual(
     { added: report.added, removed: report.removed, changed: report.changed, unchanged: report.unchanged },
-    { added: [greetingKey], removed: [helloKey], changed: ['home.title'], unchanged: [] }
+    { added: [], removed: [], changed: ['home.title', helloKey], unchanged: [] }
   )
 
   const human = run(['collect'], root)
