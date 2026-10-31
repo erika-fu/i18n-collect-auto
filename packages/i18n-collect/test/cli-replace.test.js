@@ -1,5 +1,6 @@
 const assert = require('assert')
 const { spawnSync } = require('child_process')
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -946,6 +947,387 @@ fs.renameSync = (from, to) => {
     fs.readdirSync(path.join(root, 'lang/catalog')).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
     []
   )
+})
+
+test('replace rewrites identical text with each occurrence localization key', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    'const first = "你好"',
+    'const second = "你好"',
+    'export default [first, second]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  const catalog = writeCatalog(root, scriptEntries('src/app.js', source))
+  const located = Object.entries(catalog.entries).map(([key, entry]) => ({
+    key,
+    line: entry.locations[0].start.line
+  })).sort((left, right) => left.line - right.line)
+  assert.strictEqual(located.length, 2)
+  assert.notStrictEqual(located[0].key, located[1].key)
+  const before = snapshotFiles(root)
+  const result = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.deepStrictEqual(report.skipped, [])
+  assert.deepStrictEqual(
+    report.replacements.map(item => ({ line: item.start.line, call: item.call })),
+    located.map(item => ({ line: item.line, call: `t('${item.key}')` }))
+  )
+  assert.strictEqual(report.previews[0].content, [
+    "import { t } from './i18n'",
+    `const first = t('${located[0].key}')`,
+    `const second = t('${located[1].key}')`,
+    'export default [first, second]',
+    ''
+  ].join('\n'))
+  assertUnchanged(root, before)
+})
+
+test('replace rewrites intentionally shared text with the same localization key', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    'const first = /* i18n-key: shared.hello */ "你好"',
+    'const second = /* i18n-key: shared.hello */ "你好"',
+    'export default [first, second]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  writeCatalog(root, scriptEntries('src/app.js', source))
+  const result = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.deepStrictEqual(report.skipped, [])
+  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('shared.hello')", "t('shared.hello')"])
+  assert.notStrictEqual(report.replacements[0].start.line, report.replacements[1].start.line)
+  assert.strictEqual(report.previews[0].content, [
+    "import { t } from './i18n'",
+    "const first = /* i18n-key: shared.hello */ t('shared.hello')",
+    "const second = /* i18n-key: shared.hello */ t('shared.hello')",
+    'export default [first, second]',
+    ''
+  ].join('\n'))
+})
+
+test('replace reports ambiguous occurrence metadata and does not rewrite either claimant', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    'const message = "你好"',
+    'const title = "欢迎"',
+    'export default [message, title]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  const entries = scriptEntries('src/app.js', source)
+  const hello = entries.find(entry => entry.value === '你好')
+  const welcome = entries.find(entry => entry.value === '欢迎')
+  writeCatalog(root, [
+    { ...hello, key: 'home.one' },
+    { ...hello, key: 'home.two' },
+    { ...welcome, key: 'home.welcome' }
+  ])
+  const before = snapshotFiles(root)
+  const preview = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(preview.status, 0, preview.stderr)
+  const report = JSON.parse(preview.stdout)
+  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.welcome')"])
+  assert.deepStrictEqual(
+    report.skipped.map(item => ({ key: item.key, source: item.source, reason: item.reason })).sort((left, right) => left.key < right.key ? -1 : 1),
+    [
+      { key: 'home.one', source: '你好', reason: 'overlapping occurrence claims' },
+      { key: 'home.two', source: '你好', reason: 'overlapping occurrence claims' }
+    ]
+  )
+  assert.strictEqual(report.previews[0].content, [
+    "import { t } from './i18n'",
+    'const message = "你好"',
+    "const title = t('home.welcome')",
+    'export default [message, title]',
+    ''
+  ].join('\n'))
+  assertUnchanged(root, before)
+
+  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  assert.strictEqual(JSON.parse(written.stdout).written, true)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), report.previews[0].content)
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), source)
+  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
+  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
+  assert.strictEqual(strict.status, 7)
+  assert.strictEqual(JSON.parse(strict.stdout).written, false)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
+})
+
+test('replace skips an unresolved occurrence and still rewrites its uniquely keyed sibling', () => {
+  const root = tempProject()
+  const ambiguousSource = [
+    "import { t } from './i18n'",
+    'const first = "你好"',
+    'const second = "你好"',
+    "const kept = t('欢迎')",
+    'export default [first, second, kept]',
+    ''
+  ].join('\n')
+  const clearSource = [
+    "import { t } from './i18n'",
+    'const title = "标题"',
+    'export default title',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/ambiguous.js', ambiguousSource)
+  write(root, 'src/clear.js', clearSource)
+  const catalog = writeCatalog(root, [
+    ...scriptEntries('src/ambiguous.js', ambiguousSource).map(entry => (
+      entry.value === '欢迎' ? { ...entry, key: 'home.welcome' } : entry
+    )),
+    ...scriptEntries('src/clear.js', clearSource).map(entry => ({ ...entry, key: 'home.title' }))
+  ])
+  const hello = Object.entries(catalog.entries)
+    .filter(([, entry]) => entry.source === '你好')
+    .map(([key, entry]) => ({ key, location: entry.locations[0] }))
+    .sort((left, right) => left.location.start.line - right.location.start.line || left.location.start.column - right.location.start.column)
+  assert.strictEqual(hello.length, 2)
+  write(root, 'lang/catalog/identity-ambiguities.json', json({
+    version: 1,
+    ambiguities: [{
+      proposedKey: 'src.ambiguous.newkey01',
+      source: '你好',
+      semanticHost: 'src/ambiguous.js::script',
+      childRole: 'script-string',
+      localContext: '0',
+      location: hello[0].location,
+      candidates: hello.map(item => ({
+        key: item.key,
+        source: '你好',
+        semanticHost: 'src/ambiguous.js::script',
+        childRole: 'script-string',
+        localContext: '0'
+      }))
+    }]
+  }))
+  const before = snapshotFiles(root)
+  const preview = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(preview.status, 0, preview.stderr)
+  const report = JSON.parse(preview.stdout)
+  assert.deepStrictEqual(report.replacements.map(item => ({ path: item.path, call: item.call })), [
+    { path: 'src/ambiguous.js', call: `t('${hello[1].key}')` },
+    { path: 'src/clear.js', call: "t('home.title')" }
+  ])
+  assert.deepStrictEqual(report.skipped.map(item => ({ key: item.key, reason: item.reason })), [
+    { key: hello[0].key, reason: 'occurrence identity is ambiguous' }
+  ])
+  assert.deepStrictEqual(report.recognized.map(item => item.call), ["t('home.welcome')"])
+  assert.ok(report.previews.find(item => item.path === 'src/ambiguous.js').content.includes('const first = "你好"'))
+  assert.ok(report.previews.find(item => item.path === 'src/ambiguous.js').content.includes(`const second = t('${hello[1].key}')`))
+  assert.ok(report.previews.find(item => item.path === 'src/ambiguous.js').content.includes("const kept = t('欢迎')"))
+  assertUnchanged(root, before)
+
+  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  assert.ok(fs.readFileSync(path.join(root, 'src/ambiguous.js'), 'utf8').includes('const first = "你好"'))
+  assert.ok(fs.readFileSync(path.join(root, 'src/ambiguous.js'), 'utf8').includes(`const second = t('${hello[1].key}')`))
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/clear.js'), 'utf8'), [
+    "import { t } from './i18n'",
+    "const title = t('home.title')",
+    'export default title',
+    ''
+  ].join('\n'))
+
+  fs.writeFileSync(path.join(root, 'src/ambiguous.js'), ambiguousSource)
+  fs.writeFileSync(path.join(root, 'src/clear.js'), clearSource)
+  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
+  const strictBefore = snapshotFiles(root)
+  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
+  assert.strictEqual(strict.status, 7)
+  assert.strictEqual(JSON.parse(strict.stdout).written, false)
+  assertUnchanged(root, strictBefore)
+})
+
+test('replace reports stale occurrence metadata and does not rewrite that text', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    'const first = "你好"',
+    'const second = "欢迎"',
+    'export default [first, second]',
+    ''
+  ].join('\n')
+  const stale = [
+    "import { t } from './i18n'",
+    'const first = "你好"',
+    'const second = "再会"',
+    'export default [first, second]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello', 欢迎: 'home.welcome' }))
+  fs.writeFileSync(path.join(root, 'src/app.js'), stale)
+  const preview = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(preview.status, 0, preview.stderr)
+  const report = JSON.parse(preview.stdout)
+  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.hello')"])
+  assert.deepStrictEqual(report.skipped.map(item => ({ key: item.key, source: item.source, reason: item.reason })), [
+    { key: 'home.welcome', source: '欢迎', reason: 'catalog location does not match the current source' }
+  ])
+  assert.strictEqual(report.previews[0].content, [
+    "import { t } from './i18n'",
+    "const first = t('home.hello')",
+    'const second = "再会"',
+    'export default [first, second]',
+    ''
+  ].join('\n'))
+
+  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), report.previews[0].content)
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), stale)
+  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
+  const before = snapshotFiles(root)
+  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
+  assert.strictEqual(strict.status, 7)
+  assert.strictEqual(JSON.parse(strict.stdout).written, false)
+  assertUnchanged(root, before)
+})
+
+test('replace reports an unsupported position without rewriting it', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    "const labels = { '你好': '欢迎' }",
+    'const message = "你好"',
+    'export default [labels, message]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  const catalog = writeCatalog(root, scriptEntries('src/app.js', source))
+  const byText = {}
+  for (const [key, entry] of Object.entries(catalog.entries)) {
+    const list = byText[entry.source] || []
+    list.push({ key, line: entry.locations[0].start.line, column: entry.locations[0].start.column })
+    byText[entry.source] = list
+  }
+  const helloKeys = byText['你好'].map(item => item.key)
+  assert.strictEqual(new Set(helloKeys).size, 2)
+  const before = snapshotFiles(root)
+  const preview = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(preview.status, 0, preview.stderr)
+  const report = JSON.parse(preview.stdout)
+  assert.deepStrictEqual(report.skipped.map(item => ({ source: item.source, reason: item.reason })), [
+    { source: '你好', reason: 'object key is not a supported semantic position' }
+  ])
+  assert.strictEqual(report.replacements.length, 2)
+  assert.notStrictEqual(report.replacements[0].call, report.replacements[1].call)
+  assert.ok(report.previews[0].content.includes("const labels = { '你好': t("))
+  assert.ok(!report.previews[0].content.includes('const message = "你好"'))
+  assertUnchanged(root, before)
+
+  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
+  assert.strictEqual(strict.status, 7)
+  assert.strictEqual(JSON.parse(strict.stdout).written, false)
+  assertUnchanged(root, before)
+})
+
+test('replace keeps a legacy MD5 call and the hash dictionary', () => {
+  const root = tempProject()
+  const hash = crypto.createHash('md5').update('你好', 'utf8').digest('hex')
+  const source = [
+    "import { t } from './i18n'",
+    'const fresh = "你好"',
+    `const legacy = t('${hash}')`,
+    'export default [fresh, legacy]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  write(root, 'lang/zh_hash.json', json({ [hash]: '你好' }))
+  write(root, 'lang/zh_hash.map.json', json({ version: 1, entries: [{ key: hash, value: '你好' }] }))
+  const catalog = writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  assert.strictEqual(Object.keys(catalog.messages).length, 1)
+  const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+  const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+  const result = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const written = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8')
+  assert.strictEqual(written, [
+    "import { t } from './i18n'",
+    "const fresh = t('home.hello')",
+    `const legacy = t('${hash}')`,
+    'export default [fresh, legacy]',
+    ''
+  ].join('\n'))
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+  const report = JSON.parse(result.stdout)
+  assert.ok(report.files.every(file => file !== 'lang/zh_hash.json' && file !== 'lang/zh_hash.map.json'))
+})
+
+test('replace refuses a malformed occurrence identity ambiguity report and writes nothing', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    'const message = "你好"',
+    'export default message',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  write(root, 'lang/catalog/identity-ambiguities.json', '{ "version": 2, "ambiguities": [] }\n')
+  const before = snapshotFiles(root)
+  const result = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(result.status, 1)
+  assert.match(result.stderr, /occurrence identity ambiguity report is not version 1/)
+  assert.strictEqual(JSON.parse(result.stdout).ok, false)
+  assertUnchanged(root, before)
+})
+
+test('replace reports an orphaned occurrence and does not rewrite it', () => {
+  const root = tempProject()
+  const source = [
+    "import { t } from './i18n'",
+    'const first = "你好"',
+    'const second = "欢迎"',
+    'export default [first, second]',
+    ''
+  ].join('\n')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello', 欢迎: 'home.welcome' }))
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
+  metadata.entries['home.hello'].status = 'orphaned'
+  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json(metadata))
+  const preview = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(preview.status, 0, preview.stderr)
+  const report = JSON.parse(preview.stdout)
+  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.welcome')"])
+  assert.deepStrictEqual(report.skipped.map(item => ({ key: item.key, reason: item.reason })), [
+    { key: 'home.hello', reason: 'orphaned occurrence is outside the current collection' }
+  ])
+  assert.ok(report.previews[0].content.includes('const first = "你好"'))
+  assert.ok(report.previews[0].content.includes("const second = t('home.welcome')"))
+
+  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  assert.ok(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8').includes('const first = "你好"'))
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), source)
+  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
+  const before = snapshotFiles(root)
+  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
+  assert.strictEqual(strict.status, 7)
+  assertUnchanged(root, before)
 })
 
 test('replace prints an intelligible per-file preview', () => {

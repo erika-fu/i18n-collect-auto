@@ -532,6 +532,53 @@ function decide(source, item, adapter, klass, blocks) {
   return { action: 'skip', detail: detailOf(base, { reason: `semantic position is not supported by the ${adapter} adapter` }) }
 }
 
+function editsOverlap(left, right) {
+  return left.start < right.end && right.start < left.end
+}
+
+function findRoot(parent, index) {
+  let cursor = index
+  while (parent[cursor] !== cursor) {
+    parent[cursor] = parent[parent[cursor]]
+    cursor = parent[cursor]
+  }
+  return cursor
+}
+
+function withholdOverlappingEdits(decisions) {
+  const replacing = decisions.filter(decision => decision.action === 'replace')
+  const parent = replacing.map((_, index) => index)
+  for (let left = 0; left < replacing.length; left += 1) {
+    for (let right = left + 1; right < replacing.length; right += 1) {
+      if (!editsOverlap(replacing[left].edit, replacing[right].edit)) continue
+      const rootLeft = findRoot(parent, left)
+      const rootRight = findRoot(parent, right)
+      if (rootLeft !== rootRight) parent[rootRight] = rootLeft
+    }
+  }
+  const groups = new Map()
+  for (let index = 0; index < replacing.length; index += 1) {
+    const root = findRoot(parent, index)
+    const list = groups.get(root) || []
+    list.push(replacing[index])
+    groups.set(root, list)
+  }
+  const edits = []
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      edits.push(group[0].edit)
+      continue
+    }
+    for (const decision of group) {
+      decision.action = 'skip'
+      decision.detail = { ...decision.detail, reason: 'overlapping occurrence claims' }
+      delete decision.detail.call
+      delete decision.edit
+    }
+  }
+  return edits
+}
+
 function applyEdits(source, edits) {
   const ordered = [...edits].sort((left, right) => right.start - left.start)
   let next = source
@@ -549,19 +596,14 @@ function byPosition(left, right) {
 function previewFile(projectPath, source, items, adapter, styleExtensions) {
   const klass = fileClass(projectPath, styleExtensions)
   const blocks = source == null ? [] : prepareScript(source, klass)
-  const decisions = items.map(item => decide(source, item, adapter, klass, blocks))
-  const edits = []
-  for (const decision of decisions) {
-    if (decision.action !== 'replace') continue
-    const overlaps = edits.some(edit => decision.edit.start < edit.end && edit.start < decision.edit.end)
-    if (overlaps) {
-      decision.action = 'skip'
-      decision.detail = { ...decision.detail, reason: 'overlapping source range' }
-      delete decision.detail.call
-      continue
-    }
-    edits.push(decision.edit)
-  }
+  const decisions = items.map(item => {
+    const decision = decide(source, item, adapter, klass, blocks)
+    if (!item.reportedAmbiguity || decision.action !== 'replace') return decision
+    const detail = { ...decision.detail, reason: 'occurrence identity is ambiguous' }
+    delete detail.call
+    return { action: 'skip', detail }
+  })
+  const edits = withholdOverlappingEdits(decisions)
   const preview = source == null ? null : applyEdits(source, edits)
   return {
     replacements: decisions.filter(decision => decision.action === 'replace').map(decision => decision.detail),

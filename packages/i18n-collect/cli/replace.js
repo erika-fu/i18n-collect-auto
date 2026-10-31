@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { upgradeCatalogMetadata } = require('../mycommon/catalog')
-const { catalogFiles, loadConfig } = require('../mycommon/config')
+const { catalogFiles, identityFiles, loadConfig } = require('../mycommon/config')
 const { commitFiles, recoverCommits } = require('../mycommon/output')
 const { SCRIPT_EXTENSIONS, exportsLocalizationFunction, planPreview, runtimeCalls } = require('../mycommon/replace-preview')
 
@@ -13,6 +13,8 @@ const EXIT = {
 }
 const REPLACEMENTS_NAME = 'replacements.json'
 const RESERVED_CATALOG_NAMES = new Set(['catalog.meta.json', REPLACEMENTS_NAME, 'translation-state.json'])
+const AMBIGUOUS = 'occurrence identity is ambiguous'
+const ORPHANED = 'orphaned occurrence is outside the current collection'
 const ADAPTERS = ['vue2', 'vue3', 'js']
 const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'coverage'])
 const RUNTIME = {
@@ -107,17 +109,92 @@ function readMetadata(root, config) {
   }
 }
 
+function positionBefore(left, right) {
+  return left.line < right.line || (left.line === right.line && left.column < right.column)
+}
+
+function rangesOverlap(left, right) {
+  if (!left || !right || left.path !== right.path) return false
+  return positionBefore(left.start, right.end) && positionBefore(right.start, left.end)
+}
+
+function skipDetail(item, reason) {
+  return {
+    path: item.location.path,
+    key: item.key,
+    kind: item.location.kind,
+    source: item.source,
+    start: item.location.start,
+    end: item.location.end,
+    reason
+  }
+}
+
+function readAmbiguities(root, config) {
+  const file = path.join(root, identityFiles(config).ambiguities)
+  if (!fs.existsSync(file)) return []
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw commandError('configuration', 'occurrence identity ambiguity report could not be read')
+  }
+  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.ambiguities)) {
+    throw commandError('configuration', 'occurrence identity ambiguity report is not version 1')
+  }
+  return parsed.ambiguities.map(item => {
+    const location = item && item.location
+    if (!item || typeof item.source !== 'string' || typeof item.proposedKey !== 'string' || !location || typeof location.path !== 'string' || typeof location.kind !== 'string' || !location.start || !location.end) {
+      throw commandError('configuration', 'occurrence identity ambiguity report is not version 1')
+    }
+    return item
+  })
+}
+
+function withReportedAmbiguities(items, ambiguities) {
+  return items.map(item => ({
+    ...item,
+    reportedAmbiguity: ambiguities.some(report => rangesOverlap(item.location, report.location))
+  }))
+}
+
+function unrepresentedAmbiguities(items, ambiguities) {
+  return ambiguities
+    .filter(report => !items.some(item => rangesOverlap(item.location, report.location)))
+    .map(report => skipDetail({
+      key: report.proposedKey,
+      source: report.source,
+      location: report.location
+    }, AMBIGUOUS))
+}
+
 function catalogItems(metadata) {
   const items = []
   for (const key of Object.keys(metadata.entries).sort()) {
     const entry = metadata.entries[key]
-    if (!entry || typeof entry.source !== 'string' || !Array.isArray(entry.locations)) continue
-    for (const location of entry.locations) {
+    if (!entry || typeof entry.source !== 'string' || !Array.isArray(entry.occurrences)) continue
+    for (const occurrence of entry.occurrences) {
+      const location = occurrence && occurrence.location
       if (!location || typeof location.path !== 'string') continue
-      items.push({ key, source: entry.source, location })
+      items.push({
+        key,
+        source: entry.source,
+        location,
+        status: entry.status === 'orphaned' ? 'orphaned' : 'active'
+      })
     }
   }
   return items
+}
+
+function withoutOrphaned(items) {
+  const held = []
+  const open = []
+  for (const item of items) {
+    if (item.status === 'orphaned') held.push(skipDetail(item, ORPHANED))
+    else open.push(item)
+  }
+  return { open, held }
 }
 
 function walkFiles(directory, files) {
@@ -446,14 +523,21 @@ function replace(args) {
     const metadata = readMetadata(config.root, config)
     assertRuntime(config.root, parsed.adapter)
     const items = catalogItems(metadata)
+    const active = withoutOrphaned(items)
+    const ambiguities = readAmbiguities(config.root, config)
     const sources = readSources(config.root, items)
     const recorded = readRecorded(config.root, config)
     const planned = reconcileRecorded(planPreview({
       adapter: parsed.adapter,
-      items,
+      items: withReportedAmbiguities(active.open, ambiguities),
       sources,
       styleExtensions: new Set(config.styleExtensions.map(extension => String(extension).toLowerCase()))
     }), sources, recorded)
+    planned.skipped = sortDetails([
+      ...planned.skipped,
+      ...active.held,
+      ...unrepresentedAmbiguities(active.open, ambiguities)
+    ])
     if (parsed.strict && planned.skipped.length > 0) {
       const report = reportOf(parsed, planned, {
         ok: false,

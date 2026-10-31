@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Replace distinguishes same-text occurrences and emits the correct independent or intentionally shared key per location.
-- [ ] Preview, write, and strict modes retain their atomicity guarantees and do not partially rewrite unsafe sources.
-- [ ] Tests cover separate and shared keys, stale/ambiguous metadata, unsupported locations, strict mode, and continued preservation of legacy MD5 calls.
+- [x] Replace distinguishes same-text occurrences and emits the correct independent or intentionally shared key per location.
+- [x] Preview, write, and strict modes retain their atomicity guarantees and do not partially rewrite unsafe sources.
+- [x] Tests cover separate and shared keys, stale/ambiguous metadata, unsupported locations, strict mode, and continued preservation of legacy MD5 calls.

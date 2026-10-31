@@ -112,7 +112,11 @@ Supported script positions:
 Skipped:
   React JSX, standalone HTML, and CSS generated content are outside replacement scope.
   Object keys, switch cases, and other unsupported positions are skipped with a source location and a reason.
-  An already localized t(), $t(), or this.$t() call is left unchanged, so a repeated run does not nest it.
+  Identical text is rewritten with the localization key of each occurrence. An explicit shared key is reused at every location that names it.
+  A location that does not match the current source is skipped. An orphaned occurrence is skipped.
+  Overlapping occurrence claims are skipped, and neither claim is rewritten.
+  A location named by identity-ambiguities.json is skipped. Other locations in that file are still replaced.
+  An already localized t(), $t(), or this.$t() call is left unchanged, including a legacy call whose argument is the MD5 of the collected text. The hash dictionary is not modified.
   --strict turns skipped candidates into failure. Already localized calls are not skipped.
 
 Exit codes:
