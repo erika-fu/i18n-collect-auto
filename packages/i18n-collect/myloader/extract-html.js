@@ -8,7 +8,7 @@ const {
   staticLocalizationCall
 } = require('../mycommon/localized-call')
 const { contextSuppresses } = require('./context-filter')
-const { babelComments, directivesBefore, keyConflict, scanDirectives } = require('./directives')
+const { babelComments, directivesBefore, keyConflict, runtimeKeyConflict, scanDirectives } = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const IGNORED_PARSE_ERRORS = new Set([
@@ -540,7 +540,12 @@ function extractHtml({ source, resource, config }) {
       CallExpression(nodePath) {
         const call = staticLocalizationCall(nodePath.node)
         if (!call) return
+        const directive = directivesBefore(decoded.value, directives, nodePath.node.start, fail)
+        if (directive.exclude) return
         if (contextSuppresses(nodePath, contextFilters)) return
+        if (directive.key && directive.key !== call.key) {
+          fail(nodePath.node.start, runtimeKeyConflict(directive.key, call.key))
+        }
         const startIndex = excludeStringDelimiters ? call.argument.start + 1 : call.argument.start
         const endIndex = excludeStringDelimiters ? call.argument.end - 1 : call.argument.end
         push(
@@ -709,7 +714,10 @@ function extractHtml({ source, resource, config }) {
     if (directive.exclude) dropped.add(earliest)
     if (!directive.key || directive.exclude || earliest.suppress) continue
     if (earliest.key && earliest.key !== directive.key) {
-      throw failAt(source, earliest.start, keyConflict(directive.key, earliest.key))
+      const message = earliest.representation === REPRESENTATION_LOCALIZED_CALL
+        ? runtimeKeyConflict(directive.key, earliest.key)
+        : keyConflict(directive.key, earliest.key)
+      throw failAt(source, earliest.start, message)
     }
     earliest.key = directive.key
   }

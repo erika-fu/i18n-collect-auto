@@ -17,6 +17,7 @@ const {
   upgradeCatalogMetadata
 } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
+const { planTranslation } = require('../mycommon/translate')
 const { isLocalizationKey } = require('../myloader/directives')
 
 function at(path, kind, line, column, length = 2) {
@@ -504,6 +505,43 @@ test('a confirmation that names an unrelated key leaves the occurrence ambiguous
   assert.ok(!Object.prototype.hasOwnProperty.call(rejected.messages, 'home.other'))
 })
 
+test('the same key cannot be confirmed for incompatible occurrences in one round', () => {
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ])
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const historicalKeys = Object.keys(first.messages).sort()
+  const snapshots = [snapshot('src/a.js::script', [
+    { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+    { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] },
+    { value: '你好', locations: [at('src/a.js', 'script-string', 3, 0)] }
+  ])]
+  const ambiguous = buildCatalog(snapshots, { previousMetadata })
+  assert.strictEqual(ambiguous.ambiguities.length, 3)
+  const proposed = ambiguous.ambiguities.find(item => item.localContext === 'sibling:2').proposedKey
+  const rejected = buildCatalog(snapshots, {
+    previousMetadata,
+    previousAmbiguities: ambiguous.ambiguities,
+    confirmations: [
+      { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:0', key: historicalKeys[0] },
+      { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:1', key: historicalKeys[0] },
+      { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:2', key: proposed }
+    ]
+  })
+  const duplicate = rejected.ambiguities.find(item => item.localContext === 'sibling:1')
+  assert.ok(duplicate)
+  assert.match(
+    duplicate.rejectedConfirmation,
+    new RegExp(`"${historicalKeys[0].replace(/\./g, '\\.')}" is already confirmed for another occurrence`)
+  )
+  assert.strictEqual(rejected.ambiguities.length, 1)
+  assert.strictEqual(rejected.messages[historicalKeys[0]], '你好')
+  assert.deepStrictEqual(rejected.entries[historicalKeys[0]].locations, [at('src/a.js', 'script-string', 1, 0)])
+})
+
 test('identity confirmations reject an unsupported manifest and duplicate occurrences', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-confirmations-'))
   const file = path.join(root, 'identity-confirmations.json')
@@ -665,6 +703,50 @@ test('an explicit key overrides automatic identity and joins compatible message 
   assert.strictEqual(catalog.entries[aloneKey].origin, 'derived')
   assert.match(aloneKey, /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/)
   assert.strictEqual(Object.keys(catalog.messages).length, 2)
+})
+
+test('changing an automatic occurrence to an explicit key orphans the former automatic key without migrating translations', () => {
+  const location = at('src/a.js', 'script-string', 1, 0)
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [{ value: '你好', locations: [location] }])
+  ])
+  const [automaticKey] = Object.keys(first.messages)
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+
+  const next = buildCatalog([
+    snapshot('src/a.js::script', [{ value: '你好', key: 'home.hello', locations: [location] }])
+  ], { previousMetadata })
+
+  assert.deepStrictEqual(next.conflicts, [])
+  assert.deepStrictEqual(next.ambiguities, [])
+  assert.deepStrictEqual(Object.keys(next.messages), ['home.hello'])
+  assert.strictEqual(next.messages['home.hello'], '你好')
+  assert.strictEqual(next.entries['home.hello'].origin, 'explicit')
+  assert.strictEqual(next.entries['home.hello'].status, 'active')
+  assert.deepStrictEqual(next.orphaned, [automaticKey])
+  assert.strictEqual(next.entries[automaticKey].status, 'orphaned')
+  assert.strictEqual(next.entries[automaticKey].source, '你好')
+  assert.ok(!Object.prototype.hasOwnProperty.call(next.messages, automaticKey))
+
+  const plan = planTranslation({
+    entries: { 'home.hello': next.entries['home.hello'] },
+    retainedKeys: ['home.hello', automaticKey],
+    targets: { en: { [automaticKey]: 'Hello' } },
+    state: {
+      version: 1,
+      locales: {
+        en: {
+          [automaticKey]: {
+            sourceFingerprint: previousMetadata.entries[automaticKey].fingerprint,
+            review: 'current'
+          }
+        }
+      }
+    },
+    locales: ['en']
+  })
+  assert.strictEqual(plan.nextTargets.en[automaticKey], 'Hello')
+  assert.strictEqual(plan.nextTargets.en['home.hello'], undefined)
 })
 
 test('incompatible message patterns or placeholder contracts under one key fail with every occurrence reported', () => {

@@ -336,6 +336,24 @@ test('ignores dynamic keys and unsupported call shapes without failing', () => {
   assert.deepStrictEqual(entries.map(entry => entry.value), ['保留文案'])
 })
 
+test('a colocated i18n-key that disagrees with a localized-call key fails collection', () => {
+  assert.throws(
+    () => extract("const a = /* i18n-key: home.title */ t('home.other')\n"),
+    error => (
+      /i18n-key "home\.title" conflicts with localized-call key "home\.other"/.test(error.message) &&
+      error.loc.line === 1
+    )
+  )
+})
+
+test('a colocated i18n-key that matches a localized-call key is accepted', () => {
+  const entries = extract("const a = /* i18n-key: home.title */ t('home.title')\n")
+  assert.deepStrictEqual(
+    entries.map(entry => ({ key: entry.key, representation: entry.representation })),
+    [{ key: 'home.title', representation: 'localized-call' }]
+  )
+})
+
 function indexAt(source, position) {
   let line = 1
   let column = 0

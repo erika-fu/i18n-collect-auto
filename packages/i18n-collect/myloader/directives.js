@@ -22,6 +22,10 @@ function keyConflict(first, second) {
   return `conflicting i18n-key directives "${first}" and "${second}"`
 }
 
+function runtimeKeyConflict(directiveKey, callKey) {
+  return `i18n-key "${directiveKey}" conflicts with localized-call key "${callKey}"`
+}
+
 function whitespaceGap(source, from, to) {
   return from <= to && /^\s*$/.test(source.slice(from, to))
 }
@@ -71,6 +75,7 @@ module.exports = {
   isLocalizationKey,
   keyConflict,
   keyDirective,
+  runtimeKeyConflict,
   scanDirectives,
   whitespaceGap
 }

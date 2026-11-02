@@ -441,3 +441,30 @@ test('records static $t and t calls in Vue interpolations as localized-call occu
   assert.strictEqual(sliceAt(source, calls[0].locations[0]), "'home.title'")
   assert.ok(result.entries.some(entry => entry.value === '保留文案' && entry.representation !== 'localized-call'))
 })
+
+test('a colocated i18n-key that disagrees with a localized-call key fails collection', () => {
+  assert.throws(
+    () => extract('<section>\n  <p>{{ /* i18n-key: home.title */ $t(\'home.other\') }}</p>\n</section>\n'),
+    error => /i18n-key "home\.title" conflicts with localized-call key "home\.other"/.test(error.message)
+  )
+  assert.throws(
+    () => extract('<section>\n  <p :title="/* i18n-key: home.title */ t(\'home.other\')"></p>\n</section>\n'),
+    error => /i18n-key "home\.title" conflicts with localized-call key "home\.other"/.test(error.message)
+  )
+})
+
+test('a colocated i18n-key that matches a localized-call key is accepted', () => {
+  const result = extract([
+    '<section>',
+    '  <p>{{ /* i18n-key: home.title */ $t(\'home.title\') }}</p>',
+    '  <p :title="/* i18n-key: home.banner */ t(\'home.banner\')"></p>',
+    '</section>'
+  ].join('\n'))
+  assert.deepStrictEqual(
+    result.entries.map(entry => ({ key: entry.key, representation: entry.representation, kind: entry.locations[0].kind })),
+    [
+      { key: 'home.title', representation: 'localized-call', kind: 'template-expression' },
+      { key: 'home.banner', representation: 'localized-call', kind: 'html-attribute' }
+    ]
+  )
+})

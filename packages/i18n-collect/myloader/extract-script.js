@@ -6,7 +6,7 @@ const {
   staticLocalizationCall
 } = require('../mycommon/localized-call')
 const { contextSuppresses } = require('./context-filter')
-const { babelComments, directivesBefore, scanDirectives } = require('./directives')
+const { babelComments, directivesBefore, runtimeKeyConflict, scanDirectives } = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const MODULE_SPECIFIER_PARENTS = new Set([
@@ -54,7 +54,12 @@ function extractScript({ source, resource, config }) {
     CallExpression(nodePath) {
       const call = staticLocalizationCall(nodePath.node)
       if (!call) return
+      const directive = directivesBefore(source, directives, nodePath.node.start, fail)
+      if (directive.exclude) return
       if (contextSuppresses(nodePath, config && config.contextFilters)) return
+      if (directive.key && directive.key !== call.key) {
+        fail(nodePath.node.start, runtimeKeyConflict(directive.key, call.key))
+      }
       entries.push(localizedCallEntry(
         call.key,
         location(source, resource.projectPath, call.argument, 'script-string')
