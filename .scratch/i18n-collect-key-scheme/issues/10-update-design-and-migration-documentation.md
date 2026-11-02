@@ -4,12 +4,12 @@
 
 **Blocked by:** #08: Verify the End-to-End Migration Workflow; #09: Run Tests, Builds, and Demo Verification
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Documentation distinguishes localization key, occurrence identity, structural anchor, and source location.
-- [ ] The lifecycle of `auto.<ULID>` is documented.
-- [ ] Localized-call, orphaned, retired, and external-key behavior is documented.
-- [ ] Ambiguity confirmation and failed-round protection are documented.
-- [ ] `replacements.json` is documented as audit, rollback, and diagnostic data rather than the authority for normal identity recovery.
-- [ ] Version 2 to version 3 metadata migration is documented.
-- [ ] Commands and behavior described in the documentation match the verified implementation and test results.
+- [x] Documentation distinguishes localization key, occurrence identity, structural anchor, and source location.
+- [x] The lifecycle of `auto.<ULID>` is documented.
+- [x] Localized-call, orphaned, retired, and external-key behavior is documented.
+- [x] Ambiguity confirmation and failed-round protection are documented.
+- [x] `replacements.json` is documented as audit, rollback, and diagnostic data rather than the authority for normal identity recovery.
+- [x] Version 2 to version 3 metadata migration is documented.
+- [x] Commands and behavior described in the documentation match the verified implementation and test results.

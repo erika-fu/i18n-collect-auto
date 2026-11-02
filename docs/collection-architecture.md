@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-本文记录经过设计访谈确认的目标架构和分阶段实施方案。Phase 1 到 Phase 4 已经落地，本文继续作为设计记录，并按当前代码补上收集侧后来增加的行为：排除指令、显式本地化键、键控源语言目录，以及这一组正式产物的事务写入。接入方式、配置、支持范围和故障说明见仓库 README 与 `docs/collection.md`。`translate`、`replace`、`run` 的命令约定、翻译提供方和源码替换仍以 README 与 `CONTEXT.md` 为准。本文只记录收集架构：Loader 如何识别文案，Plugin 如何提交一轮收集并发布产物。
+本文记录经过设计访谈确认的目标架构和分阶段实施方案。Phase 1 到 Phase 4 已经落地，本文继续作为设计记录，并按当前代码补上收集侧后来增加的行为：排除指令、显式本地化键、键控源语言目录、不透明 `auto.<ULID>` 自动键、catalog metadata v3、localized-call / orphaned / retirement / externalKeys 生命周期、身份歧义确认，以及这一组正式产物的事务写入。接入方式、配置、支持范围和故障说明见仓库 README 与 `docs/collection.md`。`translate`、`replace`、`run` 的命令约定、翻译提供方和源码替换仍以 README 与 `CONTEXT.md` 为准。本文只记录收集架构：Loader 如何识别文案，Plugin 如何提交一轮收集并发布产物。
 
 本次设计的主要目标是：
 
@@ -76,7 +76,7 @@ Loader 负责：
 2. 规范化 Resource identity。
 3. 应用 `include` 和 `exclude`。
 4. 调用对应的纯 extractor。Extractor 在识别文案的同时解释 `no-i18n-auto` 和 `i18n-key`，并按 `contextFilters` 丢掉被选中的 script 候选。
-5. 为一个资源生成完整 Resource snapshot，包括空 snapshot。条目可以带上显式本地化键；没有显式键的条目只保留文案和位置，派生键留到汇总阶段计算。
+5. 为一个资源生成完整 Resource snapshot，包括空 snapshot。条目可以带上显式本地化键；没有显式键的条目只保留文案和位置，自动键留到汇总阶段分配。
 6. 将 snapshot 写入当前 webpack module 的构建元数据。
 7. 向当前 compilation session 报告此次处理。被排除或零结果的资源仍算一次 invocation。
 8. 原样传递 `source`、`sourceMap` 和 `meta`。收集发生在 pitch，不改写模块内容。
@@ -493,7 +493,9 @@ Vue 插值中的表达式由 HTML extractor 定位，再交给共享的 script f
 
 Script 把字符串字面量或模板字面量当作构造。模板字面量只把这一组指令用在第一段含有汉字的静态片段上，后面的片段不再继承。HTML 把元素或紧挨着的文本节点当作构造，按源码顺序只作用在该构造最早的一处已收集片段上：白名单属性早于文本，插值里的前一个片段早于后一个。CSS 把前一个节点是该注释的 `content` 声明，或紧挨在注释后的那个字符串，当作构造。写在规则前面的注释不会进入规则内部。
 
-没有显式键的位置，在 `catalog.js` 里得到自动键。首次出现时，自动键由去掉扩展名的项目相对路径做成点分 slug（其他字符换成 `_`，不以字母开头时加 `k`），再加 8 位十六进制。这 8 位是 SHA-256（路径、semantic kind、文案、以及该 occurrence 的起止行列）的前 8 个字符。后续轮次读取上一轮 `catalog.meta.json`：当 structural anchor（semantic host、child role、local context）能唯一对应历史 occurrence 时复用该自动键（文案改写与坐标平移仍保留）；同 host+role 下 sibling 数量变化时，文案仅作辅助证据做唯一匹配；无法唯一认定时分配新键，不复用不确定的历史身份。若新键的自然哈希撞上本轮没有唯一匹配到的历史键，则改写哈希，避免静默复用旧翻译身份。同一组里剩下多个文案仍然相同的历史候选，或同一 semantic block 上多个 host 同时消失、多个 host 同时出现且文案相同，都是 occurrence identity ambiguity：仍分配新键，写出 `<catalogDir>/identity-ambiguities.json`（version 1），本轮失败并保留正式输出。`i18n-key` 指令可以消解歧义。不能改源码时，在目录旁提交 `identity-confirmations.json`（version 1），用 semantic host、child role、local context 指定一个历史候选键或报告中的 proposed key。全部确认后的下一轮才会发布，并删除歧义报告。文案不同的文件替换、以及恰好一旧一新的安全移动，不是歧义。安全的资源移动（同一 semantic block 类型上恰好一旧一新 host）按同一规则在映射后的 host 内匹配。相同文案出现在不同位置时各自有独立目录键与元数据记录；遗留 MD5 词典与 source map 仍按文案去重，不充当本地化键身份。元数据里无自动键的 `origin` 仍记为 `derived`。每条元数据 entry 还带 `occurrences`：稳定 `id`（由 semantic host、child role、local context 派生，不含文案与坐标）、`semanticHost`（snapshot identity）、`childRole`（semantic kind）、`localContext`（同 host+role 下按文档顺序的 `sibling:n`）、`origin`，以及 `location`。catalog metadata schema 为 version 2；version 1 在读取时按 semantic kind 推断 host 并升级；不支持的版本或无法解析的元数据使本轮失败并保留既有正式输出。
+没有显式键的位置，在 `catalog.js` 里得到自动键。首次出现时，自动键是不透明的 `auto.<ULID>`，不携带路径、源文案、行号或列号。后续轮次读取上一轮 `catalog.meta.json`：当 structural anchor（semantic host、child role、local context）能唯一对应历史 occurrence 时复用该自动键（文案改写与坐标平移仍保留）；同 host+role 下 sibling 数量变化时，文案仅作辅助证据做唯一匹配；无法唯一认定时分配新的 `auto.<ULID>`，不复用不确定的历史身份。若新分配的键撞上本轮没有唯一匹配到的历史键，则重新分配，避免静默复用旧翻译身份。已有自动键（包括早期路径派生键）在元数据迁移中保持不变。同一组里剩下多个文案仍然相同的历史候选，或同一 semantic block 上多个 host 同时消失、多个 host 同时出现且文案相同，都是 occurrence identity ambiguity：仍分配新键，写出 `<catalogDir>/identity-ambiguities.json`（version 1），本轮失败并保留正式输出；后续失败重试在 structural anchor 仍匹配时复用报告中的 `proposedKey`。`i18n-key` 指令可以消解歧义。不能改源码时，在目录旁提交 `identity-confirmations.json`（version 1），用 semantic host、child role、local context 指定一个历史候选键或报告中的 proposed key。全部确认后的下一轮才会发布，并删除歧义报告。文案不同的文件替换、以及恰好一旧一新的安全移动，不是歧义。安全的资源移动（同一 semantic block 类型上恰好一旧一新 host）按同一规则在映射后的 host 内匹配。相同文案出现在不同位置时各自有独立目录键与元数据记录；遗留 MD5 词典与 source map 仍按文案去重，不充当本地化键身份。`replacements.json` 只作替换审计、回滚与诊断；普通自动键恢复读的是 catalog metadata 的 occurrence identity，不是这份记录。
+
+本地化键、occurrence identity、structural anchor 与 source location 必须分开：本地化键是目录与运行时标识；occurrence identity 是元数据中的稳定 `id` 加上 structural anchor；structural anchor 是 semantic host、child role、local context；source location 是路径、种类与范围，辅助定位但不独立确立身份。元数据里自动键的 `origin` 仍记为 `derived`。每条元数据 entry 还带 `representation`（`source-text` 或 `localized-call`）与 `occurrences`：稳定 `id`（由 semantic host、child role、local context 派生，不含文案与坐标）、`semanticHost`（snapshot identity）、`childRole`（semantic kind）、`localContext`（同 host+role 下按文档顺序的 `sibling:n`）、`origin`、`representation`，以及 `location`。静态 `t('key')`、`$t('key')`、`this.$t('key')` 记为 `localized-call` 出现：更新位置与 anchor，保持被引用键 active，不把规范源文案改成空；未退役的 orphaned 键可被调用恢复；未知或已退役的项目键默认使本轮失败；遗留 MD5 词典调用留在项目目录之外；`externalKeys` 允许外部管理的未知键而不创建项目目录条目。同位 `i18n-key` 与 localized-call 键不一致时失败，一致时接受。catalog metadata schema 为 version 3；version 1 先升到 version 2（按 semantic kind 推断 host），version 2 再升到 version 3（为 entry 与 occurrence 补上默认 `source-text` representation），成功收集时升级且不改写既有本地化键；不支持的版本或无法解析的元数据使本轮失败并保留既有正式输出。
 
 显式键可以有意把多处相同源文案收拢到同一键。一个键对应两段不同源文案就是键冲突，包括显式键撞上另一段文案的自动键。冲突在 Plugin 汇总之后、写文件之前失败。错误列出每个键、每段文案、它的 `explicit` 或 `derived` 来源，以及每处 `path:line:column (kind)`。
 
@@ -738,7 +740,9 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
   catalogFormat: 'json',
   translationProvider: '',
   targetLocales: [],
-  translationFailure: 'partial'
+  translationFailure: 'partial',
+  pruneOrphaned: false,
+  externalKeys: []
 }
 ```
 
@@ -746,11 +750,11 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
 
 - 删除 `htmlEntries`；
 - Loader 使用 `include`、`exclude`、`contextFilters`、`attributeAllowlist`、`styleExtensions`；
-- Plugin 使用 `outputPath`、`sourceMapFilename`、`catalogDir`、`sourceLocale`、`catalogFormat`；
+- Plugin 使用 `outputPath`、`sourceMapFilename`、`catalogDir`、`sourceLocale`、`catalogFormat`、`pruneOrphaned`、`externalKeys`；
 - `translationProvider`、`targetLocales`、`translationFailure` 只属于配置文件和 `translate` 命令。它们不是 Loader 选项，也不是 Plugin 选项；
 - 显式 options 只能覆盖调用方拥有的字段；
 - 未知字段和跨职责字段继续报错；
-- `configHash` 和 metadata 上的 `fileConfigHash` 都只覆盖收集字段。计算前会去掉 `catalogDir`、`sourceLocale`、`catalogFormat` 和三个翻译字段，因此只改目录位置或翻译设置不会让 source map 的哈希变化，也不会因为哈希不符而丢弃缓存 snapshot；
+- `configHash` 和 metadata 上的 `fileConfigHash` 都只覆盖收集字段。计算前会去掉 `catalogDir`、`sourceLocale`、`catalogFormat`、`pruneOrphaned`、`externalKeys` 和三个翻译字段，因此只改目录位置、退役策略、外部键或翻译设置不会让 source map 的哈希变化，也不会因为哈希不符而丢弃缓存 snapshot；
 - `fileConfigHash` 取配置文件规范化之后、Loader/Plugin 显式选项和 CLI scope override 之前的值。`configHash` 再纳入 Loader 选项、Plugin 的输出路径选项，以及 `collect --include`、`--exclude`、`--context-filter` 对这一次运行的替换；
 - 配置文件存在时，Loader 应将其登记为 webpack dependency，以便 watch 正确失效。不存在时登记为 missing dependency。
 
@@ -809,6 +813,9 @@ Package 应：
 - 被判定为 fatal 的 HTML 诊断；
 - 畸形 `i18n-key`，或同一片段上两条不同的键指令；
 - 汇总后一个本地化键对应两段不同源文案；
+- occurrence identity ambiguity（未确认前）；
+- localized-call 引用未知或已退役的项目键（除非列在 `externalKeys`，或为遗留 MD5 词典调用）；
+- 同位 `i18n-key` 与 localized-call 键不一致；
 - Loader 跑在 `thread-loader` worker 中；
 - 输出准备或成组写入失败，包括读不到或恢复不了残留的 commit journal。
 
@@ -852,10 +859,10 @@ Loader 里的解析错误和畸形键指令至少包含：
 | --- | --- |
 | `outputPath` | `{ "<md5>": "<解码后的文案>" }`，key 按字母序 |
 | `sourceMapFilename` | `{ version: 1, parserVersion: "babel-7", configHash, entries }`。每个 entry 是 MD5、文案和排序后的 locations |
-| `<catalogDir>/<sourceLocale>.json` | `{ "<本地化键>": "<源文案>" }`，经格式适配器序列化，key 按字母序 |
-| `<catalogDir>/catalog.meta.json` | `{ version: 2, sourceLocale, format, entries }`。每个 entry 记录 `source`、`fingerprint`、`origin`、排序后的 locations，以及带稳定身份的 `occurrences` |
+| `<catalogDir>/<sourceLocale>.json` | `{ "<本地化键>": "<源文案>" }`，经格式适配器序列化，key 按字母序；不含 orphaned 键 |
+| `<catalogDir>/catalog.meta.json` | `{ version: 3, sourceLocale, format, entries }`。每个 entry 记录 `source`、`fingerprint`、`origin`、`representation`（`source-text` 或 `localized-call`）、排序后的 locations、带稳定身份的 `occurrences`，以及 `active` 或 `orphaned` status |
 
-`fingerprint` 是源文案 SHA-256 的前 16 个十六进制字符。`origin` 是 `explicit` 或 `derived`。同一键下只要有一处显式键，origin 就是 `explicit`。比较两份元数据时：只在新文件里的键是 added，只在旧文件里的键是 removed，两边都在但 fingerprint 不同的键是 source-changed，fingerprint 相同的键是 unchanged。收集不写目标语言目录，也不写 `translation-state.json`。
+`fingerprint` 是源文案 SHA-256 的前 16 个十六进制字符。`origin` 是 `explicit` 或 `derived`。同一键下只要有一处显式键，origin 就是 `explicit`。比较两份元数据时：只在新文件里的键是 added，只在旧文件里且已离开元数据的键是 removed，新文件里 status 为 `orphaned` 的键是 orphaned，从 orphaned 回到 active 的键是 recovered，两边都在但 fingerprint 不同的键是 source-changed，fingerprint 相同的键是 unchanged。version 2 升到 version 3 时为 entry 与 occurrence 补上默认 `source-text` representation，不改写既有本地化键。收集不写目标语言目录，也不写 `translation-state.json`。`replace --write` 另写 `<catalogDir>/replacements.json` 作为替换审计与回滚记录，不是身份恢复权威。
 
 `writeOutputs` 先丢掉字节已经相同的文件，再对剩余文件调用 `commitFiles`。空列表直接返回，不建临时文件，也不建 journal。否则在每个将要写入的目录里先寻找残留的 `.commit-*.json`；找得到就先按它恢复，读不了或恢复不了就失败。然后写下 journal，把新内容写到临时文件，把已存在的目标改名为备份，再把临时文件换成正式文件。journal 只在全部替换成功后删除。进程在 journal 还在时退出，会尽量按 journal 恢复；没能恢复的 journal 留到下一次写入。备份文件在提交点之后删除，删不掉不会撤销已经提交的内容。
 
@@ -1046,7 +1053,7 @@ packages/i18n-collect/test/
 - `loader.test.js`：透明传递、metadata、warning 和错误格式。
 - `loader-order.test.js`：最终 webpack 配置里的 Loader 顺序。
 - `collection.test.js`：MD5、配置校验、`configHash` 与 `fileConfigHash` 的差别、稳定排序，以及字节相同时不写临时文件。
-- `catalog.test.js`：派生键、显式键、冲突、指纹和目录差异。
+- `catalog.test.js`：自动键、显式键、冲突、指纹、元数据迁移和目录差异。
 - `webpack-integration.test.js`：真实 module graph、Vue blocks、HTMLWebpackPlugin 和 cache。HTMLWebpackPlugin 的 forced chain、child compiler 和缓存命中也在这里覆盖。
 - `watch-loop.test.js`：相同输出不写、真正变化一次后收敛。
 - `cli-collect.test.js`：一次收集的报告、scope override、退出码，以及不发网络请求。

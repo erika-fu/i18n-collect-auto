@@ -35,6 +35,9 @@ The localization data present in the current source collection, containing every
 **Occurrence**:
 One concrete appearance of collected text in source. It has its own source location and may be independently located, replaced, and matched to collection history. An occurrence is not necessarily a translation unit.
 
+**Occurrence identity**:
+The durable per-occurrence record used to recover an automatic key across collection rounds. It is the stable occurrence ID together with the structural anchor. It is not the localization key and it is not a source location. Source coordinates may move; the identity stays when the structural anchor uniquely matches history.
+
 **Semantic collection stage**:
 A collection point where the source structure still identifies whether text came from a script literal, HTML text or attribute, or a CSS `content` declaration.
 _Avoid_: Final-bundle scan
@@ -67,7 +70,7 @@ The text a translation provider proposes for one localization key in one target 
 The per-key, per-target-locale record of the source fingerprint a translation was accepted against, and whether that translation is current or needs review. It is stored beside the catalogs and is not part of the source-locale catalog metadata.
 
 **Localization key**:
-The stable runtime identifier used by source replacements and translation catalogs. A location-derived key is generated when no adjacent key directive explicitly supplies one.
+The stable runtime identifier used by source replacements and translation catalogs. An automatic key is generated when no adjacent key directive explicitly supplies one.
 
 **Key directive**:
 A syntax-valid comment `i18n-key: <key>` that gives the next associated collected fragment an explicit localization key. It associates by the same rules as the exclusion directive. A comment that starts with `i18n-key` but is not well formed fails the collection round.
@@ -151,7 +154,7 @@ The hash dictionary and its source map written by collection. The dictionary map
 The runtime call shape used by source replacement: `vue2`, `vue3`, or `js`. Each adapter states the semantic positions it can rewrite and requires a runtime integration that is already present. It does not install dependencies or rewrite application bootstrap. React JSX, standalone HTML, and CSS generated content are outside its scope.
 
 **Replacement metadata**:
-The versioned record of committed source replacements, stored as `replacements.json` beside the translation catalogs. A write prepares the changed source files, the keyed catalogs, and this record, then commits them as one set. A failed commit restores that set.
+The versioned record of committed source replacements, stored as `replacements.json` beside the translation catalogs. A write prepares the changed source files, the keyed catalogs, and this record, then commits them as one set. A failed commit restores that set. The file is audit, rollback, and diagnostic data. Ordinary automatic-key recovery reads catalog metadata occurrence identities, not this record.
 
 **Replacement preview**:
 The dry-run result of source replacement. It reports the per-file source that would be written, the skipped candidates, and the calls that are already localized. It does not modify source files, translation catalogs, or replacement metadata.

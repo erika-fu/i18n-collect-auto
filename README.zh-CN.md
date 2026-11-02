@@ -281,9 +281,22 @@ CSS：
 
 只由空白隔开的指令注释组成同一组，所以 `/* no-i18n-auto */ /* i18n-key: a.b */ "文案"` 会同时作用在 `"文案"` 上。中间插入普通注释或代码后，这一组就结束了。
 
+## 本地化键与 occurrence identity
+
 显式本地化键来自 `i18n-key` 指令：语法合法、文本为 `i18n-key: <key>` 的注释。键以字母开头，由点分隔的段组成，每段可以包含字母、数字、`_` 和 `-`，例如 `home.title`。它和 `no-i18n-auto` 使用同一套关联规则。以 `i18n-key` 开头但形状不对的注释是畸形指令，会让本轮收集失败。一个片段被两条不同的键指令同时命名，也会失败。片段被排除时，它的键指令不生效。
 
-没有显式键的位置会得到派生键。派生键由项目相对路径、语义种类和收集文案计算，不包含行号和列号。同一个键如果对应两段不同的源文案，就是键冲突，本轮失败并保留上一份正式产物。
+请把下面四个概念分开：
+
+| 概念 | 含义 |
+| --- | --- |
+| 本地化键 | 运行时与目录标识（`home.title`，或自动键 `auto.<ULID>`）。 |
+| occurrence identity | 元数据中的耐久记录：稳定 occurrence ID 加上 structural anchor。普通自动键恢复读它，不读坐标。 |
+| structural anchor | `semanticHost`（资源 identity）、`childRole`（semantic kind）、`localContext`（文档顺序的 `sibling:n`）。 |
+| source location | 路径、semantic kind 与半开区间源码范围。辅助定位，不独立确立身份。 |
+
+没有显式键的位置会得到自动键。首次出现时是不透明的 `auto.<ULID>`，不携带路径、源文案、行号或列号。后续轮次在 `catalog.meta.json` 能用 structural anchor 唯一匹配历史 occurrence 时复用该键；无法唯一认定时分配新的 `auto.<ULID>`。新键若撞上本轮未唯一匹配的历史键，会重新分配。已有自动键（含早期路径派生键）在元数据迁移中保持不变。多个可行历史候选时，仍分配新键，写出 `identity-ambiguities.json`，本轮失败并保留正式产物，直到用 `i18n-key` 或 `identity-confirmations.json` 确认。失败重试在 structural anchor 仍匹配时复用报告中的 `proposedKey`。相同文案出现在不同位置时各自有独立目录键。同一个键如果对应不兼容的 message contract，就是键冲突，本轮失败并保留上一份正式产物。
+
+静态 `t('key')`、`$t('key')`、`this.$t('key')` 记为 `localized-call` 出现：更新位置与 anchor，保持被引用键 active；当该键的全部 active 出现都是 call 时，仍保留上次规范源文案与指纹，不会写成空值；未退役的 orphaned 键可被恢复；未知或已退役的项目键默认使本轮失败；遗留 MD5 词典调用留在项目目录之外；`externalKeys` 允许外部管理的未知键而不创建项目目录条目。同位 `i18n-key` 与 call 键不一致时失败，一致时接受。把自动键改成显式键后，旧自动键保持 orphaned，译文不会隐式迁移。键离开当前收集后，元数据记为 `orphaned`；用 `retirement-confirmations.json` 或 `pruneOrphaned: true` 退役。version 1/2 元数据在成功收集时升到 version 3（补上默认 `source-text` representation），不改写既有本地化键与 occurrence identity。收集不会按最近行号或打分启发式在多个历史候选里静默择一。
 
 ---
 
@@ -296,12 +309,15 @@ CSS：
 | 收集文案 | 源码里识别出的中文候选。收集只记录它，不改文件。 |
 | 哈希收集产物 | `lang/zh_hash.json` 和 `lang/zh_hash.map.json`。词典的 key 是文案的 MD5。 |
 | 翻译目录 | `lang/catalog/<locale>.json`，本地化键到文案的扁平映射。收集写出源语言；`translate` 写出每个目标语言。 |
-| 目录元数据 | `lang/catalog/catalog.meta.json`：源文案、源指纹、显式或派生来源，以及来源位置。 |
+| 目录元数据 | `lang/catalog/catalog.meta.json`：源文案、源指纹、来源、representation、来源位置、per-occurrence identity，以及 `active` 或 `orphaned`。普通自动键恢复读这份文件。 |
 | 审阅状态 | `lang/catalog/translation-state.json`：每个键、每个目标语言记录译文接受时的源指纹，以及 `current` 或 `needs-review`。 |
+| 身份歧义报告 | `lang/catalog/identity-ambiguities.json`：失败歧义轮次的机器可读记录，不是正式收集产物。 |
+| 身份确认 | `lang/catalog/identity-confirmations.json`：歧义 occurrence 的耐久键选择。收集只读不改写。 |
+| 退役确认 | `lang/catalog/retirement-confirmations.json`：要退役的 orphaned 本地化键列表。 |
 | 翻译提供方 | 交给 `translate` 的项目模块。它不是产物文件，也不是内置的供应商 SDK。 |
 | 替换预览 | `replace` 的默认结果。它报告将要写成的源码，并且不改任何文件。 |
 | 源码替换 | 把受支持的位置改写成运行时本地化调用。源码只在 `--write` 时改变。 |
-| 替换元数据 | `lang/catalog/replacements.json`，已提交替换的记录。一次写入会把源码、键控目录和这份记录一起提交。 |
+| 替换元数据 | `lang/catalog/replacements.json`，已提交替换的记录。一次写入会把源码、键控目录和这份记录一起提交。它是审计、回滚与诊断数据，不是普通自动键恢复的权威；身份恢复读 catalog metadata。 |
 
 哈希收集产物会保留，已有的哈希消费方可以继续使用。翻译和源码替换使用翻译目录。
 
@@ -667,7 +683,9 @@ module.exports = {
   catalogFormat: 'json',
   translationProvider: '',
   targetLocales: [],
-  translationFailure: 'partial'
+  translationFailure: 'partial',
+  pruneOrphaned: false,
+  externalKeys: []
 }
 ```
 
@@ -687,6 +705,8 @@ module.exports = {
 | `catalogDir` | Plugin | 翻译目录所在目录 |
 | `sourceLocale` | Plugin | 源语言目录文件名使用的区域标签 |
 | `catalogFormat` | Plugin | 目录格式适配器，目前为 `json` |
+| `pruneOrphaned` | Plugin | 为 true 时，同轮退役缺失键与此前 orphaned 的键 |
+| `externalKeys` | Plugin | 项目外管理的本地化键白名单；localized-call 可引用且不创建项目目录条目 |
 | `translationProvider` | 仅 `translate` | 项目相对的提供方模块，不属于 loader 或 plugin 选项 |
 | `targetLocales` | 仅 `translate` | 要填写的目标区域标签 |
 | `translationFailure` | 仅 `translate` | `partial` 或 `strict` |

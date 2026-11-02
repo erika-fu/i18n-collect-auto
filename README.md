@@ -105,9 +105,18 @@ Two directives that select the same fragment remove it once. They do not also re
 
 Directive comments that are separated only by whitespace form one group in front of the construct, so `/* no-i18n-auto */ /* i18n-key: a.b */ "文案"` applies both directives to `"文案"`. An ordinary comment or code between two directives ends the group.
 
-## Localization keys
+## Localization keys and occurrence identity
 
 Every collected location receives a localization key. The keyed translation catalog is the shared boundary for translation and source replacement; the hash dictionary stays alongside it during the migration.
+
+Keep these four concepts distinct:
+
+| Concept | What it names |
+| --- | --- |
+| Localization key | The stable runtime catalog identifier (`home.title`, or an automatic `auto.<ULID>`). Translation catalogs and replacement calls use this value. |
+| Occurrence identity | The durable per-occurrence record in catalog metadata: a stable occurrence ID plus the structural anchor. Collection recovers an automatic key from this record, not from coordinates. |
+| Structural anchor | `semanticHost` (resource identity), `childRole` (semantic kind), and `localContext` (`sibling:n` in document order). It identifies an occurrence across rounds. |
+| Source location | Path, semantic kind, and half-open source range. It helps humans and replace locate text. It does not independently establish identity. |
 
 An explicit key comes from an `i18n-key` directive: a syntax-valid comment whose text is `i18n-key: <key>`. The key starts with a letter and is made of dot-separated segments of letters, digits, `_`, and `-`, such as `home.title` or `order.list-empty`. The directive associates with the same fragment that `no-i18n-auto` would remove in that position, using the rules above for script, Vue template, static HTML, and CSS. A comment whose text starts with `i18n-key` but does not have that shape is a malformed directive. It fails the round at the comment's position. A directive group that names two different keys for one fragment also fails. When a fragment is excluded, its key directive has no effect.
 
@@ -120,18 +129,28 @@ const title = /* i18n-key: home.title */ '首页'
 <p>欢迎使用</p>
 ```
 
-A location without an explicit key gets an automatic key. On first sighting it is built from the project-relative path without its extension, written as dot-separated segments with other characters replaced by `_` and a `k` prefix when the path does not start with a letter, plus 8 hex characters of a SHA-256 hash over the path, the semantic kind, the collected text, and that occurrence's source range. For example, `欢迎` in Vue template text of `src/pages/Home.vue` gets `src.pages.Home.<hash>`. Later rounds reuse that key when catalog metadata uniquely matches the occurrence by structural anchors (semantic host, child role, local context), using source text only as auxiliary evidence when sibling counts change. An unmatched occurrence receives a new automatic key. If that fresh hash collides with a historical key this round did not uniquely match, collection salts the hash so the old translation identity is not reused. When several historical candidates remain viable, collection still allocates that new key, writes `<catalogDir>/identity-ambiguities.json`, and fails the round until the ambiguity has a durable confirmation. An `i18n-key` directive confirms it in source. A source that cannot be edited is confirmed in `<catalogDir>/identity-confirmations.json` instead: version 1, with one entry per occurrence naming `semanticHost`, `childRole`, `localContext`, and either a historical candidate key or the report's `proposedKey`. A resolved round deletes the ambiguity report. Identical text at separate locations receives independent catalog keys so each occurrence can take a different translation. The legacy MD5 dictionary and source map still deduplicate by text value.
+A location without an explicit key gets an automatic key. On first sighting the key is an opaque `auto.<ULID>` that carries no path, source text, line, or column material. Later rounds reuse that key when `catalog.meta.json` uniquely matches the occurrence by structural anchors, using source text only as auxiliary evidence when sibling counts change. An unmatched occurrence receives a new `auto.<ULID>`. A freshly allocated key that collides with a historical key this round did not uniquely match is reallocated, so the old translation identity is not reused. Existing automatic keys, including legacy path-derived keys from earlier metadata versions, stay unchanged through migration. When several historical candidates remain viable, collection still allocates a new key, writes `<catalogDir>/identity-ambiguities.json`, and fails the round until the ambiguity has a durable confirmation. An `i18n-key` directive confirms it in source. A source that cannot be edited is confirmed in `<catalogDir>/identity-confirmations.json` instead: version 1, with one entry per occurrence naming `semanticHost`, `childRole`, `localContext`, and either a historical candidate key or the report's `proposedKey`. A resolved round deletes the ambiguity report. A later failed round reuses each occurrence's previous `proposedKey` when the structural anchor still matches, so retries keep a stable proposal. Identical text at separate locations receives independent catalog keys so each occurrence can take a different translation. The legacy MD5 dictionary and source map still deduplicate by text value; they are not the localization-key identity.
 
 An explicit key may intentionally gather several locations when they all share the same message contract (normalized message pattern and placeholder contract). A key that names incompatible message contracts is a key conflict. An explicit key that equals another text's automatic key with a different message contract is also a conflict. A conflict fails the round, keeps every previous output, and lists each conflicting text with all of its locations.
+
+### Localized calls, orphans, retirement, and external keys
+
+A static `t('key')`, `$t('key')`, or `this.$t('key')` call is collected as a `localized-call` occurrence. Collection updates that occurrence's source location and structural anchor, keeps the referenced key active, and never replaces canonical source text with an empty value. When every active occurrence of a key is a localized call, the last canonical source text and fingerprint remain available for translation review. A non-retired orphaned key referenced by such a call becomes active again. An unknown or retired project key fails the round by default. Legacy MD5 dictionary calls are left outside the project catalog. `externalKeys` in `i18n-collect.config.js` is an allowlist of externally managed keys that may appear in calls without creating project catalog entries. Dynamic keys and unsupported call shapes are not misclassified as localized calls.
+
+A colocated `i18n-key` that disagrees with a localized-call key fails collection. Matching keys are accepted. Changing an automatic occurrence to an explicit key makes the explicit key the new identity; the former automatic key remains orphaned and its translation asset is not implicitly migrated.
+
+When a localization key leaves the current collection, catalog metadata keeps it as `orphaned` so translations and automatic-key recovery remain available. The source-locale catalog omits orphaned keys. Retire an orphaned key with `<catalogDir>/retirement-confirmations.json` (`{ version: 1, keys: [...] }`), or set `pruneOrphaned: true` to retire missing and previously orphaned keys in the same round. Retirement removes the key from metadata; the next `translate` then prunes that key from target-locale catalogs and review state. Active keys named in the retirement file are ignored.
 
 ## Translation catalog
 
 After each successful round the plugin writes two catalog files in the same transaction as the hash dictionary and source map:
 
 - `<catalogDir>/<sourceLocale>.json`: the source-locale catalog, a flat `{ "<localization key>": "<source text>" }` mapping with sorted keys.
-- `<catalogDir>/catalog.meta.json`: catalog metadata, `{ version: 3, sourceLocale, format, entries }`. Each entry records the source text, a `fingerprint` (the first 16 hex characters of the SHA-256 of the source text), its `origin` (`explicit` or `derived`), its `representation` (`source-text` or `localized-call`), its sorted source locations, and an `occurrences` array. Each occurrence records a stable `id` (independent of source text and coordinates), `semanticHost`, `childRole`, `localContext`, `origin`, `representation`, and `location`. Version 1 and 2 metadata upgrade on read; unsupported versions fail with a migration path and do not publish a partial upgrade.
+- `<catalogDir>/catalog.meta.json`: catalog metadata, `{ version: 3, sourceLocale, format, entries }`. Each entry records the source text, a `fingerprint` (the first 16 hex characters of the SHA-256 of the source text), its `origin` (`explicit` or `derived`), its `representation` (`source-text` or `localized-call`), its sorted source locations, an `occurrences` array, and `active` or `orphaned` status. Each occurrence records a stable `id` (independent of source text and coordinates), `semanticHost`, `childRole`, `localContext`, `origin`, `representation`, and `location`.
 
-Comparing two metadata files tells which keys were added, removed, or source-changed: a key that remains with a different fingerprint has changed source text. Target-locale catalogs are not written by collection.
+Version 1 and 2 metadata upgrade on a successful collection without rewriting existing localization keys. Version 2 to version 3 adds `representation` (`source-text` by default) on each entry and occurrence; occurrence identities and keys stay as they were. Unsupported or unreadable versions fail with a migration path and do not publish a partial upgrade. Target-locale catalogs are not written by collection.
+
+Comparing two metadata files tells which keys were added, removed, orphaned, recovered, or source-changed: a key that remains with a different fingerprint has changed source text.
 
 The catalog's external representation goes through a format adapter. An adapter has a `name`, a file `extension`, `serialize(messages)` that returns identical text for identical messages, and `parse(text)`. `json` is the only adapter and the default.
 
@@ -196,8 +215,6 @@ Translate writes:
 - `<catalogDir>/<locale>.json`: the target catalog, through the same format adapter as the source catalog. Keys retained in catalog metadata (active or orphaned) stay. Keys absent from metadata are pruned from the target catalog and review state.
 - `<catalogDir>/translation-state.json`: review state, `{ version: 1, locales }`. Each locale maps a localization key to `{ sourceFingerprint, review }`. `review` is `current` or `needs-review`. The recorded fingerprint stays at the source the translation was accepted against, so a later source change can be told apart from the current catalog metadata.
 
-When a localization key leaves the current collection, catalog metadata keeps it as `orphaned` so translations and automatic-key recovery remain available. Retire it with `<catalogDir>/retirement-confirmations.json` (`{ version: 1, keys: [...] }`), or set `pruneOrphaned: true` in `i18n-collect.config.js` to retire missing and previously orphaned keys in the same collection round.
-
 The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app. `apps/demo/fixtures/keyed-migration` is the keyed-catalog migration fixture and is not imported by the app.
 
 ## Migration outputs
@@ -209,13 +226,15 @@ Migration keeps the following distinct:
 | Collected text | Chinese copy found in source. Collection records it and leaves the file unchanged. |
 | Hash collection output | `lang/zh_hash.json` and `lang/zh_hash.map.json`. The dictionary key is the MD5 of the collected text. |
 | Translation catalog | `lang/catalog/<locale>.json`, a flat map from a localization key to text. Collection writes the source locale. Translate writes each target locale. |
-| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, source locations, per-occurrence identity, and `active` or `orphaned` status. |
+| Catalog metadata | `lang/catalog/catalog.meta.json`: source text, source fingerprint, origin, representation, source locations, per-occurrence identity, and `active` or `orphaned` status. Ordinary automatic-key recovery reads this file. |
 | Review state | `lang/catalog/translation-state.json`: for each key and target locale, the source fingerprint the translation was accepted against, and `current` or `needs-review`. |
+| Identity ambiguity report | `lang/catalog/identity-ambiguities.json`: machine-readable record for a failed ambiguous round. Not a formal collection output. |
+| Identity confirmations | `lang/catalog/identity-confirmations.json`: durable choice of localization key for an ambiguous occurrence. Collection reads it and does not rewrite it. |
 | Retirement confirmations | `lang/catalog/retirement-confirmations.json`: durable list of orphaned localization keys to retire. |
 | Translation provider | A project module passed to translate. It is not an output file and it is not a vendor SDK. |
 | Replacement preview | The default result of replace. It reports the source that would be written and does not modify files. |
 | Source replacement | The rewrite of a supported location into a runtime localization call. Source files change only with `--write`. |
-| Replacement metadata | `lang/catalog/replacements.json`, the record of committed replacements. A write commits source files, the keyed catalogs, and this record together. |
+| Replacement metadata | `lang/catalog/replacements.json`, the record of committed replacements. A write commits source files, the keyed catalogs, and this record together. It is audit, rollback, and diagnostic data. It is not the authority for ordinary automatic-key recovery; collection recovers keys from catalog metadata occurrence identities. |
 
 The hash collection output stays so existing hash consumers keep working. Translation and source replacement use the translation catalog.
 
@@ -273,7 +292,7 @@ Exit codes are the exit code of the stage that finished the workflow: 0 finished
 
 ## Configuration
 
-One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `contextFilters`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath`, `sourceMapFilename`, `catalogDir`, `sourceLocale`, and `catalogFormat`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
+One `i18n-collect.config.js` at the project root supplies the defaults below. Loader options may set `include`, `exclude`, `contextFilters`, `attributeAllowlist`, and `styleExtensions`. Plugin options may set `outputPath`, `sourceMapFilename`, `catalogDir`, `sourceLocale`, `catalogFormat`, `pruneOrphaned`, and `externalKeys`. A field passed to the wrong side is an error. Unknown fields are errors. `htmlEntries` is not a field.
 
 ```js
 {
@@ -289,11 +308,15 @@ One `i18n-collect.config.js` at the project root supplies the defaults below. Lo
   catalogFormat: 'json',
   translationProvider: '',
   targetLocales: [],
-  translationFailure: 'partial'
+  translationFailure: 'partial',
+  pruneOrphaned: false,
+  externalKeys: []
 }
 ```
 
-`catalogDir` is a project-relative directory. `sourceLocale` is a locale tag such as `zh` or `zh-CN` and names the source-locale catalog file. `catalogFormat` names the format adapter. The catalog files must not coincide with `outputPath` or `sourceMapFilename`. The catalog fields and the translation fields do not take part in the source map's `configHash`.
+`catalogDir` is a project-relative directory. `sourceLocale` is a locale tag such as `zh` or `zh-CN` and names the source-locale catalog file. `catalogFormat` names the format adapter. The catalog files must not coincide with `outputPath` or `sourceMapFilename`. The catalog fields (`catalogDir`, `sourceLocale`, `catalogFormat`, `pruneOrphaned`, `externalKeys`) and the translation fields do not take part in the source map's `configHash`.
+
+`pruneOrphaned` retires missing and previously orphaned keys in the same collection round when true. `externalKeys` lists localization keys managed outside this project's catalog; localized calls that name those keys are allowed without creating catalog entries.
 
 `translationProvider` is a project-relative path and may be empty. `targetLocales` lists locale tags other than `sourceLocale`, with no duplicates. `translationFailure` is `partial` or `strict`. See Translation command for how they are used.
 
@@ -344,7 +367,9 @@ Each loader call submits a complete replacement snapshot for that identity, incl
 ## Limits
 
 - SCSS, Sass, Less, and Stylus are warning and skip only. There is no parser for them.
-- A parse error, a malformed `i18n-key` directive, a localization key conflict, or an occurrence identity ambiguity fails the round and keeps the previous official output.
+- A parse error, a malformed `i18n-key` directive, a localization key conflict, an occurrence identity ambiguity, or an unknown/retired localized-call reference fails the round and keeps the previous official output.
+- Collection never silently picks among multiple historical identity candidates by nearest line or a scored heuristic; confirmation or a new `auto.<ULID>` is required.
+- Ordinary automatic-key recovery reads catalog metadata occurrence identities. `replacements.json` is not that authority.
 - A key directive that does not associate with a collected fragment is ignored, like an unattached `no-i18n-auto`.
 - Watch may compile one extra time after a real dictionary change, then become quiet.
 - A one-shot production build writes the latest dictionary, but that same bundle can still embed the previous dictionary.
