@@ -626,7 +626,7 @@ export default new VueI18n({
 
 每个区域先放入哈希词典，再放入该区域的键目录，因此目录里的本地化键优先。替换后的调用，例如 `$t('demo.visit.banner')`，从键目录取值。参数仍是文案 MD5 的旧调用，只在目录没有这个键时回退到 `lang/zh_hash.json`。空字符串是一条译文，不会继续回退。
 
-迁移页把区域切到 `en`。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个键来自同一句源文案 `欢迎`。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。对应源码在 `apps/demo/fixtures/keyed-migration`，不进入演示项目的 Webpack 入口。
+迁移页把区域切到 `en`，并演示稳定键生命周期。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个显式键来自同一句源文案 `欢迎`。`demo.shared.title` 同时保留 source-text 与 localized-call 出现。`apps/demo/src/lifecycle.js` 里两处 `请稍候` 各自拿到独立 automatic key，并都解析为 “Please wait”。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。`apps/demo/fixtures/keyed-migration` 在演示 Webpack 入口外镜像同一生命周期。`packages/i18n-collect/test/demo-runtime-migration.test.js` 在临时副本上执行收集、翻译、替换与源文变更后的 review，再通过 `apps/demo/src/lang/resolve.js` 解析运行时调用，且不会改写已提交的 demo `lang` 产物。
 
 只有当每个本地化调用都传入本地化键、不再有调用传入 MD5，并且运行时会选中的每个区域的键目录都已经包含这些键时，才去掉哈希词典回退。在此之前，查找先读当前区域的键目录，仅当目录没有该键时才读 `lang/zh_hash.json`。去掉回退之后，收集仍会写出哈希词典。回退是运行时兼容层，不是收集产物。
 

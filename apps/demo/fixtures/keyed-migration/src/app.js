@@ -1,5 +1,10 @@
 const { t } = require('./i18n')
 const banner = /* i18n-key: demo.visit.banner */ '欢迎'
 const farewell = /* i18n-key: demo.visit.farewell */ '欢迎'
+const waitA = '请稍候'
+const waitB = '请稍候'
+const sharedSource = /* i18n-key: demo.shared.title */ '共享标题'
+const sharedCall = t('demo.shared.title')
+const bannerCall = t('demo.visit.banner')
 const legacy = t('47781b8a72bcbb7ecb1f955399a7e718')
-module.exports = { banner, farewell, legacy }
+module.exports = { banner, farewell, waitA, waitB, sharedSource, sharedCall, bannerCall, legacy }

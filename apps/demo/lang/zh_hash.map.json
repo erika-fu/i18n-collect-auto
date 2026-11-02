@@ -88,6 +88,24 @@
       ]
     },
     {
+      "key": "1d3fe99832c31b75ebf13cdc7e6355d9",
+      "value": "共享标题",
+      "locations": [
+        {
+          "path": "src/lifecycle.js",
+          "kind": "script-string",
+          "start": {
+            "line": 5,
+            "column": 61
+          },
+          "end": {
+            "line": 5,
+            "column": 67
+          }
+        }
+      ]
+    },
+    {
       "key": "2597f120746fef0a073a8f4137f82723",
       "value": "脚本字符串",
       "locations": [
@@ -175,6 +193,30 @@
       "key": "47781b8a72bcbb7ecb1f955399a7e718",
       "value": "欢迎",
       "locations": [
+        {
+          "path": "src/lifecycle.js",
+          "kind": "script-string",
+          "start": {
+            "line": 1,
+            "column": 62
+          },
+          "end": {
+            "line": 1,
+            "column": 66
+          }
+        },
+        {
+          "path": "src/lifecycle.js",
+          "kind": "script-string",
+          "start": {
+            "line": 2,
+            "column": 66
+          },
+          "end": {
+            "line": 2,
+            "column": 70
+          }
+        },
         {
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
@@ -407,6 +449,36 @@
           "end": {
             "line": 16,
             "column": 31
+          }
+        }
+      ]
+    },
+    {
+      "key": "7c1efe79cc1f108900897a8358c73c8e",
+      "value": "请稍候",
+      "locations": [
+        {
+          "path": "src/lifecycle.js",
+          "kind": "script-string",
+          "start": {
+            "line": 3,
+            "column": 21
+          },
+          "end": {
+            "line": 3,
+            "column": 26
+          }
+        },
+        {
+          "path": "src/lifecycle.js",
+          "kind": "script-string",
+          "start": {
+            "line": 4,
+            "column": 21
+          },
+          "end": {
+            "line": 4,
+            "column": 26
           }
         }
       ]
