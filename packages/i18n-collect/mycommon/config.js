@@ -26,12 +26,13 @@ const DEFAULTS = {
   translationProvider: '',
   targetLocales: [],
   translationFailure: 'partial',
-  pruneOrphaned: false
+  pruneOrphaned: false,
+  externalKeys: []
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
 const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])
-const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrphaned']
+const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrphaned', 'externalKeys']
 const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
@@ -155,6 +156,12 @@ function validate(root, input) {
     fail('translationFailure must be "partial" or "strict"')
   }
   if (typeof config.pruneOrphaned !== 'boolean') fail('pruneOrphaned must be a boolean')
+  array(
+    config.externalKeys,
+    'externalKeys',
+    value => typeof value === 'string' && value.length > 0,
+    'externalKeys must be an array of non-empty localization keys'
+  )
   return config
 }
 

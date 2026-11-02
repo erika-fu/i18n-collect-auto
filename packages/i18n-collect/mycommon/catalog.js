@@ -12,6 +12,7 @@ const REPRESENTATION_LOCALIZED_CALL = 'localized-call'
 const REPRESENTATIONS = new Set([REPRESENTATION_SOURCE_TEXT, REPRESENTATION_LOCALIZED_CALL])
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 const OPAQUE_AUTOMATIC_KEY = /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/
+const HASH_DICTIONARY_KEY = /^[a-f0-9]{32}$/
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex')
@@ -149,6 +150,13 @@ function assignOccurrenceIdentities(drafts) {
   }))
 }
 
+function representationAt(entry, location) {
+  if (entry.representationByLocation && entry.representationByLocation.has(locationId(location))) {
+    return entry.representationByLocation.get(locationId(location))
+  }
+  return entry.representation || REPRESENTATION_SOURCE_TEXT
+}
+
 function attachOccurrences(entries) {
   const drafts = []
   for (const [key, entry] of entries) {
@@ -156,6 +164,7 @@ function attachOccurrences(entries) {
       drafts.push({
         key,
         origin: entry.origin,
+        representation: representationAt(entry, location),
         semanticHost: entry.hostByLocation.get(locationId(location)),
         childRole: location.kind,
         location
@@ -367,6 +376,64 @@ function compareCandidates(a, b) {
   return a.key < b.key ? -1 : a.key > b.key ? 1 : 0
 }
 
+function appendCallPlacement(entry, placement) {
+  const id = locationId(placement.location)
+  if (!entry.hostByLocation.has(id)) {
+    entry.locations = uniqueLocations(entry.locations.concat([placement.location]))
+      .sort(sortLocations)
+    entry.hostByLocation.set(id, placement.semanticHost)
+  }
+  if (!entry.representationByLocation) entry.representationByLocation = new Map()
+  entry.representationByLocation.set(id, REPRESENTATION_LOCALIZED_CALL)
+}
+
+function isHashDictionaryKey(key) {
+  return HASH_DICTIONARY_KEY.test(key)
+}
+
+function applyLocalizedCallReferences(entries, callPlacements, previousMetadata, options = {}) {
+  const externalKeys = new Set(options.externalKeys || [])
+  const retirements = new Set(options.retirements || [])
+  const previous = previousMetadata ? previousMetadata.entries || {} : {}
+  const referenceErrors = []
+  for (const placement of callPlacements) {
+    const key = placement.explicitKey
+    // Legacy MD5 dictionary calls and externalKeys stay outside the project catalog.
+    if (!key || externalKeys.has(key) || isHashDictionaryKey(key)) continue
+    if (entries.has(key)) {
+      appendCallPlacement(entries.get(key), placement)
+      continue
+    }
+    const prior = previous[key]
+    if (prior && entryStatus(prior) === 'orphaned' && retirements.has(key)) {
+      referenceErrors.push({ key, reason: 'retired', location: placement.location })
+      continue
+    }
+    if (prior) {
+      const representationByLocation = new Map([
+        [locationId(placement.location), REPRESENTATION_LOCALIZED_CALL]
+      ])
+      entries.set(key, {
+        source: prior.source,
+        fingerprint: prior.fingerprint || fingerprintOf(prior.source),
+        origin: prior.origin,
+        representation: REPRESENTATION_LOCALIZED_CALL,
+        locations: [placement.location],
+        hostByLocation: new Map([[locationId(placement.location), placement.semanticHost]]),
+        representationByLocation
+      })
+      continue
+    }
+    if (retirements.has(key)) {
+      referenceErrors.push({ key, reason: 'retired', location: placement.location })
+      continue
+    }
+    referenceErrors.push({ key, reason: 'unknown', location: placement.location })
+  }
+  referenceErrors.sort((a, b) => sortLocations(a.location, b.location) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  return referenceErrors
+}
+
 function buildCatalog(snapshots, options = {}) {
   const previousMetadata = options && options.previousMetadata != null
     ? upgradeCatalogMetadata(options.previousMetadata)
@@ -375,9 +442,25 @@ function buildCatalog(snapshots, options = {}) {
     ? options.createUlid
     : createUlid
   const placements = []
+  const callPlacements = []
   for (const snapshot of snapshots || []) {
     for (const entry of (snapshot && snapshot.entries) || []) {
-      if (!entry || !containsHan(entry.value)) continue
+      if (!entry) continue
+      const representation = entry.representation || REPRESENTATION_SOURCE_TEXT
+      if (representation === REPRESENTATION_LOCALIZED_CALL) {
+        if (!entry.key) continue
+        for (const raw of entry.locations || []) {
+          const location = normalizeLocation(raw)
+          callPlacements.push({
+            explicitKey: entry.key,
+            location,
+            semanticHost: semanticHostOf(snapshot, location),
+            representation: REPRESENTATION_LOCALIZED_CALL
+          })
+        }
+        continue
+      }
+      if (!containsHan(entry.value)) continue
       for (const raw of entry.locations || []) {
         const location = normalizeLocation(raw)
         placements.push({
@@ -385,7 +468,7 @@ function buildCatalog(snapshots, options = {}) {
           explicitKey: entry.key || null,
           location,
           semanticHost: semanticHostOf(snapshot, location),
-          representation: entry.representation || REPRESENTATION_SOURCE_TEXT
+          representation: REPRESENTATION_SOURCE_TEXT
         })
       }
     }
@@ -474,7 +557,11 @@ function buildCatalog(snapshots, options = {}) {
     const id = compatibilityKey(messageContract(placement.value))
     const variant = group.variants.get(id) || { explicit: false, source: placement.value, placements: [] }
     if (placement.explicitKey) variant.explicit = true
-    variant.placements.push({ location: placement.location, semanticHost: placement.semanticHost })
+    variant.placements.push({
+      location: placement.location,
+      semanticHost: placement.semanticHost,
+      representation: placement.representation
+    })
     group.variants.set(id, variant)
     byKey.set(key, group)
   }
@@ -486,12 +573,16 @@ function buildCatalog(snapshots, options = {}) {
       for (const placement of variant.placements) {
         unique.set(locationId(placement.location), placement)
       }
-      const placements = [...unique.values()].sort((a, b) => sortLocations(a.location, b.location))
+      const uniquePlacements = [...unique.values()].sort((a, b) => sortLocations(a.location, b.location))
       return {
         source: variant.source,
         origin: variant.explicit ? 'explicit' : 'derived',
-        locations: placements.map(placement => placement.location),
-        hostByLocation: new Map(placements.map(placement => [locationId(placement.location), placement.semanticHost]))
+        locations: uniquePlacements.map(placement => placement.location),
+        hostByLocation: new Map(uniquePlacements.map(placement => [locationId(placement.location), placement.semanticHost])),
+        representationByLocation: new Map(uniquePlacements.map(placement => [
+          locationId(placement.location),
+          placement.representation || REPRESENTATION_SOURCE_TEXT
+        ]))
       }
     }).sort((a, b) => sortLocations(a.locations[0], b.locations[0]))
     if (variants.length > 1) {
@@ -512,9 +603,14 @@ function buildCatalog(snapshots, options = {}) {
       origin: only.origin,
       representation: REPRESENTATION_SOURCE_TEXT,
       locations: only.locations,
-      hostByLocation: only.hostByLocation
+      hostByLocation: only.hostByLocation,
+      representationByLocation: only.representationByLocation
     })
   }
+  const referenceErrors = applyLocalizedCallReferences(entries, callPlacements, previousMetadata, {
+    externalKeys: options.externalKeys || [],
+    retirements: options.retirements || []
+  })
   attachOccurrences(entries)
   ambiguities.sort((a, b) => sortLocations(a.location, b.location))
   const active = sortedObject(entries, entry => ({ ...entry, status: 'active' }))
@@ -525,6 +621,7 @@ function buildCatalog(snapshots, options = {}) {
   return {
     ambiguities,
     conflicts: conflicts.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+    referenceErrors,
     entries: lifecycle.entries,
     messages: sortedObject(
       new Map(Object.entries(lifecycle.entries).filter(([, entry]) => entryStatus(entry) === 'active')),
@@ -940,6 +1037,17 @@ function conflictMessage(conflicts) {
   return lines.join('\n')
 }
 
+function referenceMessage(referenceErrors) {
+  const noun = referenceErrors.length === 1 ? 'reference' : 'references'
+  const lines = [`i18n-collect failed: ${referenceErrors.length} localization key ${noun}`]
+  for (const error of referenceErrors) {
+    const reason = error.reason === 'retired' ? 'retired project key' : 'unknown project key'
+    lines.push(`  "${error.key}" is a ${reason} at ${where(error.location)}`)
+  }
+  lines.push('  Restore the key in catalog metadata, retire the call, or list it in externalKeys.')
+  return lines.join('\n')
+}
+
 function readCatalogMetadataFile(file) {
   if (!fs.existsSync(file)) return null
   let parsed
@@ -972,5 +1080,6 @@ module.exports = {
   readCatalogMetadataFile,
   readIdentityConfirmations,
   readRetirementConfirmations,
+  referenceMessage,
   upgradeCatalogMetadata
 }

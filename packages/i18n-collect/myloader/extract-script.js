@@ -1,5 +1,10 @@
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
+const {
+  REPRESENTATION_LOCALIZED_CALL,
+  isStaticLocalizationKeyArgument,
+  staticLocalizationCall
+} = require('../mycommon/localized-call')
 const { contextSuppresses } = require('./context-filter')
 const { babelComments, directivesBefore, scanDirectives } = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
@@ -23,6 +28,15 @@ function entry(value, loc, key) {
   return key ? { value, key, locations: [loc] } : { value, locations: [loc] }
 }
 
+function localizedCallEntry(key, loc) {
+  return {
+    key,
+    value: '',
+    representation: REPRESENTATION_LOCALIZED_CALL,
+    locations: [loc]
+  }
+}
+
 function extractScript({ source, resource, config }) {
   if (typeof source !== 'string') throw new TypeError('Script extractor requires source text')
   if (!resource || typeof resource.projectPath !== 'string' || !resource.projectPath) {
@@ -37,8 +51,18 @@ function extractScript({ source, resource, config }) {
   }
   const directives = scanDirectives(babelComments(ast.comments), fail)
   traverse(ast, {
+    CallExpression(nodePath) {
+      const call = staticLocalizationCall(nodePath.node)
+      if (!call) return
+      if (contextSuppresses(nodePath, config && config.contextFilters)) return
+      entries.push(localizedCallEntry(
+        call.key,
+        location(source, resource.projectPath, call.argument, 'script-string')
+      ))
+    },
     StringLiteral(nodePath) {
       if (MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)) return
+      if (isStaticLocalizationKeyArgument(nodePath)) return
       const directive = directivesBefore(source, directives, nodePath.node.start, fail)
       if (directive.exclude) return
       if (contextSuppresses(nodePath, config && config.contextFilters)) return

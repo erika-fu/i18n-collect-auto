@@ -5,7 +5,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
-const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
+const { buildCatalog, catalogMetadata, REPRESENTATION_LOCALIZED_CALL } = require('../mycommon/catalog')
 const { extractScript } = require('../myloader/extract-script')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
@@ -53,12 +53,25 @@ function json(value) {
   return `${JSON.stringify(value, null, 2)}\n`
 }
 
+function sourceTextEntries(entries) {
+  return entries.filter(entry => entry.representation !== REPRESENTATION_LOCALIZED_CALL)
+}
+
 function keyed(entries, keys) {
-  return entries.map(entry => {
+  const sourceText = sourceTextEntries(entries).map(entry => {
     const key = keys[entry.value]
     if (!key) throw new Error(`missing key for ${JSON.stringify(entry.value)}`)
-    return { ...entry, key }
+    return { value: entry.value, key, locations: entry.locations }
   })
+  // Replace fixtures sometimes keep Chinese call arguments; rebuild those as source-text catalog rows.
+  const fromCalls = entries
+    .filter(entry => entry.representation === REPRESENTATION_LOCALIZED_CALL && keys[entry.key])
+    .map(entry => ({
+      value: entry.key,
+      key: keys[entry.key],
+      locations: entry.locations
+    }))
+  return [...sourceText, ...fromCalls]
 }
 
 function vueEntries(projectPath, source) {
@@ -1085,11 +1098,13 @@ test('replace skips an unresolved occurrence and still rewrites its uniquely key
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/ambiguous.js', ambiguousSource)
   write(root, 'src/clear.js', clearSource)
+  const ambiguousEntries = scriptEntries('src/ambiguous.js', ambiguousSource)
   const catalog = writeCatalog(root, [
-    ...scriptEntries('src/ambiguous.js', ambiguousSource).map(entry => (
-      entry.value === '欢迎' ? { ...entry, key: 'home.welcome' } : entry
-    )),
-    ...scriptEntries('src/clear.js', clearSource).map(entry => ({ ...entry, key: 'home.title' }))
+    ...sourceTextEntries(ambiguousEntries),
+    ...ambiguousEntries
+      .filter(entry => entry.representation === REPRESENTATION_LOCALIZED_CALL && entry.key === '欢迎')
+      .map(entry => ({ value: '欢迎', key: 'home.welcome', locations: entry.locations })),
+    ...keyed(scriptEntries('src/clear.js', clearSource), { 标题: 'home.title' })
   ])
   const hello = Object.entries(catalog.entries)
     .filter(([, entry]) => entry.source === '你好')

@@ -420,3 +420,24 @@ test('ignores Vue self-closing tags and fails when a diagnostic makes the tree u
     return true
   })
 })
+
+test('records static $t and t calls in Vue interpolations as localized-call occurrences', () => {
+  const source = [
+    '<section>',
+    '  <p>{{ $t(\'home.title\') }}</p>',
+    '  <p :title="t(\'home.banner\')">保留文案</p>',
+    '  <p>{{ $t(name) }}</p>',
+    '</section>'
+  ].join('\n')
+  const result = extract(source)
+  const calls = result.entries.filter(entry => entry.representation === 'localized-call')
+  assert.deepStrictEqual(
+    calls.map(entry => ({ key: entry.key, kind: entry.locations[0].kind })),
+    [
+      { key: 'home.title', kind: 'template-expression' },
+      { key: 'home.banner', kind: 'html-attribute' }
+    ]
+  )
+  assert.strictEqual(sliceAt(source, calls[0].locations[0]), "'home.title'")
+  assert.ok(result.entries.some(entry => entry.value === '保留文案' && entry.representation !== 'localized-call'))
+})

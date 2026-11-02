@@ -19,6 +19,16 @@ test('validates project-relative paths and rejects unknown fields', () => {
   assert.throws(() => validate('/project', { include: ['src/foo', 'src/foo/'] }), /duplicate/)
 })
 
+test('accepts an externalKeys allowlist of localization keys', () => {
+  assert.deepStrictEqual(validate('/project', { externalKeys: ['vendor.a', 'vendor.b'] }).externalKeys, [
+    'vendor.a',
+    'vendor.b'
+  ])
+  assert.deepStrictEqual(validate('/project', {}).externalKeys, [])
+  assert.throws(() => validate('/project', { externalKeys: [''] }), /externalKeys/)
+  assert.throws(() => validate('/project', { externalKeys: ['same', 'same'] }), /duplicate/)
+})
+
 test('keeps a Han extension character in the runtime dictionary', () => {
   const store = new CollectionStore()
   const value = '\u{20000}'

@@ -295,3 +295,60 @@ test('a malformed or conflicting i18n-key directive fails at its source position
   )
   assert.doesNotThrow(() => extract('// i18n-keys are documented elsewhere\nconst t = "首页"\n'))
 })
+
+test('records static t, $t, and this.$t calls as localized-call occurrences', () => {
+  const source = [
+    "const a = t('home.title')",
+    "const b = $t(\"home.banner\")",
+    "const c = this.$t('home.cta')",
+    "const kept = '保留文案'",
+    ''
+  ].join('\n')
+  const entries = extract(source)
+  const calls = entries.filter(entry => entry.representation === 'localized-call')
+  assert.deepStrictEqual(
+    calls.map(entry => ({ key: entry.key, path: entry.locations[0].path, kind: entry.locations[0].kind })),
+    [
+      { key: 'home.title', path: 'src/example.js', kind: 'script-string' },
+      { key: 'home.banner', path: 'src/example.js', kind: 'script-string' },
+      { key: 'home.cta', path: 'src/example.js', kind: 'script-string' }
+    ]
+  )
+  assert.strictEqual(source.slice(
+    indexAt(source, calls[0].locations[0].start),
+    indexAt(source, calls[0].locations[0].end)
+  ), "'home.title'")
+  assert.ok(entries.some(entry => entry.value === '保留文案' && entry.representation !== 'localized-call'))
+})
+
+test('ignores dynamic keys and unsupported call shapes without failing', () => {
+  const source = [
+    "const a = t(key)",
+    "const b = t(`home.${suffix}`)",
+    "const c = i18n.t('home.skip')",
+    "const d = this.t('home.skip')",
+    "const e = obj.$t('home.skip')",
+    "const kept = '保留文案'",
+    ''
+  ].join('\n')
+  const entries = extract(source)
+  assert.deepStrictEqual(entries.filter(entry => entry.representation === 'localized-call'), [])
+  assert.deepStrictEqual(entries.map(entry => entry.value), ['保留文案'])
+})
+
+function indexAt(source, position) {
+  let line = 1
+  let column = 0
+  for (let index = 0; index <= source.length; index++) {
+    if (line === position.line && column === position.column) return index
+    const char = source[index]
+    if (char === '\n' || char === '\r') {
+      if (char === '\r' && source[index + 1] === '\n') index += 1
+      line += 1
+      column = 0
+    } else {
+      column += 1
+    }
+  }
+  throw new Error(`Missing ${position.line}:${position.column}`)
+}

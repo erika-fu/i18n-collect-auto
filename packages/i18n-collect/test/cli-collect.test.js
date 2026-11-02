@@ -519,6 +519,29 @@ test('collect fails on a localization key conflict and keeps every previous outp
   outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
 })
 
+test('collect fails on an unknown localized-call key and keeps every previous output', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-call-ref-'))
+  writeWebpackProject(root, {
+    source: 'module.exports = "你好"\n'
+  })
+  const first = run(['collect'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const outputs = ['lang/zh_hash.json', 'lang/zh_hash.map.json', 'lang/catalog/zh.json', 'lang/catalog/catalog.meta.json']
+  const before = outputs.map(file => fs.readFileSync(path.join(root, file)))
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), [
+    "function t(key) { return key }",
+    "module.exports = t('missing.runtime')",
+    ''
+  ].join('\n'))
+  const failed = run(['collect', '--json'], root)
+  assert.strictEqual(failed.status, 2, failed.stderr)
+  assert.strictEqual(JSON.parse(failed.stdout).failure, 'collection')
+  assert.match(failed.stderr, /localization key reference/)
+  assert.match(failed.stderr, /"missing\.runtime" is a unknown project key/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+})
+
 test('collect fails on an occurrence identity ambiguity, keeps formal outputs, and accepts a confirmation manifest', { timeout: 30000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-ambiguity-'))
   writeWebpackProject(root, {

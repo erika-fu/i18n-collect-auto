@@ -2,6 +2,11 @@ const parse5 = require('parse5')
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
 const { DEFAULTS } = require('../mycommon/config')
+const {
+  REPRESENTATION_LOCALIZED_CALL,
+  isStaticLocalizationKeyArgument,
+  staticLocalizationCall
+} = require('../mycommon/localized-call')
 const { contextSuppresses } = require('./context-filter')
 const { babelComments, directivesBefore, keyConflict, scanDirectives } = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
@@ -490,7 +495,7 @@ function extractHtml({ source, resource, config }) {
   const entries = []
   const ownerStack = []
 
-  function push(value, kind, start, end, suppress, key) {
+  function push(value, kind, start, end, suppress, key, representation) {
     entries.push({
       value,
       locations: [{
@@ -502,7 +507,8 @@ function extractHtml({ source, resource, config }) {
       owners: ownerStack.slice(),
       start,
       suppress: suppress === true,
-      key: key || null
+      key: key || null,
+      representation: representation || null
     })
   }
 
@@ -531,7 +537,24 @@ function extractHtml({ source, resource, config }) {
     const directives = scanDirectives(babelComments(attachedComments(ast)), fail)
     const excludeStringDelimiters = kind === 'html-attribute'
     traverse(ast, {
+      CallExpression(nodePath) {
+        const call = staticLocalizationCall(nodePath.node)
+        if (!call) return
+        if (contextSuppresses(nodePath, contextFilters)) return
+        const startIndex = excludeStringDelimiters ? call.argument.start + 1 : call.argument.start
+        const endIndex = excludeStringDelimiters ? call.argument.end - 1 : call.argument.end
+        push(
+          '',
+          kind,
+          origin + decoded.starts[startIndex],
+          origin + decoded.starts[endIndex],
+          false,
+          call.key,
+          REPRESENTATION_LOCALIZED_CALL
+        )
+      },
       StringLiteral(nodePath) {
+        if (isStaticLocalizationKeyArgument(nodePath)) return
         const value = nodePath.node.value
         if (!containsHan(value)) return
         if (contextSuppresses(nodePath, contextFilters)) return
@@ -691,9 +714,12 @@ function extractHtml({ source, resource, config }) {
     earliest.key = directive.key
   }
   return {
-    entries: entries.filter(entry => !entry.suppress && !dropped.has(entry)).map(entry => (entry.key
-      ? { value: entry.value, key: entry.key, locations: entry.locations }
-      : { value: entry.value, locations: entry.locations })),
+    entries: entries.filter(entry => !entry.suppress && !dropped.has(entry)).map(entry => {
+      const mapped = { value: entry.value, locations: entry.locations }
+      if (entry.key) mapped.key = entry.key
+      if (entry.representation) mapped.representation = entry.representation
+      return mapped
+    }),
     warnings
   }
 }

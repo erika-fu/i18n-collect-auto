@@ -7,7 +7,8 @@ const {
   conflictMessage,
   readCatalogMetadataFile,
   readIdentityConfirmations,
-  readRetirementConfirmations
+  readRetirementConfirmations,
+  referenceMessage
 } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { canonicalRoot, catalogFiles, identityFiles, loadConfig } = require('../mycommon/config')
@@ -168,11 +169,16 @@ class MyI18nPlugin {
         previousMetadata: readCatalogMetadataFile(path.join(config.root, catalogFiles(config).metadata)),
         confirmations,
         retirements,
-        prune: config.pruneOrphaned
+        prune: config.pruneOrphaned,
+        externalKeys: config.externalKeys
       })
       if (catalog.conflicts.length > 0) {
         session.abandon(compilation)
         throw new Error(conflictMessage(catalog.conflicts))
+      }
+      if (catalog.referenceErrors.length > 0) {
+        session.abandon(compilation)
+        throw new Error(referenceMessage(catalog.referenceErrors))
       }
       if (catalog.ambiguities.length > 0) {
         const reportFile = path.join(config.root, identities.ambiguities)
