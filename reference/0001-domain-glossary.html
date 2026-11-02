@@ -10,12 +10,19 @@
 <main>
   <header class="masthead"><p class="eyebrow">REFERENCE · 01</p><h1>项目术语表</h1><p>以 <a href="../CONTEXT.md">CONTEXT.md</a> 为准。术语稳定，讨论实现时不要随意换同义词。</p></header>
   <section><h2>收集域</h2><dl>
-    <dt>Collected text（已收集文案）</dt><dd>从源码识别出的中文候选用户文案；收集阶段只记录，绝不改写源码。</dd>
+    <dt>Collected text（已收集文案）</dt><dd>从源码识别出的中文候选用户文案；收集阶段只记录，绝不改写源码。被收集不等于运行时可切换语言。</dd>
+    <dt>Complete static copy（完整静态文案）</dt><dd>整句可由一个静态可判定源码片段表示、因而可自动收集的用户文案。插值、拼接、条件构造、格式化周围的片段不是完整静态文案，也不能当作可独立翻译单元。</dd>
+    <dt>Structured message（结构化消息）</dt><dd>含义依赖链接、强调、控件或组件插槽等内联结构的消息；须用一条显式消息控制语序与占位符，不能拆片各自翻译。</dd>
     <dt>Semantic kind（语义种类）</dt><dd>文案在源码中的固定类别：脚本字符串、模板字面量、HTML 文本/属性/表达式、CSS generated content、静态 HTML 文本/属性。</dd>
     <dt>Source range / location（源码范围 / 位置）</dt><dd>原始源码里的半开区间和其文件、种类组合；行从 1 开始、列从 0 开始，列以 UTF-16 code unit 计。</dd>
     <dt>Resource snapshot（资源快照）</dt><dd>一个资源身份完整的收集结果；下一次同身份快照是“替换”，不是增量追加，所以删除的文案会消失。</dd>
     <dt>Resource identity（资源身份）</dt><dd>项目相对路径加语义 block，例如 <code>src/App.vue::template[lang=html]</code>；同一 Vue 文件的不同 block 不互相覆盖。</dd>
     <dt>Collection round（收集轮次）</dt><dd>一次 compilation 的候选收集；只有无错误、无键冲突且文件提交成功时才成为正式结果。</dd>
+  </dl></section>
+  <section><h2>混合本地化策略</h2><dl>
+    <dt>Explicit source message（显式源消息）</dt><dd>在 <code>explicit-messages.json</code> 声明规范中文与占位符契约，再由静态 <code>t()</code>/<code>$t()</code> 引用的 localization key；不是从完整静态文案自动收集而来。</dd>
+    <dt>Complete-static-copy baseline（完整静态文案基线）</dt><dd><code>complete-static-copy-baseline.json</code>：增量迁移时 grandfather 精确匹配的既有违规；不能掩盖收集失败、身份歧义、过期正式产物或运行时多语言边界内的直接源文案。</dd>
+    <dt>Runtime-multilingual boundaries（运行时多语言边界）</dt><dd><code>runtime-multilingual-boundaries.json</code>：须在运行时切语言的功能/路由范围；边界内禁止直接中文源文案，只允许静态本地化调用。仅靠收集不能启用运行时切语言。</dd>
   </dl></section>
   <section><h2>键、目录与翻译域</h2><dl>
     <dt>Hash collection output（哈希收集产物）</dt><dd><code>MD5(text) → text</code> 的运行时字典及其 source map。相同文案按值去重，为旧消费者保持兼容；它不是翻译运行时键，也不能表达 occurrence identity。</dd>

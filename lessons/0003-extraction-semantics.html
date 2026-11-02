@@ -84,7 +84,7 @@ resourceQuery = ?vue&amp;type=template&amp;lang=html</pre>
       <tr><td><code>Hello world</code></td><td>跳过</td><td>没有 Han</td></tr>
       <tr><td><code>class-name</code></td><td>跳过</td><td>通常是技术标识而非中文用户文案</td></tr>
     </table>
-    <p>Han 门槛不是“只截取汉字”，也不是完整的语言识别器。它只是这个中文源文案项目的噪声过滤器：先由 extractor 判断语义位置，再由 <code>containsHan</code> 判断该片段是否有理由进入收集结果。</p>
+    <p>Han 门槛不是“只截取汉字”，也不是完整的语言识别器。它只是这个中文源文案项目的噪声过滤器：先由 extractor 判断语义位置，再由 <code>containsHan</code> 判断该片段是否有理由进入收集结果。进入收集结果也不等于该片段可独立翻译，更不等于运行时可切语言：插值/拼接等动态构造须改显式消息；需要切语言的功能须声明运行时多语言边界并用静态 localized-call。</p>
   </section>
 
   <section>

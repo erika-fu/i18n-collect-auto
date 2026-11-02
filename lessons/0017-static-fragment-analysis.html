@@ -170,6 +170,7 @@ push(value, kind, original source range)</div>
 counter(item)    → 忽略，运行时才知道值
 "项"             → 一个 css-generated-content entry</pre>
   <p>CSS 中的多个字符串是多个静态 fragment，而不是一个可安全拼接的最终文案。这样每个 fragment 都有独立源码 range；<code>counter</code>、<code>attr</code>、<code>var</code> 等动态来源不被执行。</p>
+  <p>混合本地化提醒：识别到多个 fragment 并不等于它们可以各自翻译。围绕动态值拆开的中文不是完整静态文案；作者应改用显式消息，而不是依赖自动收集把片段拼成目标语言句子。被收集进目录也不等于运行时能切语言——那需要显式本地化与（在需要时）运行时多语言边界。</p>
 </section>
 
 <section>
