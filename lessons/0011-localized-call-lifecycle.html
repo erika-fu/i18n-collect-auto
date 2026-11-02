@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 11：本地化调用生命周期</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
+<body><main><header class="masthead"><p class="eyebrow">课程 · 11 / 11 · 迁移深入理解</p><h1>替换后，调用仍是收集证据</h1><p>把源文本替换为运行时调用，不能让 catalog 忘记已翻译的内容。本课介绍静态调用如何参与收集、校验和 key 生命周期。</p></header>
+<section><h2>1. 支持的静态调用形态</h2><p><a href="../packages/i18n-collect/mycommon/localized-call.js">localized-call.js</a> 仅识别以下调用中的静态第一个参数：</p><pre>t('home.title')
+$t('home.title')
+this.$t('home.title')</pre><p>计算成员、可选调用、动态参数和其他形态不会被误分类。script 与 HTML 提取器会产生一个 <code>localized-call</code> occurrence，其 value 为空，因为调用本身提供的是 key，而不是新的中文源文本。</p></section>
+<section><h2>2. 调用不会替代规范源文本</h2><div class="flow">替换前
+  home.title → 源文本“首页” + source-text occurrence
+
+替换后
+  $t('home.title') → localized-call occurrence
+  home.title → 仍保留规范源文本“首页” + 相同 fingerprint</div><p>当 source-text 和 localized-call occurrence 并存时，二者都是同一个活动 key 的位置。若只剩调用，收集会恢复此前 catalog 条目的规范源文本和 fingerprint。这保留了翻译上下文，并让之后的源文本修改正确地将翻译标为 <code>needs-review</code>。</p></section>
+<section><h2>3. 引用校验保护 catalog</h2><table><tr><th>调用目标</th><th>收集结果</th></tr><tr><td>活动项目 key</td><td>保持活动状态并添加调用位置。</td></tr><tr><td>未退役的孤立 key</td><td>恢复为 active。</td></tr><tr><td>未知项目 key</td><td>本轮失败；保留此前正式输出。</td></tr><tr><td>已退役 key</td><td>本轮失败。</td></tr><tr><td>配置的 <code>externalKeys</code> 成员</td><td>允许调用，但不创建项目条目。</td></tr><tr><td>32 位旧 MD5 key</td><td>为兼容性而置于带 key 的项目 catalog 之外。</td></tr></table><p><code>externalKeys</code> 是 Plugin 拥有的配置字段，因为它改变的是 catalog 生命周期策略，不是提取语法。</p></section>
+<section><h2>4. 共置指令不能互相矛盾</h2><p>紧邻调用的指令可以重复其 key，但不能为调用改名：</p><pre>// i18n-key: home.title
+$t('home.title')  // 有效
+
+// i18n-key: other.title
+$t('home.title')  // 收集失败</pre><p>提取器通过共享的指令规则尽早检测此情况。若允许不一致，同一源码位置便会声称拥有两个运行时身份。</p></section>
+<section><h2>5. 孤立与退役是刻意划分的阶段</h2><p>删除当前 occurrence 不会立即删除身份。metadata 条目会变为 <code>orphaned</code>，源语言消息不再包含它，但目标翻译仍保留。之后的调用可以将它恢复。只有通过 <code>retirement-confirmations.json</code> 或 <code>pruneOrphaned: true</code> 才会退役；随后下一次 <code>translate</code> 会移除目标 catalog/状态数据。</p><aside class="warning"><strong>重要：</strong>同一轮中对正在退役的 key 发起调用会被拒绝。收集绝不会将一个 key 同时视为有意退役和正在使用。</aside></section>
+<section><h2>6. Representation 字段说明来源</h2><p>Metadata v3 在条目和 occurrence 记录上都写入 <code>source-text</code> 或 <code>localized-call</code>。这并不替代 <code>script-string</code> 等语义 kind：语义 kind 标识源码位置，representation 则表明此位置是提供规范源文本，还是引用已有 key。</p></section>
+<section><h2>7. 调试顺序</h2><ol><li>确认调用是受支持的静态形态，且参数是非空字符串。</li><li>在 <code>catalog.meta.json</code> 中确认 key 是 active 还是 orphaned。</li><li>对于未知的外部集成，请将 key 加入 <code>externalKeys</code>，不要杜撰 source-text 条目。</li><li>对于已退役 key，请恢复有效的 catalog 身份，或删除/修改调用；不要绕过校验。</li><li>更改输出前先检查失败原因：失败轮次会有意保留最近一次成功输出。</li></ol></section>
+<section class="exercise"><h2>检索练习</h2><p>执行 <code>replace --write</code> 后，<code>banner.title</code> 的最后一个 source-text 位置变为 <code>$t('banner.title')</code>。收集会记录什么，又会从此前 metadata 保留什么？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>它会在调用参数位置记录一个 localized-call occurrence，保持 <code>banner.title</code> 为 active，并保留此前的规范源文本与 fingerprint。调用维持结构/位置证据；保留的源文本则维持翻译单元及审阅基线。</p></div></section>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0010-testing-and-mastery.html">← 上一课：测试与掌握</a><a class="map" href="index.html">课程地图</a><span class="edge next">最后一课 →</span></nav><footer><p>主要来源：<a href="../packages/i18n-collect/mycommon/localized-call.js">localized-call.js</a>、<a href="../packages/i18n-collect/mycommon/catalog.js">catalog.js</a>、<a href="../packages/i18n-collect/myloader/extract-script.js">script 提取器</a>与<a href="../docs/collection.md">故障排除指南</a>。</p></footer>
+</main></body></html>

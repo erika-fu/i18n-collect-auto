@@ -1,157 +1,26 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>课程 6：Occurrence 与本地化键</title>
-  <link rel="stylesheet" href="../assets/course.css">
-  <script defer src="../assets/lesson.js"></script>
-</head>
-<body>
-<main>
-  <header class="masthead">
-    <p class="eyebrow">COURSE · 06 / 10 · KEY MODEL</p>
-    <h1>从“文案值”到稳定的翻译 occurrence</h1>
-    <p>本课重新整理 key 的完整生命周期：旧的 MD5 字典如何兼容，新 catalog 如何为每次 occurrence 分配独立身份，以及源码移动、改文案或发生歧义时，系统如何安全地复用或放弃旧 key。</p>
-  </header>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 6：Catalog 身份与自动 key</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
+<body><main>
+<header class="masthead"><p class="eyebrow">课程 · 06 / 11 · KEY 模型</p><h1>稳定身份应被恢复，而非重新计算</h1><p>catalog key、occurrence 身份、结构锚点与源码位置回答的是四个不同的问题。区分它们，才能让翻译经受住日常编辑，又不会被悄然绑定到错误的 occurrence。</p></header>
+<section><h2>1. 区分四种身份</h2><table><tr><th>概念</th><th>示例</th><th>回答的问题</th></tr><tr><td>本地化 key</td><td><code>auto.01J...</code> 或 <code>order.save</code></td><td>运行时/catalog 中对应哪个翻译单元？</td></tr><tr><td>Occurrence 身份</td><td>稳定 ID + 锚点</td><td>这次出现能否恢复此前的自动 key？</td></tr><tr><td>结构锚点</td><td>宿主 + 角色 + 同级上下文</td><td>跨轮次时它对应哪一处源码结构？</td></tr><tr><td>源码位置</td><td><code>Order.vue:5:4..5:6</code></td><td>现在的人或 replace 命令能在哪里找到它？</td></tr></table><aside class="callout"><strong>记忆句：</strong>key 标识翻译；身份用于恢复 key；锚点匹配结构；位置定位当前文本。</aside></section>
+<section><h2>2. 新的自动 key 是不透明的</h2><p>对于没有相邻 <code>i18n-key</code> 的 occurrence，<a href="../packages/i18n-collect/mycommon/catalog.js">catalog.js</a> 现在会分配 <code>auto.&lt;ULID&gt;</code>。第一个 key 故意不包含路径、源码文本、行号或列号；它不是可以根据源码复现的摘要。</p><pre>首次收集
+  src/Order.vue，“保存” → auto.01JQ...7K
 
-  <section>
-    <h2>1. 先分清四种身份</h2>
-    <table>
-      <tr><th>身份</th><th>示例</th><th>它回答的问题</th></tr>
-      <tr><td>Resource identity</td><td><code>src/App.vue::template[lang=html]</code></td><td>这次提交替换的是哪一个资源快照？</td></tr>
-      <tr><td>文案值的 MD5</td><td><code>md5("保存")</code></td><td>旧的 hash dictionary 中有哪些文本值？</td></tr>
-      <tr><td>Occurrence</td><td><code>Order.vue</code> 中某个具体的“保存”</td><td>源码中是哪一次出现，可以精确定位和替换？</td></tr>
-      <tr><td>Localization key</td><td><code>src.pages.Order.8f31a2c4</code> 或 <code>order.save</code></td><td>运行时和翻译 catalog 使用哪个稳定翻译单元？</td></tr>
-    </table>
-    <aside class="callout"><strong>记忆句：</strong>Resource identity 认资源，MD5 认文案值，Occurrence 认一次出现，localization key 认翻译身份。相同文本不等于相同翻译单元。</aside>
-  </section>
-
-  <section>
-    <h2>2. 现在仍然有两条输出轨道</h2>
-    <p><a href="../packages/i18n-collect/mycommon/store.js">CollectionStore</a> 继续按文案值生成 hash collection output；<a href="../packages/i18n-collect/mycommon/catalog.js">buildCatalog</a> 则为 catalog 中的每个 occurrence 生成或复用 localization key。</p>
-    <pre>源码 occurrence A：“保存"
-源码 occurrence B：“保存"
-
-zh_hash.json                 // 兼容旧运行时：按值去重
-  md5("保存") → "保存"
-
-catalog/zh.json              // 新运行时：按翻译身份区分
-  order.save → "保存"
-  toolbar.save → "保存"
-</pre>
-    <p>因此 MD5 dictionary 可以只有一个“保存”，而 catalog 可以有两个 key。源替换也优先使用 key；尚未迁移的旧调用仍可通过 MD5 compatibility fallback 工作。</p>
-    <p>这也是为什么不能把 MD5 当作业务 key：它没有表达来源位置、语义意图或“这两次出现是否应该独立翻译”。</p>
-  </section>
-
-  <section>
-    <h2>3. Automatic key：新 occurrence 先获得独立身份</h2>
-    <p>没有相邻 <code>i18n-key</code> directive 时，代码会调用 <code>automaticKey({ path, kind, value, location })</code>。首次 collection 的 key 形如：</p>
-    <pre>pathSlug + "." + sha256(path, kind, value, start, end).slice(0, 8)
-
-src/pages/Order.vue 中的“保存”  → src.pages.Order.8f31a2c4
-同文件中的第二个“保存”      → src.pages.Order.39b7e110
-另一个文件中的“保存”        → 另一个独立 key
-</pre>
-    <ul class="compact">
-      <li>key 的可读前缀只是诊断提示；hash 中包含首次位置，所以同一文件的重复 occurrence 不会在首次 collection 时自动合并。</li>
-      <li>位置变化后，不能单靠重新计算当前坐标得到稳定身份；稳定性来自上一轮的 catalog metadata。</li>
-      <li>代码仍导出 <code>deriveKey</code> 作为兼容名称，但它指向当前的 automatic-key 实现；“按 path + kind + value 去重”的旧算法已经不是当前模型。</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2>4. 下一轮 collection 如何复用旧 key</h2>
-    <p>每个 occurrence 的 metadata 记录 <code>semanticHost</code>、<code>childRole</code>、<code>localContext</code>、source location 和稳定 occurrence id。重新 collection 时，<code>matchAutomaticKeys</code> 按以下顺序寻找历史身份：</p>
-    <ol>
-      <li><strong>先对应 semantic host。</strong> 未改变的 host 直接对应；源码文件或语义块安全地一对一移动时，也可以建立 host correspondence。</li>
-      <li><strong>再比对 sibling context。</strong> 在历史和当前 occurrence 数量相同的组中，唯一的 <code>sibling:0</code>、<code>sibling:1</code> 等 context 可以复用对应 key。</li>
-      <li><strong>最后使用 source text。</strong> 未匹配的候选只有在历史 occurrence 和当前 occurrence 的文本都唯一时才复用；文本是辅助证据，不是唯一身份。</li>
-      <li><strong>无法唯一判断就不猜。</strong> 当前 occurrence 获得一个避开所有历史 key 的新 proposed key，并产生 ambiguity report。</li>
-    </ol>
-    <pre>上一轮：A“你好”  B“欢迎”
-本轮：  X“新增”  A“你好”  B“欢迎”
-
-X → 新 key
-A → 复用旧 key
-B → 复用旧 key
-</pre>
-    <p>插入源码行本身不会破坏 A、B 的身份，因为匹配依赖 structural anchor 和历史 metadata，而不是把当前 line/column 当成永久身份。</p>
-  </section>
-
-  <section>
-    <h2>5. Ambiguity：宁可暂停，也不把译文贴错位置</h2>
-    <p>例如上一轮同一 semantic host 有两个相同的“保存”，本轮变成三个相同 occurrence。任何一个当前片段都可能对应两个历史 key；系统没有足够证据知道哪份译文属于哪一次出现。</p>
-    <pre>当前 occurrence：“保存” at sibling:0
-  candidate: old-key-1
-  candidate: old-key-2
-
-结果：分配新的 proposed key + 写 ambiguity report + collection round 失败
-</pre>
-    <p>失败轮次不会发布半成品：上一轮 dictionary、source map 和 catalog 保持不变。开发者可以：</p>
-    <ul class="compact">
-      <li>在源码中添加明确的 <code>i18n-key</code>；或</li>
-      <li>在 catalog metadata 旁的 <code>identity-confirmations.json</code> 中持久化选择的历史 key 或 proposed key。</li>
-    </ul>
-    <p>这不是多余的流程，而是在保护已有译文：错误复用一个 key，通常比生成一个需要重新翻译的新 key 更危险。</p>
-  </section>
-
-  <section>
-    <h2>6. Explicit key：覆盖自动身份，也可以有意共享</h2>
-    <pre>// i18n-key: order.save
-buttonText = '保存'
-</pre>
-    <p>directive 表达的是稳定的业务意图，而不是给当前字符串起一个漂亮别名。多个 occurrence 可以显式共享 <code>order.save</code>，但必须满足相同的 <strong>message contract</strong>：</p>
-    <pre>同一个 key： “你好，{name}”   ✓
-同一个 key： “你好，{user}”   ✗ placeholder contract 不同
-同一个 key： “保存”           ✗
-             “保存 {count} 个”  message pattern 不同
-</pre>
-    <p><a href="../packages/i18n-collect/mycommon/catalog.js">buildCatalog</a> 会按 key 分组，再按 message contract 分 variants。一个 key 出现不兼容 variants 就是 key conflict；冲突会列出所有相关位置，并在正式输出前失败，不能静默选择第一条文案。</p>
-  </section>
-
-  <section>
-    <h2>7. Fingerprint 与 occurrence 生命周期</h2>
-    <p><code>fingerprintOf(source)</code> 是源文案的 SHA-256 前 16 位。它回答“这个 key 的 source text 是否改变”，不回答“这是不是同一个 occurrence”。</p>
-    <table>
-      <tr><th>事件</th><th>key / metadata</th><th>目标译文状态</th></tr>
-      <tr><td>只移动源码，文本不变</td><td>通过 history 复用 key；location 更新</td><td>保持 current</td></tr>
-      <tr><td>同 occurrence 改成“提交”</td><td>key 保持；fingerprint changed</td><td>保留译文，但标记 needs-review</td></tr>
-      <tr><td>一处 occurrence 消失</td><td>key 进入 orphaned；metadata 暂留</td><td>译文暂留，等待退休策略</td></tr>
-      <tr><td>确认退休或启用 prune</td><td>key 从 active metadata 移除，并出现在 removed report</td><td>下一次 translate 移除目标译文和 review state</td></tr>
-      <tr><td>相同文本新增到另一处</td><td>MD5 值不增加；新增 occurrence key</td><td>可与原位置独立翻译</td></tr>
-    </table>
-    <p>所以 catalog metadata 不只是 <code>key → source + locations[]</code>，还保存 occurrence identity、来源 origin、状态和审阅所需的 fingerprint。</p>
-  </section>
-
-  <section>
-    <h2>8. 替换时，key 必须跟着 occurrence 走</h2>
-    <p>替换器不能再“找到文本就全部替换”。它必须读取当前 occurrence 的 location 和 localization key，并检查位置是否 stale、ambiguous 或 unsupported：</p>
-    <pre>Order.vue:   $t('order.save')
-Toolbar.vue: $t('toolbar.save')
-
-未迁移的旧调用：仍可走 MD5 compatibility fallback
-</pre>
-    <p>默认 replace 是 preview；只有显式 <code>--write</code> 才写源码。写入时，源码、keyed catalogs 和 replacement metadata 作为一个事务提交，避免只替换部分文件。</p>
-  </section>
-
-  <section class="exercise">
-    <h2>检索练习</h2>
-    <p>假设同一个 Vue template 中有两个没有 directive 的“保存”。第一轮 collection 后又插入一段源码，第二轮变成三个“保存”。请回答：<strong>为什么 MD5、当前坐标和 source text 都不足以安全决定旧 key？系统何时可以复用，何时必须暂停？</strong></p>
-    <button data-answer="answer">显示答案</button>
-    <div id="answer" class="answer">
-      <p>MD5 只认文案值；当前坐标会随插入而改变；source text 相同也无法区分三个 occurrence。系统应先用 semantic host、child role 和 local context 对照 collection history；只有候选唯一时才复用旧 key。若两个或更多历史 occurrence 都可能匹配当前片段，就为当前 occurrence 生成避开历史 key 的 proposed key，写 ambiguity report，并等待 i18n-key 或 identity-confirmations.json 的明确确认。这样不会把已有译文静默贴到错误位置。</p>
-    </div>
-  </section>
-
-  <nav class="lesson-nav" aria-label="课程导航">
-    <a class="previous" href="0005-session-plugin-output.html">← 上一课：Session 与输出事务</a>
-    <a class="map" href="index.html">课程地图</a>
-    <a class="next" href="0007-cli-and-collect.html">下一课：CLI 与 collect →</a>
-  </nav>
-  <footer>
-    <p>推荐主来源：<a href="../CONTEXT.md">CONTEXT.md</a> 中的 Localization key、Automatic key、Structural anchor、Key conflict 与 occurrence lifecycle 定义；实现可对照 <a href="../packages/i18n-collect/mycommon/catalog.js">catalog.js</a>、<a href="../packages/i18n-collect/mycommon/store.js">store.js</a> 和 <a href="../packages/i18n-collect/test/catalog.test.js">catalog.test.js</a>。如果有不清楚的地方，请继续拿一个具体的源码移动、重复 occurrence 或 key conflict 案例来提问。</p>
-  </footer>
-</main>
-</body>
-</html>
+在其上方插入内容后的后续收集
+  相同的结构 occurrence → 复用 auto.01JQ...7K</pre><p>旧的路径派生自动 key 在迁移旧 metadata 时仍然有效。迁移保留 key；变化的是 metadata 表示，而非运行时身份。</p></section>
+<section><h2>3. Metadata v3 是恢复权威</h2><p>成功收集会将 metadata v1/v2 升级为 v3。每个 catalog 条目和 occurrence 都记录 <code>representation</code>；版本 2 数据默认获得 <code>source-text</code>。普通自动 key 的恢复权威是 catalog metadata，而非 <code>replacements.json</code>。</p><pre>catalog.meta.json（v3）
+key → source、fingerprint、origin、representation、status
+     occurrences[] → id、semanticHost、childRole、
+                     localContext、representation、location</pre><p>旧的 MD5 字典仍会为兼容性按文本值去重；它既不是本地化 key，也不是 occurrence 身份。</p></section>
+<section><h2>4. 仅在历史唯一时复用</h2><ol><li>匹配语义宿主，包括安全的一对一宿主移动。</li><li>同级数量一致时，匹配唯一的 <code>sibling:n</code> 上下文。</li><li>对于剩余项目，仅当恰有一个历史 occurrence 和一个当前 occurrence 匹配时，才把源码文本作为辅助证据。</li><li>若仍有多个历史候选可行，不得猜测。</li></ol><p>最后一种情况下，收集会分配一个建议的自动 key，写入 <code>identity-ambiguities.json</code>，使本轮失败，并保留所有正式输出。若结构锚点仍匹配，重试会复用该建议，因此确认目标是稳定的。</p></section>
+<section><h2>5. 持久化解决歧义</h2><p>可通过在源码中添加显式 <code>i18n-key</code>，或在 metadata 旁提交 <code>identity-confirmations.json</code> 来确认歧义 occurrence。确认项会指定 <code>semanticHost</code>、<code>childRole</code>、<code>localContext</code>，以及一个候选 key 或建议 key。所有歧义都确认后，收集才会发布并移除报告。</p><p>这种暂停是有意的：产生一条新翻译，也比将已有翻译悄然应用到错误的 UI 文案更安全。</p></section>
+<section><h2>6. 显式共享有契约</h2><p>显式 key 可以有意聚合多个位置，但每个位置必须拥有相同的消息契约：归一化消息模式<strong>以及</strong>有序的占位符名称。</p><pre>i18n-key: greeting
+“Hello, {name}”  ✓
+“Hello, {user}”  ✗ 占位符契约不同
+“Welcome”        ✗ 消息模式不同</pre><p>key 冲突会在发布前失败并报告所有位置。若显式 key 与自动 key 对应不兼容消息发生碰撞，同样是冲突。</p></section>
+<section><h2>7. 生命周期不是删除</h2><table><tr><th>事件</th><th>Catalog 效果</th></tr><tr><td>Occurrence 消失</td><td>key 变为 <code>orphaned</code>；目标语言翻译保留。</td></tr><tr><td>调用引用孤立 key</td><td>key 回到 <code>active</code>。</td></tr><tr><td>确认退役或 <code>pruneOrphaned</code></td><td>key 离开 metadata；下一次 translate 会清理目标文案/状态。</td></tr><tr><td>同一 occurrence 修改源文本</td><td>key 保留；fingerprint 改变；已有翻译需要审阅。</td></tr></table></section>
+<section class="exercise"><h2>检索练习</h2><p>开发者移动一个 occurrence，随后修改其文本。新的自动 key 是否必须包含新路径或新文本？由哪些数据决定是否复用原 key？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>不必。新的自动 key 是不透明的；只有 catalog metadata 能通过结构锚点唯一匹配 occurrence 身份时，才会复用既有 key，源码文本仅作辅助证据。文本变化影响 fingerprint 和翻译审阅状态，本身并不定义本地化 key。</p></div></section>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0005-session-plugin-output.html">← 上一课：Session 与输出事务</a><a class="map" href="index.html">课程地图</a><a class="next" href="0007-cli-and-collect.html">下一课：CLI 与 collect →</a></nav>
+<footer><p>主要来源：<a href="../CONTEXT.md">领域术语表</a>、<a href="../packages/i18n-collect/mycommon/catalog.js">catalog.js</a> 与 <a href="../docs/collection.md">收集故障排除</a>。若某个决策点仍不清楚，请以具体的移动、重复或确认场景继续提问。</p></footer>
+</main></body></html>

@@ -1,31 +1,20 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 10：测试与掌握路径</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
-<body><main><header class="masthead"><p class="eyebrow">COURSE · 10 / 10 · DEEP DIVE</p><h1>用测试证明边界，而不是只凭“看懂了”</h1><p>最后一课把测试文件映射回系统边界，并给出一条可以安全修改项目的实践路径。</p></header>
-<section><h2>1. 测试按“契约边界”分层</h2><table><tr><th>层级</th><th>代表测试</th><th>它证明什么</th></tr><tr><td>资源分类与纯 extractor</td><td><code>resource.test.js</code>、<code>*-extractor.test.js</code></td><td>给定源码和 query，block、entry、kind、坐标、Han 门槛、指令是否正确</td></tr><tr><td>状态与目录</td><td><code>session.test.js</code>、<code>catalog.test.js</code>、<code>occurrence-lifecycle.test.js</code>、<code>collection.test.js</code></td><td>快照替换、独立 automatic key、history reuse、ambiguity confirmation、message contract、orphaned/retired 生命周期、key conflict、diff 和失败保留旧结果</td></tr><tr><td>Loader 契约</td><td><code>loader.test.js</code>、<code>loader-order.test.js</code></td><td><code>this</code>、pitch/normal 透明传递、最终 rule 顺序和主进程限制</td></tr><tr><td>真实 Webpack</td><td><code>webpack-integration.test.js</code>、<code>watch-loop.test.js</code></td><td>Vue/HWP query、cache、module graph 淘汰和 watch 收敛确实发生</td></tr><tr><td>CLI / 迁移</td><td><code>cli-*.test.js</code>、<code>migration-workflow.test.js</code></td><td>参数、退出码、网络授权、partial/strict、preview/write 和回滚</td></tr></table><p>单元测试回答“纯函数给定输入如何输出”；集成测试回答“Webpack 是否真的按我们假设的链路调用它”。两者不能互相替代。</p></section>
-<section><h2>2. 先从一条真实文案画调用链</h2><div class="flow">src/App.vue 的 template：“首页”
-  ↓ Webpack 请求 ?vue&amp;type=template
-myloader.pitch：读取原始 SFC
-  ↓ describeResource
-resource.identity = src/App.vue::template[lang=html]
-  ↓ extractHtml
-entry.value + html-text + 原始 start/end
-  ↓ record
-module.buildInfo.i18nCollect + session.submit
-  ↓ Plugin afterSeal
-从当前 module graph 恢复合法 live snapshots
-  ↓ buildCatalog
-显式 i18n-key 或 automatic key + occurrence history + fingerprint
-  ↓ release / writeOutputs
-zh_hash.json + zh_hash.map.json + catalog/zh.json + catalog.meta.json
-  ↓ translate
-缺失 target pair → provider draft → en.json + translation-state.json
-  ↓ replace
-重新验证 range / source text / adapter → preview 或 --write</div><p>每一条箭头都对应一个可以定位的测试边界。出现错误时，先问“错误发生在哪条箭头”，不要从 CLI 末端盲猜。</p></section>
-<section><h2>3. 先写失败测试，再做最小改动</h2><ol><li>明确新行为属于资源分类、extractor、配置、session、catalog、adapter 还是 CLI。</li><li>在最小 fixture 中写一个会失败的测试，固定输入、期望 entry 和 location。</li><li>只修改该边界的实现；不要用 Plugin 扫描或全局 special case 补洞。</li><li>先跑对应单元测试，再跑 Loader/真实 Webpack 集成测试。</li><li>最后跑完整 <code>npm test</code>，确认兼容产物、watch 和失败回滚没有回归。</li></ol><p>例如要新增一种 HTML 属性收集：第一站是 <code>extract-html</code> 和 attribute allowlist；然后补坐标、指令、Han 门槛、loader integration；不能只修改 catalog 让它“看起来出现”。</p></section>
-<section><h2>4. 用测试读懂缓存和事务</h2><p>测试一个缓存命中场景时，必须验证三件事：</p><ul><li>Loader 没有重新执行，但 module metadata 仍能恢复 snapshot；</li><li>metadata 的 root/config hash 不匹配时不会使用外来 snapshot；</li><li>当前 module graph 移除资源后，旧 snapshot 不再进入 live set。</li></ul><p>测试一个输出失败场景时，必须检查四类文件都保持上一成功字节，而不只是检查函数抛错。测试 watch 时还要检查“真实变更最多产生一次 follow-up compilation；相同字节不再写入”。</p></section>
-<section><h2>5. 用测试读懂替换的保守边界</h2><p>替换测试不应只断言生成了 <code>t('key')</code>，还要覆盖：</p><table><tr><th>场景</th><th>期望</th></tr><tr><td>range 文本已变化</td><td>skip mismatch，绝不写</td></tr><tr><td>已有 <code>$t()</code></td><td>already localized，不嵌套</td></tr><tr><td>不支持的 AST 位置</td><td>带理由 skip</td></tr><tr><td>多个 edit 重叠</td><td>拒绝规划</td></tr><tr><td>strict 有一个 skip</td><td>整个 write 零变化</td></tr><tr><td>write 中途失败</td><td>source/catalog/metadata 一起恢复</td></tr></table></section>
-<section><h2>6. 掌握验收：从回忆到修改</h2><p>不要把“读过十课”当作掌握。请在不看讲义时完成：</p><ol><li>解释 <code>src/App.vue::template[lang=html]</code> 为什么是内部 resource identity，而 map 使用 <code>locations</code>。</li><li>说出 Loader Context 中 <code>resourceQuery</code>、<code>this.data</code>、<code>_module</code> 各自解决什么问题。</li><li>给一个 Vue template、script string 和 CSS content，预测它们分别进入哪个 extractor。</li><li>解释 candidate、live snapshot、committed output 的区别，并说明失败时谁保留。</li><li>给一个显式 key 冲突、一个 occurrence identity ambiguity 和一个源 fingerprint 变化，分别预测 collection 与 translate 的行为。</li><li>对一个 stale source range 做 replace preview，解释为什么 strict/write 都不能绕过 mismatch。</li><li>针对一个小改动先写失败测试，再实现，再运行完整测试。</li></ol></section>
-<section class="exercise"><h2>终检索题</h2><p>请分别用一句话回答：为什么 collection 必须由 Loader 拥有？为什么 catalog metadata 必须保存 fingerprint/location？为什么 translation 要有 review state？为什么 replacement 默认 preview？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>Loader-owned collection 保留真实 module/语义边界并避免项目扫描；metadata 用 fingerprint 识别源文案演化、用 location 验证和追溯；review state 防止源文案变化时静默覆盖既有译文；preview-first 让潜在破坏性的源码编辑先可见、可审阅、可拒绝。</p></div></section>
-<aside class="callout"><strong>下一步：</strong>任选一个真实任务（接入、排错、增加语义或修改 adapter），先写出你的预测调用链和要验证的测试；我会按源码逐步检查，而不是直接替你跳到实现。</aside>
-<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0009-replacement.html">← 上一课：替换预览与写入</a><a class="map" href="index.html">课程地图</a><span class="edge next">最后一课 →</span></nav><footer><p>主来源：<a href="../packages/i18n-collect/test/">测试目录</a>、<a href="../docs/collection-architecture.md">架构文档</a>、<a href="../README.zh-CN.md">项目 README</a>。任何一条链路还不能从代码讲清楚，直接继续提问。</p></footer>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程 10：测试与掌握</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
+<body><main><header class="masthead"><p class="eyebrow">课程 · 10 / 11 · 深入理解</p><h1>用测试证明边界，而非凭眼熟判断</h1><p>先将故障映射到其契约边界，再运行最小的相关测试，最后才依赖完整迁移工作流。</p></header>
+<section><h2>1. 测试按契约边界组织</h2><table><tr><th>层次</th><th>代表性测试</th><th>证明的内容</th></tr><tr><td>分类与提取器</td><td><code>resource.test.js</code>、<code>*-extractor.test.js</code></td><td>资源身份、条目、指令、本地化调用识别、kind、范围与过滤。</td></tr><tr><td>Catalog 状态</td><td><code>catalog.test.js</code>、<code>catalog-lifecycle-source-localized.test.js</code></td><td>ULID key、v1/v2→v3 迁移、身份恢复、歧义、契约、调用、孤立、退役与冲突。</td></tr><tr><td>Loader/Plugin</td><td><code>loader.test.js</code>、<code>webpack-integration.test.js</code>、<code>watch-loop.test.js</code></td><td>透明 loader 行为、基于图的快照恢复、缓存、事务与 watch 收敛。</td></tr><tr><td>CLI 集成</td><td><code>collection-catalog-integration.test.js</code>、<code>end-to-end-migration-workflow.test.js</code></td><td>collect 到 catalog 的身份连续性、失败轮次保留、翻译、替换与运行时迁移。</td></tr></table><p>单元测试说明边界对固定输入做什么；真实 Webpack 与端到端测试证明系统能通过公共工作流实际抵达该边界。</p></section>
+<section><h2>2. 追踪一条当前生命周期</h2><div class="flow">源文本“请稍候”
+  ↓ loader/extractor 提交 source-text occurrence
+  ↓ catalog 构建 metadata v3
+  ↓ 分配或唯一恢复 auto.&lt;ULID&gt;
+  ↓ translate 根据 fingerprint 接受目标文本
+  ↓ replace --write 将源码改为 t('auto.…')
+  ↓ 后续收集识别 localized-call
+  ↓ 同一 key 保持 active；规范源文本/fingerprint 保留
+  ↓ 后续源文本变化 → 目标翻译 needs-review</div><p>核心设计断言是：替换不应抹除翻译上下文。本地化调用提供位置和结构锚点，而 metadata 保留规范源文本。</p></section>
+<section><h2>3. 安全地新增行为</h2><ol><li>命名边界：提取器、指令、catalog 生命周期、plugin/session、适配器或 CLI。</li><li>编写聚焦的失败 fixture，固定源码、预期 metadata 与预期失败/保留行为。</li><li>只修改拥有该职责的模块；不要添加 Plugin 扫描或全局特例。</li><li>运行聚焦测试，再运行受此次改动影响的集成层测试。</li><li>在宣称迁移安全前运行完整测试套件。</li></ol><p>若新增一种 localized-call 形态，应从 <code>localized-call.test.js</code> 和提取器测试开始，再到 catalog 生命周期测试——而不是替换测试——因为收集拥有识别和生命周期校验的职责。</p></section>
+<section><h2>4. 防止身份被静默损坏的断言</h2><table><tr><th>场景</th><th>必要断言</th></tr><tr><td>Metadata 升级</td><td>v1/v2 到达 v3 时不重写既有本地化 key。</td></tr><tr><td>历史歧义</td><td>正式输出与最近一次成功结果逐字节一致；报告稳定的建议 key。</td></tr><tr><td>未知调用</td><td>除非 key 是 external 或旧 MD5 字典 key，否则本轮失败。</td></tr><tr><td>源文本 + localized-call</td><td>一个 key 保持 active；规范源文本不能被空调用值替换。</td></tr><tr><td>孤立项 + 调用</td><td>调用将未退役的孤立项恢复为 active。</td></tr><tr><td>退役</td><td>只有确认/策略才能移除 metadata；稍后由 translate 清理目标项。</td></tr></table></section>
+<section><h2>5. 掌握检查：先预测再阅读</h2><ol><li>解释为何自动 key 不透明却仍稳定。</li><li>区分 <code>catalog.meta.json</code> 与 <code>replacements.json</code>。</li><li>预测 <code>t('unknown.key')</code>、外部 key 与 MD5 调用的收集行为。</li><li>解释为何所有活动 occurrence 都是本地化调用时仍必须保留源文本。</li><li>说明两种持久化确认歧义的路径。</li><li>指出 key 冲突、歧义或未知调用后哪个输出保持不变。</li></ol></section>
+<section class="exercise"><h2>最终检索问题</h2><p>带有 key <code>auto.X</code> 的 source-text occurrence 被替换成 <code>t('auto.X')</code>。下一次收集时，metadata 必须保留什么？为何将调用视为一个空的源文本值是错误的？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>Metadata 必须保持 <code>auto.X</code> 为 active，更新调用 occurrence 的位置/锚点和 representation，并保留规范源文本与 fingerprint。空调用值不是源消息；用它覆写规范源文本会破坏翻译审阅信息，使 catalog 丢失有意义的源文本。</p></div></section>
+<aside class="callout"><strong>下一步：</strong>选择一项真实改动，先写出其预期生命周期与测试边界。若任何测试名或状态转换不清楚，随时继续提问。</aside>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0009-replacement.html">← 上一课：替换预览与写入</a><a class="map" href="index.html">课程地图</a><a class="next" href="0011-localized-call-lifecycle.html">下一课：本地化调用生命周期 →</a></nav><footer><p>主要来源：<a href="../packages/i18n-collect/test/">测试目录</a>、<a href="../docs/collection-architecture.md">架构记录</a> 与 <a href="../docs/collection.md">收集故障排除</a>。</p></footer>
 </main></body></html>
