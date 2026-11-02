@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>新课 3：三个 extractor 如何识别中文</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
+<body><main>
+<header class="masthead"><p class="eyebrow">NEW SERIES · 03 / 05 · EXTRACTION SEMANTICS</p><h1>不是“找到中文就收集”：三个 extractor 的实现方法</h1><p>本课通过最小例子说明 AST、HTML 节点和 CSS declaration 各自怎样产出 entry，并解释为什么动态表达式不执行、为什么一个模板字面量可能产生多个 entry。</p></header>
+<section><h2>1. Script：Babel AST 上的静态候选</h2>
+<pre>const a = "欢迎"
+const b = `你好，${name}！`
+const c = "English"
+import x from "中文模块路径"
+console.log("日志中文")</pre>
+<p><a href="../packages/i18n-collect/myloader/extract-script.js">extract-script.js</a> 首先调用 Babel：</p>
+<pre>const ast = parser.parse(source, {
+  sourceType: 'unambiguous',
+  plugins: ['jsx', 'typescript']
+})
+traverse(ast, { StringLiteral() {}, TemplateLiteral() {} })</pre>
+<p>这里的 AST 是“源码的结构化语法树”，不是把源码按正则切成字符串。Babel 会把上面的不同构造区分成不同节点。提取器只读取节点的静态字段和值，不执行程序。</p>
+<table><tr><th>源码构造</th><th>AST / 字段</th><th>提取结果</th></tr>
+<tr><td><code>"欢迎"</code></td><td><code>StringLiteral.node.value === '欢迎'</code>，有 <code>start/end</code></td><td><code>script-string</code>，一个 entry</td></tr>
+<tr><td><code>`你好，${name}！`</code></td><td><code>TemplateLiteral.node.quasis</code> 有两个静态 quasi；<code>expressions</code> 有一个 <code>name</code></td><td>“你好，”和“！”分别是两个 <code>template-literal</code> entry</td></tr>
+<tr><td><code>"English"</code></td><td>仍是 <code>StringLiteral</code></td><td>没有 Han 字符，不收集</td></tr>
+<tr><td><code>import x from "中文模块路径"</code></td><td>StringLiteral 的父节点是 module specifier</td><td>按父节点排除，不当用户文案</td></tr>
+</table>
+<h3>1.1 中文识别不是“只保留中文字符”</h3>
+<p><code>containsHan(value)</code> 实际使用 <code>/\p{Script=Han}/u</code> 判断片段中是否至少有一个 Han 字符。只要命中，整个静态片段都保留：</p>
+<pre>"你好，123 ABC"  → 收集完整片段
+"，。！"          → 不收集
+"hello"           → 不收集
+"𠀀"              → 收集（扩展 Han）</pre>
+<p>因此它不会把“你好，123 ABC”再拆成“你好”和“123 ABC”；entry 的 value 是 AST 解码后的完整静态值，location 则来自 AST 的原始范围。</p>
+<h3>1.2 最重要的策略：不执行、不求值、不自动拼接</h3>
+<pre>const a = "你好"
+const b = `前缀${name}后缀`
+const c = "你" + missing + "好"
+const d = "你" + "好"
+const e = `前${"内嵌"}后`</pre>
+<p>当前实现的结果可以写成：</p>
+<table><tr><th>源码</th><th>结果</th><th>原因</th></tr>
+<tr><td><code>"你好"</code></td><td>一个 <code>你好</code></td><td>一个 StringLiteral 节点</td></tr>
+<tr><td><code>`前缀${name}后缀`</code></td><td><code>前缀</code>、<code>后缀</code></td><td>只取两个 quasi；不读取 <code>name</code></td></tr>
+<tr><td><code>"你" + missing + "好"</code></td><td><code>你</code>、<code>好</code></td><td>只访问两个 StringLiteral；不执行 missing</td></tr>
+<tr><td><code>"你" + "好"</code></td><td><code>你</code>、<code>好</code></td><td>即使两边都静态，也不做常量折叠</td></tr>
+<tr><td><code>`前${"内嵌"}后`</code></td><td><code>前</code>、<code>内嵌</code>、<code>后</code></td><td>外层 quasi 是 template-literal，内层 StringLiteral 是 script-string</td></tr>
+</table>
+<p><strong>所以项目没有“拼接策略”来生成最终运行时字符串。</strong>这是有意的边界：自动拼接需要执行表达式、求变量值或猜测控制流，既可能不安全，也无法可靠地给每一段建立原始 location。项目选择“可静态证明的片段独立收集”，后续翻译和运行时格式化再处理动态参数。</p>
+<h3>1.3 semantic kind 从哪里来</h3>
+<p>kind 不是根据 value 猜的，而是由“节点所在的语义位置”决定：</p>
+<ul><li>JS/TS 文件中的 <code>StringLiteral</code>：<code>script-string</code>。</li><li>JS/TS 文件中的模板 quasi：<code>template-literal</code>。</li><li>Vue template 的 <code>{{ '中文' }}</code>：HTML extractor 解析表达式时显式传入 <code>template-expression</code>。</li><li>动态 HTML attribute 的 <code>:title="'查看' + name"</code>：静态字符串仍属于 <code>html-attribute</code>，不是 script-string。</li></ul>
+<p>也就是说，同样是 Babel 的 <code>StringLiteral</code>，它在普通 JS 文件和 Vue attribute 表达式中可能得到不同 kind；kind 描述的是<strong>来源语义</strong>，不只是 AST 节点名称。</p>
+<p>静态 <code>t('key')</code>、<code>$t('key')</code>、<code>this.$t('key')</code> 会先被识别为 <code>localized-call</code>，其 key 是已有的运行时引用，不会再被当成待收集的源文本。</p></section>
+<section><h2>2. HTML：先保留节点边界，再解析表达式</h2><pre>&lt;button title="保存后关闭"&gt;保存&lt;/button&gt;
+&lt;p&gt;欢迎，{{ name }}！&lt;/p&gt;
+&lt;input :placeholder="'请输入' + fieldName"&gt;</pre><p><a href="../packages/i18n-collect/myloader/extract-html.js">extract-html.js</a> 用 parse5 得到带 source location 的节点：</p><ul><li>文本节点独立收集，不跨越标签合并；“保存”是 <code>html-text</code>。</li><li>白名单属性（如 <code>title</code>、<code>placeholder</code>）收集完整静态值；“保存后关闭”是 <code>html-attribute</code>。</li><li>Vue 插值中的表达式交给 Babel；动态值不执行，只收集其中静态 string/template fragment。“请输入”是 <code>html-attribute</code>，而普通文本和表达式的 semantic kind 不同。</li><li><code>{{ name }}</code> 本身不是中文候选，不会产生 entry。</li></ul><p>HTML entity 使用解码后的值判断和计算 MD5，但 location 仍指向原始拼写，例如 <code>&amp;#x540E;</code>。</p></section>
+<section><h2>3. CSS：只看 <code>content</code> declaration</h2><pre>.badge::before { content: "必填"; }
+.count::after { content: "第" counter(item) "项"; }
+.card { color: "中文"; }
+.note { --label: "内部文案"; }</pre><p><a href="../packages/i18n-collect/myloader/extract-css.js">extract-css.js</a> 使用 PostCSS 遍历 declaration，只处理属性名为 <code>content</code> 的声明：</p><ul><li>“必填”生成一个 <code>css-generated-content</code> entry。</li><li>“第”和“项”是两个独立静态字符串，各生成一个 entry。</li><li><code>counter(item)</code>、<code>var(...)</code>、选择器、普通 declaration 和 custom property 不收集。</li><li>空字符串、空白、<code>none</code>、<code>normal</code> 忽略；SCSS/Less 等当前只 warning。</li></ul><p>CSS escape 先解码得到最终值，但 source range 仍覆盖原始 string 内容，不包括引号。</p></section>
+<section><h2>4. 指令如何改变“下一个候选”</h2><pre>// no-i18n-auto
+const title = "首页"
+
+/* i18n-key: home.title */
+const welcome = "欢迎"</pre><p><a href="../packages/i18n-collect/myloader/directives.js">directives.js</a> 的思路不是全局开关，而是“只向前关联、只关联空白相隔的一组指令”。</p><ul><li><code>no-i18n-auto</code> 排除紧邻 construct 的一个候选；它自己不被收集。</li><li><code>i18n-key: home.title</code> 为对应候选提供显式 key。</li><li>普通注释无语义；格式错误的 <code>i18n-key...</code> 会使本轮失败，而不是被静默忽略。</li><li>同一组中出现两个不同 key 也失败，避免一个片段拥有不确定身份。</li></ul></section>
+<section class="exercise"><h2>检索练习</h2><p>模板字面量 <code>`前缀 ${value} 后缀`</code> 会不会把整个字符串当成一条文案？动态属性 <code>:title="'查看' + name"</code> 是否需要执行 Vue 表达式才能收集？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>不会。模板字面量的每个静态 quasi 独立判断，因此得到“前缀”和“后缀”，插值表达式不收集。动态属性也不执行表达式；Babel 只解析语法，静态字符串“查看”直接成为 fragment。</p></div></section>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0013-resource-dispatch.html">← 上一课：资源分派</a><a class="map" href="index.html">课程地图</a><a class="next" href="0015-snapshot-session-plugin.html">下一课：Snapshot 与发布 →</a></nav>
+<footer><p>主来源：<a href="../packages/i18n-collect/myloader/extract-script.js">extract-script.js</a>、<a href="../packages/i18n-collect/myloader/extract-html.js">extract-html.js</a>、<a href="../packages/i18n-collect/myloader/extract-css.js">extract-css.js</a>、<a href="../CONTEXT.md#L21-L38">semantic kind 定义</a>。</p></footer>
+</main></body></html>

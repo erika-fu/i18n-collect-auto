@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loader 收集链速查</title><link rel="stylesheet" href="../assets/course.css"></head>
+<body><main><header class="masthead"><p class="eyebrow">REFERENCE · 07 · LOADER COLLECTION</p><h1>Loader 收集链速查</h1><p>定位“某段中文为什么被收集/遗漏”时，按调用链逐层检查。</p></header>
+<section><h2>调用链</h2><div class="flow">pitch → runCollect → loadConfig/trackConfig → canonicalPair
+→ describeResource → isResourceIncluded → collectedFor
+→ extractor → snapshotFor → record
+→ module.buildInfo + session.submit
+→ Plugin done → assemble/recover → buildCatalog → writeOutputs</div></section>
+<section><h2>资源分派</h2><table><tr><th>资源</th><th>extractor</th><th>kind</th></tr><tr><td>JS/TS/JSX</td><td>extractScript</td><td>script-string / template-literal</td></tr><tr><td>Vue script</td><td>extractVueScript → extractScript</td><td>script-string / template-literal</td></tr><tr><td>Vue template</td><td>extractHtml</td><td>html-text / html-attribute / template-expression</td></tr><tr><td>HTML</td><td>extractHtml</td><td>static-html-text / static-html-attribute</td></tr><tr><td>CSS</td><td>extractCss</td><td>css-generated-content</td></tr></table></section>
+<section><h2>五个判断点</h2><ol><li>是否真的进入 <code>myloader</code>？Plugin 不扫盘。</li><li>Resource identity 是否含正确 block、style index、lang？</li><li>include 放行且 exclude 未否决吗？</li><li>片段含 Han 且未被 directive/context filter 排除吗？</li><li>本轮 Compilation、catalog 校验和事务写入都成功了吗？</li></ol></section>
+<section><h2>关键不变量</h2><ul><li>Loader transparent：source、sourceMap、meta 原样传递。</li><li>每个 identity 是完整 snapshot 替换，空 snapshot 也有效。</li><li>Module metadata 供 cache 恢复；Session candidate 供本轮发布。</li><li>失败 round 不发布部分 dictionary/catalog。</li><li>hash key 是 MD5(text)，不是 localization key。</li></ul></section>
+<nav class="lesson-nav" aria-label="参考导航"><a class="previous" href="0006-stable-key-lifecycle.html">← 上一篇：稳定 key</a><a class="map" href="../lessons/index.html">课程地图</a><a class="next" href="../lessons/0012-loader-collection-call-chain.html">课程：完整调用链 →</a></nav><footer><p>来源：<a href="../packages/i18n-collect/myloader/index.js">loader</a>、<a href="../packages/i18n-collect/myplugin/index.js">plugin</a>、<a href="../docs/collection-architecture.md">架构设计</a>。</p></footer>
+</main></body></html>
