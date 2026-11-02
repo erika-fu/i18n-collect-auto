@@ -131,6 +131,26 @@ function formatViolation(item) {
   return `${where} [${item.reason}] ${JSON.stringify(item.text)}`
 }
 
+function policyFailureMessage(comparison) {
+  const lines = [
+    'policy: complete-static-copy violations require migration or baseline update'
+  ]
+  for (const item of comparison.newViolations) {
+    lines.push(`new: ${formatViolation(item)}`)
+  }
+  for (const item of comparison.modifiedViolations) {
+    lines.push(`modified: ${formatViolation(item.current)}`)
+  }
+  const structured = [...comparison.newViolations, ...comparison.modifiedViolations.map(item => item.current)]
+    .some(item => item.reason === 'structured-fragmentation')
+  if (structured) {
+    lines.push(
+      'hint: structured messages with links, emphasis, controls, or slots must use explicit localization (declare the message in explicit-messages.json and render through a static localized call with named placeholders)'
+    )
+  }
+  return `${lines.join('\n')}\n`
+}
+
 function checkPolicy(args) {
   let parsed
   try {
@@ -180,12 +200,7 @@ function checkPolicy(args) {
         ''
       )
     }
-    const lines = [
-      'policy: complete-static-copy violations require migration or baseline update',
-      ...comparison.newViolations.map(item => `new: ${formatViolation(item)}`),
-      ...comparison.modifiedViolations.map(item => `modified: ${formatViolation(item.current)}`)
-    ]
-    return outcome(EXIT.policy, '', `${lines.join('\n')}\n`)
+    return outcome(EXIT.policy, '', policyFailureMessage(comparison))
   } catch (error) {
     return failure(error, parsed.json)
   } finally {

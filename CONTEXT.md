@@ -15,6 +15,10 @@ _Avoid_: Template, template file
 A user-facing message wholly represented by one statically determinable source fragment, and therefore eligible for automatic collection. A fragment around interpolation, concatenation, conditional construction, or formatting is not complete static copy.
 _Avoid_: Dynamic copy, message fragment
 
+**Structured message**:
+A user-facing message whose meaning depends on inline structure such as links, emphasis, controls, or component slots, so translation must control ordering and placeholders in one explicit message. Interleaving Chinese text with those elements in markup is structured fragmentation and is not complete static copy.
+_Avoid_: Rich text fragment, HTML snippet
+
 **Explicit source message**:
 A localization key whose canonical Chinese source text and placeholder contract are declared in the project-owned explicit message manifest, then referenced from a static runtime localization call. It is not automatically collected from complete static copy in source.
 _Avoid_: Automatic message, hash dictionary entry

@@ -38,7 +38,28 @@ test('check-policy help describes baseline semantics and diagnostics', () => {
   assert.match(result.stdout, /i18n-collect check-policy/)
   assert.match(result.stdout, /complete-static-copy-baseline/)
   assert.match(result.stdout, /Interpolation, concatenation/)
+  assert.match(result.stdout, /structured messages|links, emphasis/i)
   assert.match(result.stdout, /never hides collection failures/)
+})
+
+test('check-policy points structured fragmentation at explicit localization', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-policy-structured-'))
+  writeProject(root, {
+    source: 'const ok = "完整静态"\n',
+    files: {
+      'src/Notice.vue': [
+        '<template>',
+        '  <p>请阅读我们的<a href="/terms">服务条款</a></p>',
+        '</template>',
+        ''
+      ].join('\n')
+    }
+  })
+  const result = run(['check-policy'], root)
+  assert.strictEqual(result.status, 2, result.stderr)
+  assert.match(result.stderr, /structured-fragmentation/)
+  assert.match(result.stderr, /请阅读我们的/)
+  assert.match(result.stderr, /explicit localization/i)
 })
 
 test('check-policy fails new violations with reason and location', () => {

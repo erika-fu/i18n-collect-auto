@@ -83,11 +83,13 @@ Declare parameterized messages that are not complete static copy in `<catalogDir
 
 ## Complete-static-copy policy check failed
 
-`i18n-collect check-policy` distinguishes complete static Chinese (eligible for automatic collection) from message construction that must use an explicit localization call. It reports each violation with a machine-checkable reason (`interpolation`, `concatenation`, `conditional`, or `formatting`) and the affected source location. Treat those diagnostics as authoring-policy findings, not as generic collection omissions.
+`i18n-collect check-policy` distinguishes complete static Chinese (eligible for automatic collection) from message construction that must use an explicit localization call. It reports each violation with a machine-checkable reason (`interpolation`, `concatenation`, `conditional`, `formatting`, or `structured-fragmentation`) and the affected source location. Treat those diagnostics as authoring-policy findings, not as generic collection omissions.
+
+Structured UI copy that mixes Chinese text with links, emphasis, controls, or component slots is `structured-fragmentation`. Translators must control grammatical ordering and accessible structure in one message; fragment-by-fragment automatic keys break word order across locales and can separate a control or link from the sentence that gives it meaning. Declare the whole message in `explicit-messages.json` with named `{slot}` placeholders (for example `请阅读我们的{terms}与{privacy}`), keep compatible calls on that key when the translation is intentionally shared, and render through a static localized call or a component-interpolation host that fills those slots. Ordinary identical static Chinese in separate locations still receives independent automatic keys unless an author deliberately shares an explicit key.
 
 Commit existing violations in `<catalogDir>/complete-static-copy-baseline.json` (`{ version: 1, violations: [...] }`) so migration can proceed incrementally. The baseline grandfathers an exact match of path, reason, kind, text, and source range. A newly introduced violation, or a baseline entry whose text or location changed, fails the command. The baseline never hides collection failures, identity ambiguities, stale formal outputs, or other hard collection errors—those still fail `collect` on their own path.
 
-Migration workflow: run `check-policy`, move a dynamic message into `explicit-messages.json` and a static localized call, remove or update the matching baseline entry, then collect again so catalogs stay current.
+Migration workflow: run `check-policy`, move a dynamic or structured message into `explicit-messages.json` and a static localized call, remove or update the matching baseline entry, then collect again so catalogs stay current.
 
 ## An occurrence identity ambiguity failed the round
 

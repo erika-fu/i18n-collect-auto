@@ -2024,6 +2024,81 @@
       ],
       "status": "active"
     },
+    "demo.privacy.link": {
+      "source": "隐私政策",
+      "fingerprint": "e464b41fd5c45ba5",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 22,
+            "column": 47
+          },
+          "end": {
+            "line": 22,
+            "column": 66
+          }
+        },
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 24,
+            "column": 108
+          },
+          "end": {
+            "line": 24,
+            "column": 127
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "d91450a35e71a3f1",
+          "semanticHost": "src/pages/MigrationPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:5",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 22,
+              "column": 47
+            },
+            "end": {
+              "line": 22,
+              "column": 66
+            }
+          }
+        },
+        {
+          "id": "5dc0cfb9a9516fc1",
+          "semanticHost": "src/pages/MigrationPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:8",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 24,
+              "column": 108
+            },
+            "end": {
+              "line": 24,
+              "column": 127
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
     "demo.shared.title": {
       "source": "共享标题",
       "fingerprint": "ec2a6eec0596d4e8",
@@ -2093,6 +2168,124 @@
             "end": {
               "line": 9,
               "column": 56
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.terms.link": {
+      "source": "服务条款",
+      "fingerprint": "9303687a9ccf1358",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 21,
+            "column": 43
+          },
+          "end": {
+            "line": 21,
+            "column": 60
+          }
+        },
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 24,
+            "column": 76
+          },
+          "end": {
+            "line": 24,
+            "column": 93
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "efc3249e3465a847",
+          "semanticHost": "src/pages/MigrationPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:4",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 21,
+              "column": 43
+            },
+            "end": {
+              "line": 21,
+              "column": 60
+            }
+          }
+        },
+        {
+          "id": "ea9720a10d13198f",
+          "semanticHost": "src/pages/MigrationPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:7",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 24,
+              "column": 76
+            },
+            "end": {
+              "line": 24,
+              "column": 93
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.terms.notice": {
+      "source": "请阅读我们的{terms}与{privacy}",
+      "fingerprint": "0710960f7b265028",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 24,
+            "column": 43
+          },
+          "end": {
+            "line": 24,
+            "column": 62
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "c502b1d64121809c",
+          "semanticHost": "src/pages/MigrationPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:6",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 24,
+              "column": 43
+            },
+            "end": {
+              "line": 24,
+              "column": 62
             }
           }
         }

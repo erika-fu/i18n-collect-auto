@@ -44,7 +44,10 @@
   "auto.01M6D71KFVZG2BDSKC2KVEE76G": "脚本字符串",
   "auto.01M6D71KFVZGKB8EV9263GWSCP": "收件箱",
   "demo.items.deleted": "已删除 {count} 项",
+  "demo.privacy.link": "隐私政策",
   "demo.shared.title": "共享标题",
+  "demo.terms.link": "服务条款",
+  "demo.terms.notice": "请阅读我们的{terms}与{privacy}",
   "demo.unread.count": "你有{count}条未读消息",
   "demo.visit.banner": "欢迎",
   "demo.visit.farewell": "欢迎"

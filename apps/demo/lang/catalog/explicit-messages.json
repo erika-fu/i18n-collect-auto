@@ -8,6 +8,18 @@
     {
       "key": "demo.unread.count",
       "source": "你有{count}条未读消息"
+    },
+    {
+      "key": "demo.terms.notice",
+      "source": "请阅读我们的{terms}与{privacy}"
+    },
+    {
+      "key": "demo.terms.link",
+      "source": "服务条款"
+    },
+    {
+      "key": "demo.privacy.link",
+      "source": "隐私政策"
     }
   ]
 }

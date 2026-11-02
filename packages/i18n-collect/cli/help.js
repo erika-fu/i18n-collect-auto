@@ -132,6 +132,8 @@ Scan project sources for complete-static-copy policy violations.
 A whole static Chinese literal may stay eligible for automatic collection.
 Interpolation, concatenation, conditional construction, and formatting must use an
 explicit localization call instead of independently translated fragments.
+Structured messages that mix Chinese copy with links, emphasis, controls, or component
+slots must also use explicit localization so translators control ordering and placeholders.
 Existing violations may be listed in lang/catalog/complete-static-copy-baseline.json.
 The baseline grandfathers exact matches only; new or modified violations fail.
 The baseline never hides collection failures, identity ambiguities, or stale formal outputs.

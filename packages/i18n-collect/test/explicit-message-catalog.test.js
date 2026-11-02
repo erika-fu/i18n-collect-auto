@@ -197,6 +197,74 @@ test('an orphaned explicit message recovers when its localized call returns', ()
   assert.deepStrictEqual(recovered.orphaned, [])
 })
 
+test('structured explicit messages use named slot placeholders and shared keys keep one contract', () => {
+  const first = at('src/a.vue', 'script-string', 1, 0, 40)
+  const second = at('src/b.vue', 'script-string', 2, 0, 40)
+  const catalog = buildCatalog(
+    [
+      snapshot('src/a.vue::script', [
+        callEntry('terms.notice', first, {
+          paramNames: ['terms', 'privacy'],
+          paramsKind: 'static'
+        })
+      ]),
+      snapshot('src/b.vue::script', [
+        callEntry('terms.notice', second, {
+          paramNames: ['terms', 'privacy'],
+          paramsKind: 'static'
+        })
+      ])
+    ],
+    {
+      explicitMessages: [
+        { key: 'terms.notice', source: '请阅读我们的{terms}与{privacy}' }
+      ]
+    }
+  )
+  assert.deepStrictEqual(catalog.referenceErrors, [])
+  assert.deepStrictEqual(catalog.conflicts, [])
+  assert.strictEqual(catalog.messages['terms.notice'], '请阅读我们的{terms}与{privacy}')
+  assert.strictEqual(catalog.entries['terms.notice'].origin, 'explicit')
+  assert.deepStrictEqual(
+    catalog.entries['terms.notice'].locations.map(item => item.path).sort(),
+    ['src/a.vue', 'src/b.vue']
+  )
+})
+
+test('structured explicit messages reject incompatible slot contracts', () => {
+  const location = at('src/a.vue', 'script-string', 1, 0, 40)
+  const mismatchedCall = buildCatalog(
+    [snapshot('src/a.vue::script', [
+      callEntry('terms.notice', location, {
+        paramNames: ['link', 'policy'],
+        paramsKind: 'static'
+      })
+    ])],
+    {
+      explicitMessages: [
+        { key: 'terms.notice', source: '请阅读我们的{terms}与{privacy}' }
+      ]
+    }
+  )
+  assert.ok(mismatchedCall.referenceErrors.some(item => (
+    item.key === 'terms.notice' && item.reason === 'placeholder-mismatch'
+  )))
+  assert.strictEqual(mismatchedCall.messages['terms.notice'], undefined)
+
+  const first = at('src/a.js', 'script-string', 1, 0, 20)
+  const second = at('src/b.js', 'script-string', 2, 0, 20)
+  const conflicted = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '请阅读我们的{terms}与{privacy}', key: 'terms.notice', locations: [first] }
+    ]),
+    snapshot('src/b.js::script', [
+      { value: '请阅读我们的{privacy}与{terms}', key: 'terms.notice', locations: [second] }
+    ])
+  ])
+  assert.ok(conflicted.conflicts.some(item => item.key === 'terms.notice'))
+  assert.strictEqual(conflicted.messages['terms.notice'], undefined)
+})
+
 test('existing parameterless localized calls stay compatible beside explicit messages', () => {
   const sourceLocation = at('src/a.js', 'script-string', 1, 0, 4)
   const first = buildCatalog([

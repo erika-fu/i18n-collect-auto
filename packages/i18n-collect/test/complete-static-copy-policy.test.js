@@ -112,6 +112,52 @@ test('reports Vue template interpolations and bindings while allowing complete s
   assert.ok(!violations.some(item => item.text === '静态标题文案'))
 })
 
+test('reports structured message fragmentation around links, emphasis, controls, and slots', () => {
+  const vue = [
+    '<template>',
+    '  <section>',
+    '    <p>请阅读我们的<a href="/terms">服务条款</a>与<a href="/privacy">隐私政策</a></p>',
+    '    <p>你好 <em>世界</em> 啊</p>',
+    '    <p>点击<button type="button">提交</button>继续</p>',
+    '    <p>打开<CustomPanel>面板</CustomPanel>查看</p>',
+    '    <p><span>请阅读我们的</span><a href="/terms">服务条款</a></p>',
+    '    <p>完整静态段落</p>',
+    '    <p><a href="/alone">单独链接文案</a></p>',
+    '  </section>',
+    '</template>',
+    ''
+  ].join('\n')
+  const jsx = 'export function Notice() { return <p>请阅读我们的<a href="/terms">服务条款</a></p> }\n'
+  const violations = scanCompleteStaticCopyPolicy([
+    { path: 'src/Structured.vue', source: vue },
+    { path: 'src/Notice.jsx', source: jsx }
+  ])
+  const keyed = violations
+    .filter(item => item.reason === 'structured-fragmentation')
+    .map(item => `${item.path}:${item.kind}:${item.text}`)
+  assert.ok(keyed.includes('src/Structured.vue:html-text:请阅读我们的'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:服务条款'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:隐私政策'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:你好 '))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:世界'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text: 啊'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:点击'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:提交'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:继续'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:打开'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:面板'))
+  assert.ok(keyed.includes('src/Structured.vue:html-text:查看'))
+  assert.ok(keyed.includes('src/Notice.jsx:script-string:请阅读我们的'))
+  assert.ok(keyed.includes('src/Notice.jsx:script-string:服务条款'))
+  assert.ok(!keyed.some(item => item.includes('完整静态段落')))
+  assert.ok(!keyed.some(item => item.includes('单独链接文案')))
+  const sample = violations.find(item => item.text === '请阅读我们的')
+  assert.ok(sample)
+  assert.strictEqual(sample.reason, 'structured-fragmentation')
+  assert.ok(sample.start)
+  assert.ok(sample.end)
+})
+
 test('readPolicyBaseline loads a versioned committed baseline and rejects bad shapes', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-policy-baseline-'))
   const file = path.join(root, 'complete-static-copy-baseline.json')
