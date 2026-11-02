@@ -11,6 +11,14 @@ Chinese text identified as candidate user-facing copy and added to the localizat
 A JavaScript or TypeScript backtick literal. Each static Chinese segment is collected independently; interpolation expressions are not collected as copy.
 _Avoid_: Template, template file
 
+**Complete static copy**:
+A user-facing message wholly represented by one statically determinable source fragment, and therefore eligible for automatic collection. A fragment around interpolation, concatenation, conditional construction, or formatting is not complete static copy.
+_Avoid_: Dynamic copy, message fragment
+
+**Explicit localization boundary**:
+A feature or route that must render user-facing copy in a target locale at runtime. Its user-facing copy uses explicit localized calls rather than automatically collected source text.
+_Avoid_: Translated page
+
 **HTML text**:
 A user-visible HTML text-node fragment. Each text node is considered independently: formatting-only leading and trailing whitespace is excluded, meaningful internal whitespace is retained, and text is not merged across element boundaries. Character references contribute their decoded character value while the source range remains anchored to the original spelling.
 
