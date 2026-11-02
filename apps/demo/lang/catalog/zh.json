@@ -44,6 +44,8 @@
   "auto.01M6D71KFVZG2BDSKC2KVEE76G": "脚本字符串",
   "auto.01M6D71KFVZGKB8EV9263GWSCP": "收件箱",
   "demo.items.deleted": "已删除 {count} 项",
+  "demo.multilingual.body": "你好，{name}。此页仅通过显式本地化渲染。",
+  "demo.multilingual.title": "运行时多语言边界",
   "demo.privacy.link": "隐私政策",
   "demo.shared.title": "共享标题",
   "demo.terms.link": "服务条款",

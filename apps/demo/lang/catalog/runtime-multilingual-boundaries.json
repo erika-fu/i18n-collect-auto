@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "boundaries": [
+    {
+      "id": "demo-multilingual",
+      "include": [
+        "src/pages/multilingual"
+      ]
+    }
+  ]
+}

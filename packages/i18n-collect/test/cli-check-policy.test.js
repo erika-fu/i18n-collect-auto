@@ -40,6 +40,84 @@ test('check-policy help describes baseline semantics and diagnostics', () => {
   assert.match(result.stdout, /Interpolation, concatenation/)
   assert.match(result.stdout, /structured messages|links, emphasis/i)
   assert.match(result.stdout, /never hides collection failures/)
+  assert.match(result.stdout, /runtime-multilingual-boundaries/)
+  assert.match(result.stdout, /never grandfather|not grandfather|cannot be grandfathered/i)
+})
+
+test('check-policy hard-fails direct literals inside a runtime-multilingual boundary', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-policy-boundary-'))
+  writeProject(root, {
+    source: 'const ok = "完整静态"\n',
+    files: {
+      'src/pages/multilingual/Page.vue': '<template><p>边界内中文</p></template>\n',
+      'lang/catalog/runtime-multilingual-boundaries.json': `${JSON.stringify({
+        version: 1,
+        boundaries: [{ id: 'demo-multilingual', include: ['src/pages/multilingual'] }]
+      }, null, 2)}\n`
+    }
+  })
+  const jsonResult = run(['check-policy', '--json'], root)
+  assert.strictEqual(jsonResult.status, 2, jsonResult.stderr)
+  const report = JSON.parse(jsonResult.stdout)
+  assert.strictEqual(report.ok, false)
+  assert.ok(Array.isArray(report.runtimeMultilingualViolations))
+  assert.ok(report.runtimeMultilingualViolations.some(item => (
+    item.path === 'src/pages/multilingual/Page.vue'
+    && item.reason === 'runtime-multilingual-literal'
+    && item.text === '边界内中文'
+  )))
+  const textResult = run(['check-policy'], root)
+  assert.strictEqual(textResult.status, 2, textResult.stderr)
+  assert.match(textResult.stderr, /runtime-multilingual-literal/)
+  assert.match(textResult.stderr, /边界内中文/)
+})
+
+test('check-policy does not grandfather runtime-multilingual literals via complete-static-copy baseline', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-policy-boundary-base-'))
+  const source = 'const title = "边界内中文"\n'
+  writeProject(root, {
+    source: 'const ok = "完整静态"\n',
+    baseline: {
+      version: 1,
+      violations: [{
+        reason: 'runtime-multilingual-literal',
+        path: 'src/pages/multilingual/app.js',
+        kind: 'script-string',
+        start: { line: 1, column: 14 },
+        end: { line: 1, column: 22 },
+        text: '边界内中文'
+      }]
+    },
+    files: {
+      'src/pages/multilingual/app.js': source,
+      'lang/catalog/runtime-multilingual-boundaries.json': `${JSON.stringify({
+        version: 1,
+        boundaries: [{ id: 'js-boundary', include: ['src/pages/multilingual'] }]
+      }, null, 2)}\n`
+    }
+  })
+  const result = run(['check-policy'], root)
+  assert.strictEqual(result.status, 2, result.stderr)
+  assert.match(result.stderr, /runtime-multilingual-literal/)
+  assert.match(result.stderr, /边界内中文/)
+})
+
+test('check-policy keeps automatic-collection areas outside boundaries clean when only complete static copy is present', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-policy-outside-boundary-'))
+  writeProject(root, {
+    source: 'const ok = "完整静态"\n',
+    files: {
+      'lang/catalog/runtime-multilingual-boundaries.json': `${JSON.stringify({
+        version: 1,
+        boundaries: [{ id: 'other', include: ['src/pages/multilingual'] }]
+      }, null, 2)}\n`
+    }
+  })
+  const result = run(['check-policy', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.deepStrictEqual(report.runtimeMultilingualViolations, [])
 })
 
 test('check-policy points structured fragmentation at explicit localization', () => {

@@ -1,0 +1,4 @@
+{
+  "react.multilingual.title": "Runtime multilingual boundary",
+  "react.multilingual.body": "Hello, {name}. This page renders only through explicit localization."
+}

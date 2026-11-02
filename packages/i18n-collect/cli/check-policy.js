@@ -5,6 +5,10 @@ const {
   readPolicyBaseline,
   scanCompleteStaticCopyPolicy
 } = require('../mycommon/complete-static-copy-policy')
+const {
+  readRuntimeMultilingualBoundaries,
+  scanRuntimeMultilingualPolicy
+} = require('../mycommon/runtime-multilingual-policy')
 const { identityFiles, loadConfig, setCollectionOverrides, clearCollectionOverrides } = require('../mycommon/config')
 const { isResourceIncluded } = require('../myloader/resource')
 
@@ -15,7 +19,7 @@ const EXIT = {
 }
 
 const SOURCE_EXTENSIONS = new Set([
-  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue', '.html', '.htm'
+  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue', '.html', '.htm', '.css'
 ])
 
 const SKIP_DIRECTORIES = new Set([
@@ -131,21 +135,34 @@ function formatViolation(item) {
   return `${where} [${item.reason}] ${JSON.stringify(item.text)}`
 }
 
-function policyFailureMessage(comparison) {
-  const lines = [
-    'policy: complete-static-copy violations require migration or baseline update'
-  ]
-  for (const item of comparison.newViolations) {
-    lines.push(`new: ${formatViolation(item)}`)
+function policyFailureMessage(comparison, multilingualViolations = []) {
+  const lines = []
+  if (comparison.newViolations.length || comparison.modifiedViolations.length) {
+    lines.push('policy: complete-static-copy violations require migration or baseline update')
+    for (const item of comparison.newViolations) {
+      lines.push(`new: ${formatViolation(item)}`)
+    }
+    for (const item of comparison.modifiedViolations) {
+      lines.push(`modified: ${formatViolation(item.current)}`)
+    }
+    const structured = [...comparison.newViolations, ...comparison.modifiedViolations.map(item => item.current)]
+      .some(item => item.reason === 'structured-fragmentation')
+    if (structured) {
+      lines.push(
+        'hint: structured messages with links, emphasis, controls, or slots must use explicit localization (declare the message in explicit-messages.json and render through a static localized call with named placeholders)'
+      )
+    }
   }
-  for (const item of comparison.modifiedViolations) {
-    lines.push(`modified: ${formatViolation(item.current)}`)
-  }
-  const structured = [...comparison.newViolations, ...comparison.modifiedViolations.map(item => item.current)]
-    .some(item => item.reason === 'structured-fragmentation')
-  if (structured) {
+  if (multilingualViolations.length) {
     lines.push(
-      'hint: structured messages with links, emphasis, controls, or slots must use explicit localization (declare the message in explicit-messages.json and render through a static localized call with named placeholders)'
+      'policy: runtime-multilingual boundaries reject direct user-facing source text; use explicit localization'
+    )
+    for (const item of multilingualViolations) {
+      const boundary = item.boundaryId ? ` boundary=${item.boundaryId}` : ''
+      lines.push(`runtime-multilingual: ${formatViolation(item)}${boundary}`)
+    }
+    lines.push(
+      'hint: declare messages in explicit-messages.json and render them with static t()/$t()/this.$t() calls inside the boundary'
     )
   }
   return `${lines.join('\n')}\n`
@@ -167,7 +184,9 @@ function checkPolicy(args) {
       })
     }
     const config = loadConfig({ root })
-    const baselinePath = path.join(config.root, identityFiles(config).completeStaticCopyBaseline)
+    const identities = identityFiles(config)
+    const baselinePath = path.join(config.root, identities.completeStaticCopyBaseline)
+    const boundariesPath = path.join(config.root, identities.runtimeMultilingualBoundaries)
     const sources = listSourceFiles(config.root, config).map(file => ({
       path: file.projectPath,
       source: fs.readFileSync(file.absolute, 'utf8')
@@ -175,32 +194,48 @@ function checkPolicy(args) {
     const violations = scanCompleteStaticCopyPolicy(sources)
     const baseline = readPolicyBaseline(baselinePath)
     const comparison = comparePolicyBaseline(violations, baseline)
-    const failing = [...comparison.newViolations, ...comparison.modifiedViolations.map(item => item.current)]
+    const boundaries = readRuntimeMultilingualBoundaries(boundariesPath, config.root)
+    const multilingualViolations = scanRuntimeMultilingualPolicy(sources, boundaries, {
+      attributeAllowlist: config.attributeAllowlist
+    })
+    const completeStaticFailing = [
+      ...comparison.newViolations,
+      ...comparison.modifiedViolations.map(item => item.current)
+    ]
+    const failing = completeStaticFailing.length > 0 || multilingualViolations.length > 0
     const report = {
       command: 'check-policy',
-      ok: failing.length === 0,
-      baseline: identityFiles(config).completeStaticCopyBaseline,
+      ok: !failing,
+      baseline: identities.completeStaticCopyBaseline,
+      runtimeMultilingualBoundaries: identities.runtimeMultilingualBoundaries,
       scannedFiles: sources.length,
       violations: violations.length,
       grandfathered: comparison.grandfathered.length,
       newViolations: comparison.newViolations,
-      modifiedViolations: comparison.modifiedViolations.map(item => item.current)
+      modifiedViolations: comparison.modifiedViolations.map(item => item.current),
+      runtimeMultilingualViolations: multilingualViolations
     }
     if (parsed.json) {
       return outcome(
-        failing.length === 0 ? EXIT.ok : EXIT.policy,
+        failing ? EXIT.policy : EXIT.ok,
         jsonText(report),
-        failing.length === 0 ? '' : 'policy: complete-static-copy violations require migration or baseline update\n'
+        failing
+          ? (
+            multilingualViolations.length && !completeStaticFailing.length
+              ? 'policy: runtime-multilingual boundaries reject direct user-facing source text\n'
+              : 'policy: complete-static-copy violations require migration or baseline update\n'
+          )
+          : ''
       )
     }
-    if (failing.length === 0) {
+    if (!failing) {
       return outcome(
         EXIT.ok,
-        `check-policy: ${violations.length} violation(s), ${comparison.grandfathered.length} grandfathered, 0 new or modified\n`,
+        `check-policy: ${violations.length} violation(s), ${comparison.grandfathered.length} grandfathered, 0 new or modified; ${multilingualViolations.length} runtime-multilingual\n`,
         ''
       )
     }
-    return outcome(EXIT.policy, '', policyFailureMessage(comparison))
+    return outcome(EXIT.policy, '', policyFailureMessage(comparison, multilingualViolations))
   } catch (error) {
     return failure(error, parsed.json)
   } finally {

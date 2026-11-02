@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "messages": [
+    {
+      "key": "react.multilingual.title",
+      "source": "运行时多语言边界"
+    },
+    {
+      "key": "react.multilingual.body",
+      "source": "你好，{name}。此页仅通过显式本地化渲染。"
+    }
+  ]
+}

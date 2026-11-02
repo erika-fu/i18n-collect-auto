@@ -20,6 +20,14 @@
     {
       "key": "demo.privacy.link",
       "source": "隐私政策"
+    },
+    {
+      "key": "demo.multilingual.title",
+      "source": "运行时多语言边界"
+    },
+    {
+      "key": "demo.multilingual.body",
+      "source": "你好，{name}。此页仅通过显式本地化渲染。"
     }
   ]
 }

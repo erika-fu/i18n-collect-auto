@@ -7,6 +7,8 @@
   "demo.terms.notice": "Please read our {terms} and {privacy}",
   "demo.terms.link": "Terms of Service",
   "demo.privacy.link": "Privacy Policy",
+  "demo.multilingual.title": "Runtime multilingual boundary",
+  "demo.multilingual.body": "Hello, {name}. This page renders only through explicit localization.",
   "auto.01M6D71KFVBJQ79XBNAFJ2RCKQ": "Please wait",
   "auto.01M6D71KFVFMT7EAFNXZ88K73F": "Please wait"
 }

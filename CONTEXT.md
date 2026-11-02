@@ -28,12 +28,16 @@ The versioned document `explicit-messages.json` beside the catalog metadata. Ver
 _Avoid_: Confirmation manifest, translation catalog
 
 **Complete-static-copy baseline**:
-The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. `check-policy` reads it and does not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide collection failures, identity ambiguities, or stale formal outputs.
+The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. `check-policy` reads it and does not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide collection failures, identity ambiguities, stale formal outputs, or direct source text inside a declared runtime-multilingual boundary.
 _Avoid_: Hash collection output, confirmation manifest, journal restore baseline
 
 **Explicit localization boundary**:
 A feature or route that must render user-facing copy in a target locale at runtime. Its user-facing copy uses explicit localized calls rather than automatically collected source text.
 _Avoid_: Translated page
+
+**Runtime-multilingual boundaries**:
+The versioned document `runtime-multilingual-boundaries.json` beside the catalog metadata. Version 1 lists named boundaries with project-relative `include` and optional `exclude` scope patterns. A path is inside a boundary when it matches that boundary's include and not its exclude; overlapping boundaries use union membership. `check-policy` rejects direct user-facing source text inside those boundaries. Being collected automatically is not the same as being able to switch languages at runtime.
+_Avoid_: Translated page, complete-static-copy baseline
 
 **HTML text**:
 A user-visible HTML text-node fragment. Each text node is considered independently: formatting-only leading and trailing whitespace is excluded, meaningful internal whitespace is retained, and text is not merged across element boundaries. Character references contribute their decoded character value while the source range remains anchored to the original spelling.

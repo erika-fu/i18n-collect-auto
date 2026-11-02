@@ -128,15 +128,24 @@ Exit codes:
 
 const CHECK_POLICY_HELP = `i18n-collect check-policy
 
-Scan project sources for complete-static-copy policy violations.
-A whole static Chinese literal may stay eligible for automatic collection.
-Interpolation, concatenation, conditional construction, and formatting must use an
-explicit localization call instead of independently translated fragments.
-Structured messages that mix Chinese copy with links, emphasis, controls, or component
-slots must also use explicit localization so translators control ordering and placeholders.
-Existing violations may be listed in lang/catalog/complete-static-copy-baseline.json.
-The baseline grandfathers exact matches only; new or modified violations fail.
-The baseline never hides collection failures, identity ambiguities, or stale formal outputs.
+Scan project sources for complete-static-copy policy violations and runtime-multilingual
+boundary violations.
+A whole static Chinese literal may stay eligible for automatic collection outside a
+declared runtime-multilingual boundary. Interpolation, concatenation, conditional
+construction, and formatting must use an explicit localization call instead of
+independently translated fragments. Structured messages that mix Chinese copy with
+links, emphasis, controls, or component slots must also use explicit localization so
+translators control ordering and placeholders.
+Existing complete-static-copy violations may be listed in
+lang/catalog/complete-static-copy-baseline.json. The baseline grandfathers exact matches
+only; new or modified violations fail. The baseline never hides collection failures,
+identity ambiguities, stale formal outputs, or direct source text inside a declared
+runtime-multilingual boundary.
+Declare runtime-multilingual feature or route boundaries in
+lang/catalog/runtime-multilingual-boundaries.json. Direct user-facing source text inside
+those boundaries always fails and cannot be grandfathered by the complete-static-copy
+baseline: collected automatic copy is not the same as being able to switch languages at
+runtime.
 
 Usage:
   i18n-collect check-policy [options]
@@ -149,9 +158,9 @@ Options:
   -h, --help           Show this help.
 
 Exit codes:
-  0  no new or modified policy violations
+  0  no new or modified policy violations and no runtime-multilingual boundary violations
   1  configuration failure
-  2  new or modified complete-static-copy policy violations
+  2  new or modified complete-static-copy policy violations, or runtime-multilingual boundary violations
 `
 
 const ROOT_HELP = `i18n-collect
@@ -166,7 +175,7 @@ Commands:
   translate     Fill target-locale catalogs through a project translation provider.
   replace       Preview safe source replacements, or commit them with --write.
   run           Run selected collect, translate, and replace stages.
-  check-policy  Report complete-static-copy policy violations against a committed baseline.
+  check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
 
 Run i18n-collect <command> --help for command options.
 `
