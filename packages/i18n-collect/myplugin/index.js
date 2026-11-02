@@ -6,6 +6,7 @@ const {
   catalogMetadata,
   conflictMessage,
   readCatalogMetadataFile,
+  readIdentityAmbiguities,
   readIdentityConfirmations,
   readRetirementConfirmations,
   referenceMessage
@@ -156,17 +157,21 @@ class MyI18nPlugin {
         activeTemplates: activeHtmlTemplates(compiler, compilation, config)
       })
       const identities = identityFiles(config)
+      const ambiguitiesFile = path.join(config.root, identities.ambiguities)
       let confirmations
       let retirements
+      let previousAmbiguities
       try {
         confirmations = readIdentityConfirmations(path.join(config.root, identities.confirmations))
         retirements = readRetirementConfirmations(path.join(config.root, identities.retirements))
+        previousAmbiguities = readIdentityAmbiguities(ambiguitiesFile)
       } catch (error) {
         session.abandon(compilation)
         throw new Error(`i18n-collect failed: ${error.message}`)
       }
       const catalog = buildCatalog(snapshots, {
         previousMetadata: readCatalogMetadataFile(path.join(config.root, catalogFiles(config).metadata)),
+        previousAmbiguities,
         confirmations,
         retirements,
         prune: config.pruneOrphaned,
@@ -181,11 +186,10 @@ class MyI18nPlugin {
         throw new Error(referenceMessage(catalog.referenceErrors))
       }
       if (catalog.ambiguities.length > 0) {
-        const reportFile = path.join(config.root, identities.ambiguities)
         const report = json({ version: 1, ambiguities: catalog.ambiguities })
-        if (!unchanged(fs, reportFile, report)) {
-          fs.mkdirSync(path.dirname(reportFile), { recursive: true })
-          fs.writeFileSync(reportFile, report)
+        if (!unchanged(fs, ambiguitiesFile, report)) {
+          fs.mkdirSync(path.dirname(ambiguitiesFile), { recursive: true })
+          fs.writeFileSync(ambiguitiesFile, report)
         }
         session.abandon(compilation)
         throw new Error(ambiguityMessage(catalog.ambiguities, identities.ambiguities))
@@ -200,8 +204,7 @@ class MyI18nPlugin {
           catalogOutputs(config, catalog)
         )
       )
-      const reportFile = path.join(config.root, identities.ambiguities)
-      if (fs.existsSync(reportFile)) fs.unlinkSync(reportFile)
+      if (fs.existsSync(ambiguitiesFile)) fs.unlinkSync(ambiguitiesFile)
     })
   }
 }

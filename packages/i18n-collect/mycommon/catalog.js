@@ -494,11 +494,26 @@ function buildCatalog(snapshots, options = {}) {
   const proposalReserved = new Set(
     historicalDerivedOccurrences(previousMetadata).map(item => item.key)
   )
+  const previousProposedByIdentity = new Map()
+  for (const item of options.previousAmbiguities || []) {
+    if (!item || typeof item.proposedKey !== 'string') continue
+    if (!OPAQUE_AUTOMATIC_KEY.test(item.proposedKey)) continue
+    const identity = confirmationIdentity(item)
+    if (!previousProposedByIdentity.has(identity)) {
+      previousProposedByIdentity.set(identity, item.proposedKey)
+    }
+  }
   const proposedByDraft = new Map()
   for (const draft of automaticDrafts) {
-    const key = matched.reused.has(draft)
-      ? matched.reused.get(draft)
-      : automaticKeyAvoiding(draft, proposalReserved, createUlidImpl)
+    let key
+    if (matched.reused.has(draft)) {
+      key = matched.reused.get(draft)
+    } else {
+      const priorProposed = previousProposedByIdentity.get(confirmationIdentity(draft))
+      key = priorProposed && !proposalReserved.has(priorProposed)
+        ? priorProposed
+        : automaticKeyAvoiding(draft, proposalReserved, createUlidImpl)
+    }
     proposalReserved.add(key)
     proposedByDraft.set(draft, key)
   }
@@ -515,8 +530,8 @@ function buildCatalog(snapshots, options = {}) {
     let key = matched.reused.get(draft) || proposedKey
     if (candidates && !matched.reused.has(draft)) {
       const confirmation = confirmationByIdentity.get(confirmationIdentity(draft))
-      // A prior failed round's proposed auto.<ULID> stays confirmable even though this round
-      // allocates a fresh proposed key — ULIDs are not stable across abandoned rounds.
+      // A prior failed round's proposed auto.<ULID> stays confirmable when the report
+      // was cleared or the confirmation names that earlier proposal directly.
       const confirmsPriorProposal = Boolean(
         confirmation &&
         OPAQUE_AUTOMATIC_KEY.test(confirmation.key) &&
@@ -956,7 +971,55 @@ function ambiguityMessage(ambiguities, reportPath) {
 }
 
 const CONFIRMATION_VERSION = 1
+const AMBIGUITY_REPORT_VERSION = 1
 const RETIREMENT_VERSION = 1
+
+function readIdentityAmbiguities(file) {
+  if (!fs.existsSync(file)) return []
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`identity ambiguities could not be read (${error.message})`)
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('identity ambiguities must be an object')
+  }
+  if (parsed.version !== AMBIGUITY_REPORT_VERSION) {
+    throw new Error(
+      `identity ambiguities version ${parsed.version} is unsupported; use version ${AMBIGUITY_REPORT_VERSION}`
+    )
+  }
+  if (!Array.isArray(parsed.ambiguities)) {
+    throw new Error('identity ambiguities must include an ambiguities array')
+  }
+  return parsed.ambiguities.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`identity ambiguity ${index} must be an object`)
+    }
+    for (const field of ['proposedKey', 'source', 'semanticHost', 'childRole', 'localContext']) {
+      if (typeof item[field] !== 'string' || item[field].length === 0) {
+        throw new Error(`identity ambiguity ${index} is missing ${field}`)
+      }
+    }
+    if (!item.location || typeof item.location !== 'object' || Array.isArray(item.location)) {
+      throw new Error(`identity ambiguity ${index} is missing location`)
+    }
+    if (!Array.isArray(item.candidates)) {
+      throw new Error(`identity ambiguity ${index} must include a candidates array`)
+    }
+    return {
+      proposedKey: item.proposedKey,
+      source: item.source,
+      semanticHost: item.semanticHost,
+      childRole: item.childRole,
+      localContext: item.localContext,
+      location: item.location,
+      candidates: item.candidates,
+      ...(item.rejectedConfirmation ? { rejectedConfirmation: item.rejectedConfirmation } : {})
+    }
+  })
+}
 
 function readRetirementConfirmations(file) {
   if (!fs.existsSync(file)) return []
@@ -1083,6 +1146,7 @@ module.exports = {
   fingerprintOf,
   messageContract,
   readCatalogMetadataFile,
+  readIdentityAmbiguities,
   readIdentityConfirmations,
   readRetirementConfirmations,
   referenceMessage,

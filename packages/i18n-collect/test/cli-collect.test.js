@@ -570,6 +570,22 @@ test('collect fails on an occurrence identity ambiguity, keeps formal outputs, a
     assert.ok(!historicalKeys.includes(item.proposedKey))
   }
 
+  const retry = run(['collect', '--json'], root)
+  assert.strictEqual(retry.status, 2, retry.stderr)
+  assert.strictEqual(JSON.parse(retry.stdout).failure, 'collection')
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+  const retriedReport = readJson(root, 'lang/catalog/identity-ambiguities.json')
+  assert.deepStrictEqual(
+    retriedReport.ambiguities.map(item => ({
+      localContext: item.localContext,
+      proposedKey: item.proposedKey
+    })).sort((a, b) => (a.localContext < b.localContext ? -1 : 1)),
+    report.ambiguities.map(item => ({
+      localContext: item.localContext,
+      proposedKey: item.proposedKey
+    })).sort((a, b) => (a.localContext < b.localContext ? -1 : 1))
+  )
+
   fs.writeFileSync(path.join(root, 'lang/catalog/identity-confirmations.json'), `${JSON.stringify({
     version: 1,
     confirmations: report.ambiguities.map(item => ({

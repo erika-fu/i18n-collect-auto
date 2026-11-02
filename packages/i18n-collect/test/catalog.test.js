@@ -12,6 +12,7 @@ const {
   createUlid,
   diffCatalog,
   messageContract,
+  readIdentityAmbiguities,
   readIdentityConfirmations,
   upgradeCatalogMetadata
 } = require('../mycommon/catalog')
@@ -381,6 +382,43 @@ test('an explicit key resolves an occurrence identity ambiguity', () => {
   assert.strictEqual(resolved.entries['home.one'].origin, 'explicit')
 })
 
+test('an ambiguity report keeps proposed automatic keys stable across retries', () => {
+  const createUlid = sequentialUlid()
+  const first = buildCatalog([
+    snapshot('src/a.js::script', [
+      { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
+      { value: '你好', locations: [at('src/a.js', 'script-string', 2, 0)] }
+    ])
+  ], { createUlid })
+  const previousMetadata = catalogMetadata(first, { sourceLocale: 'zh', format: 'json' })
+  const locations = [
+    at('src/a.js', 'script-string', 1, 0),
+    at('src/a.js', 'script-string', 2, 0),
+    at('src/a.js', 'script-string', 3, 0)
+  ]
+  const snapshots = [snapshot('src/a.js::script', locations.map(location => ({ value: '你好', locations: [location] })))]
+  const firstRound = buildCatalog(snapshots, { previousMetadata, createUlid })
+  assert.strictEqual(firstRound.ambiguities.length, 3)
+  const proposedByContext = Object.fromEntries(
+    firstRound.ambiguities.map(item => [item.localContext, item.proposedKey])
+  )
+
+  // Same continuing ULID sequence: without previousAmbiguities reuse the retry would mint new keys.
+  const retry = buildCatalog(snapshots, {
+    previousMetadata,
+    previousAmbiguities: firstRound.ambiguities,
+    createUlid
+  })
+  assert.strictEqual(retry.ambiguities.length, 3)
+  for (const ambiguity of retry.ambiguities) {
+    assert.strictEqual(ambiguity.proposedKey, proposedByContext[ambiguity.localContext])
+  }
+  assert.deepStrictEqual(
+    retry.ambiguities.map(item => item.proposedKey).sort(),
+    firstRound.ambiguities.map(item => item.proposedKey).sort()
+  )
+})
+
 test('a confirmation manifest resolves an occurrence identity ambiguity and a later round keeps that key', () => {
   const first = buildCatalog([
     snapshot('src/a.js::script', [
@@ -404,7 +442,12 @@ test('a confirmation manifest resolves an occurrence identity ambiguity and a la
     { semanticHost: 'src/a.js::script', childRole: 'script-string', localContext: 'sibling:2', key: proposed }
   ]
 
-  const confirmed = buildCatalog(snapshots, { previousMetadata, confirmations })
+  // previousAmbiguities keeps the report's proposed key stable so confirmation matches it directly.
+  const confirmed = buildCatalog(snapshots, {
+    previousMetadata,
+    previousAmbiguities: ambiguous.ambiguities,
+    confirmations
+  })
   assert.deepStrictEqual(confirmed.ambiguities, [])
   assert.strictEqual(confirmed.messages[historicalKeys[0]], '你好')
   assert.strictEqual(confirmed.messages[historicalKeys[1]], '你好')
@@ -475,6 +518,39 @@ test('identity confirmations reject an unsupported manifest and duplicate occurr
     ]
   })}\n`)
   assert.throws(() => readIdentityConfirmations(file), /duplicate identity confirmation/)
+})
+
+test('identity ambiguities report reader returns prior proposals and rejects unsupported schemas', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-ambiguities-'))
+  const file = path.join(root, 'identity-ambiguities.json')
+  assert.deepStrictEqual(readIdentityAmbiguities(path.join(root, 'missing.json')), [])
+  fs.writeFileSync(file, '{"version":99,"ambiguities":[]}\n')
+  assert.throws(() => readIdentityAmbiguities(file), /version 99 is unsupported/)
+  fs.writeFileSync(file, `${JSON.stringify({
+    version: 1,
+    ambiguities: [
+      {
+        proposedKey: 'auto.00000000000000000000000001',
+        source: '你好',
+        semanticHost: 'src/a.js::script',
+        childRole: 'script-string',
+        localContext: 'sibling:0',
+        location: at('src/a.js', 'script-string', 1, 0),
+        candidates: [{ key: 'auto.00000000000000000000000000', source: '你好', semanticHost: 'src/a.js::script', localContext: 'sibling:0' }]
+      }
+    ]
+  })}\n`)
+  assert.deepStrictEqual(readIdentityAmbiguities(file), [
+    {
+      proposedKey: 'auto.00000000000000000000000001',
+      source: '你好',
+      semanticHost: 'src/a.js::script',
+      childRole: 'script-string',
+      localContext: 'sibling:0',
+      location: at('src/a.js', 'script-string', 1, 0),
+      candidates: [{ key: 'auto.00000000000000000000000000', source: '你好', semanticHost: 'src/a.js::script', localContext: 'sibling:0' }]
+    }
+  ])
 })
 
 test('identical text at distinct occurrences gets independent automatic keys across semantic kinds', () => {
