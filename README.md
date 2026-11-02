@@ -33,6 +33,34 @@ npm run update-react-demo-collection
 
 The first command runs `vue-cli-service build` for the Vue demo; the second runs the React demo's Webpack production build. These are the only workflows that update their respective committed collection files.
 
+### Hybrid-localization quality gate
+
+`npm run verify` is the reproducible local, review, and CI entry point for this repository. It:
+
+1. Runs `i18n-collect verify` on the React demo (collection freshness + hybrid policy).
+2. Builds the Vue demo, fails if formal outputs would change (restoring committed bytes), then runs `check-policy` there.
+3. Runs the package test suite.
+4. Runs the React demo production build.
+
+`i18n-collect verify` is the per-project gate for webpack integrations that already use `i18n-collect collect`. It snapshots formal outputs, runs collection, restores and fails as `stale` when dictionary / source map / source-locale catalog / catalog metadata bytes change, then runs `check-policy`. Collection failures, key conflicts, identity ambiguities, and invalid metadata stay hard failures and cannot be suppressed by the complete-static-copy baseline.
+
+```
+npm run verify
+npx i18n-collect verify --cwd apps/react-demo
+npx i18n-collect verify --json
+npx i18n-collect verify --help
+```
+
+| Failure category | Typical exit | What to do |
+| --- | --- | --- |
+| `configuration` | 1 | Fix config or command options, then re-run. |
+| `collection` | 2 | Fix the collection failure (conflict, ambiguity, invalid metadata, loader). Baseline cannot hide it. |
+| `build` | 3 | Fix the webpack/demo build, then re-run. |
+| `policy` | 8 | Migrate the new/modified violation to an explicit message, or update the baseline for an exact grandfathered complete-static-copy entry. Runtime-multilingual literals cannot be grandfathered. |
+| `stale` | 9 | Re-collect (or run the demo production build) and commit the updated formal outputs. |
+| `tests` | 10 | Fix failing package tests (`npm test -w i18n-collect`). |
+| `demo-build` | 11 | Fix the React demo production build. |
+
 ## Collection command
 
 `i18n-collect collect` runs that same webpack integration once, without a prompt. The configuration must already include `i18n-collect/myloader` and `i18n-collect/myplugin`. The command reads `i18n-collect.config.js` and can replace `include`, `exclude`, and `contextFilters` with `--include`, `--exclude`, and `--context-filter`. It writes the hash dictionary, the source map, and the keyed translation catalog, prints a collection report, and leaves application source unchanged. It does not translate or make network requests. The webpack bundle is emitted outside the project.
@@ -147,7 +175,11 @@ Declare runtime-multilingual features or routes in `<catalogDir>/runtime-multili
 npx i18n-collect check-policy
 npx i18n-collect check-policy --json
 npx i18n-collect check-policy --help
+npx i18n-collect verify
+npx i18n-collect verify --json
 ```
+
+Use `verify` when you need freshness and policy together. Use `check-policy` alone for a faster authoring-policy scan that does not re-run collection. See [Hybrid-localization quality gate](#hybrid-localization-quality-gate) for the repository `npm run verify` workflow and failure categories.
 
 A colocated `i18n-key` that disagrees with a localized-call key fails collection. Matching keys are accepted. Changing an automatic occurrence to an explicit key makes the explicit key the new identity; the former automatic key remains orphaned and its translation asset is not implicitly migrated.
 

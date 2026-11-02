@@ -4,6 +4,7 @@ const { helpFor } = require('./help')
 const { replace } = require('./replace')
 const { run } = require('./run')
 const { translate } = require('./translate')
+const { verify } = require('./verify')
 
 function write(stream, text) {
   if (!text) return
@@ -23,6 +24,7 @@ async function main(argv) {
     && command !== 'replace'
     && command !== 'run'
     && command !== 'check-policy'
+    && command !== 'verify'
   ) {
     write(process.stderr, `configuration: unknown command "${command}"`)
     write(process.stdout, helpFor())
@@ -41,7 +43,9 @@ async function main(argv) {
         ? replace(commandArgs)
         : command === 'check-policy'
           ? checkPolicy(commandArgs)
-          : await run(commandArgs)
+          : command === 'verify'
+            ? await verify(commandArgs)
+            : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   return outcome.code

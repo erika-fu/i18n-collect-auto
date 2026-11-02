@@ -82,6 +82,12 @@ A static `t('key')`, `$t('key')`, or `this.$t('key')` is a `localized-call` occu
 
 Declare parameterized messages that are not complete static copy in `<catalogDir>/explicit-messages.json` (`{ version: 1, messages: [{ key, source }] }`). Collection derives the placeholder contract from `source` and checks a static object-literal second argument against those names. A placeholder mismatch, or a dynamic second argument when placeholders are required, fails the round without publishing partial formal outputs. An invalid or unsupported manifest version also fails closed. Editing the declared source keeps the key, updates the fingerprint, and marks target translations for review.
 
+## Hybrid-localization quality gate failed
+
+`i18n-collect verify` is the per-project quality gate: it snapshots formal outputs (hash dictionary, source map, source-locale catalog, catalog metadata), runs the same webpack collection as `collect`, restores those files and fails as `stale` when their bytes would change, then runs `check-policy`. Exit categories stay distinct: `stale` means commit refreshed formal outputs; `policy` means migrate or update the complete-static-copy baseline (runtime-multilingual literals cannot be grandfathered); `collection` / `build` / `configuration` remain hard failures. The baseline never suppresses collection failures, identity ambiguities, invalid metadata, or stale formal outputs.
+
+In this repository, `npm run verify` is the local, review, and CI entry point. It verifies the React demo with `i18n-collect verify`, checks Vue demo formal freshness via its production build plus `check-policy`, runs the package tests, and builds the React demo. Remediation hints are printed with each category.
+
 ## Complete-static-copy policy check failed
 
 `i18n-collect check-policy` distinguishes complete static Chinese (eligible for automatic collection outside a runtime-multilingual boundary) from message construction that must use an explicit localization call. It reports each violation with a machine-checkable reason (`interpolation`, `concatenation`, `conditional`, `formatting`, or `structured-fragmentation`) and the affected source location. Treat those diagnostics as authoring-policy findings, not as generic collection omissions.

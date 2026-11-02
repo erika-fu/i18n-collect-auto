@@ -126,6 +126,37 @@ Exit codes:
   7  strict mode found a skipped candidate
 `
 
+const VERIFY_HELP = `i18n-collect verify
+
+Confirm formal collection outputs are current, then run hybrid localization policy checks.
+Runs collection once through the project's webpack integration, fails when generated dictionary,
+source map, source-locale catalog, or catalog metadata bytes differ from the committed files
+(restoring those files before exit), then runs check-policy with baseline comparison.
+Collection failures, key conflicts, identity ambiguities, and invalid metadata stay hard failures
+and cannot be suppressed by the complete-static-copy baseline.
+
+Usage:
+  i18n-collect verify [options]
+
+Options:
+  --cwd <dir>               Project root. Defaults to the current directory.
+  --webpack-config <path>   Webpack configuration to run. Defaults to webpack.config.js.
+  --include <pattern>       Replace the configured include scope. Repeat to set several patterns.
+  --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
+  --context-filter <name>   Replace configured context filters. Repeat to select several.
+                            Names: logging, tests, analytics.
+  --json                    Print the verification report as JSON on stdout.
+  -h, --help                Show this help.
+
+Exit codes:
+  0  formal outputs are current and policy checks passed (grandfathered baseline entries allowed)
+  1  configuration failure
+  2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
+  3  build failure
+  8  authoring-policy violation: new or modified complete-static-copy findings, or runtime-multilingual boundary violations
+  9  stale formal collection output
+`
+
 const CHECK_POLICY_HELP = `i18n-collect check-policy
 
 Scan project sources for complete-static-copy policy violations and runtime-multilingual
@@ -176,6 +207,7 @@ Commands:
   replace       Preview safe source replacements, or commit them with --write.
   run           Run selected collect, translate, and replace stages.
   check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
+  verify        Confirm formal outputs are current, then run hybrid localization policy checks.
 
 Run i18n-collect <command> --help for command options.
 `
@@ -235,6 +267,7 @@ function helpFor(command) {
   if (command === 'replace') return REPLACE_HELP
   if (command === 'run') return RUN_HELP
   if (command === 'check-policy') return CHECK_POLICY_HELP
+  if (command === 'verify') return VERIFY_HELP
   return ROOT_HELP
 }
 
@@ -245,5 +278,6 @@ module.exports = {
   ROOT_HELP,
   RUN_HELP,
   TRANSLATE_HELP,
+  VERIFY_HELP,
   helpFor
 }

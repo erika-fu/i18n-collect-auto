@@ -308,7 +308,21 @@ CSS：
 npx i18n-collect check-policy
 npx i18n-collect check-policy --json
 npx i18n-collect check-policy --help
+npx i18n-collect verify
+npx i18n-collect verify --json
 ```
+
+`i18n-collect verify` 会先跑一轮收集：正式产物（词典、来源映射、源语言目录、目录元数据）字节若与已提交文件不一致，会先恢复再以 `stale` 失败；通过后再跑 `check-policy`。收集失败、键冲突、身份歧义、无效元数据仍是硬失败，baseline 不能掩盖。本仓库用 `npm run verify` 作为本地 / 评审 / CI 入口：校验 React demo、用 Vue demo 生产构建检查正式产物新鲜度并跑策略、跑包测试、再构建 React demo。
+
+| 失败类别 | 典型退出码 | 作者应做什么 |
+| --- | --- | --- |
+| `configuration` | 1 | 修正配置或命令参数后重跑。 |
+| `collection` | 2 | 修收集失败（冲突、歧义、无效元数据、Loader）；baseline 帮不了。 |
+| `build` | 3 | 修好 webpack / demo 构建后重跑。 |
+| `policy` | 8 | 把新增/改动违规迁到显式消息，或为精确匹配的完整静态文案违规更新 baseline；运行时多语言边界内的直接源文案不能 grandfather。 |
+| `stale` | 9 | 重新收集（或跑会写出正式产物的生产构建）并提交更新后的正式产物。 |
+| `tests` | 10 | 修复 `packages/i18n-collect` 测试。 |
+| `demo-build` | 11 | 修复 React demo 生产构建。 |
 
 ---
 
@@ -570,9 +584,10 @@ npm install
 npm run serve
 npm run build
 npm test
+npm run verify
 ```
 
-其中 `apps/demo` 是实际可运行的参考实现。
+其中 `apps/demo` 是实际可运行的参考实现。`npm run verify` 是混合本地化质量门禁：正式产物是否过期、策略/baseline、包测试与两个 demo 构建。
 
 ### 2. 注册 Plugin
 
