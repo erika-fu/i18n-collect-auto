@@ -209,8 +209,19 @@ test('catalog metadata serialization is deterministic for the same snapshots', (
       { value: '甲', locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 1 } }] }
     ]
   }]
-  const first = JSON.stringify(catalogMetadata(buildCatalog(snapshots), { sourceLocale: 'zh', format: 'json' }))
-  const second = JSON.stringify(catalogMetadata(buildCatalog(snapshots), { sourceLocale: 'zh', format: 'json' }))
+  let sequence = 0
+  const createUlid = () => `0000000000${String(sequence++).padStart(16, '0')}`
+  const firstCatalog = buildCatalog(snapshots, { createUlid })
+  sequence = 0
+  const secondCatalog = buildCatalog(snapshots, { createUlid })
+  const first = JSON.stringify(catalogMetadata(firstCatalog, { sourceLocale: 'zh', format: 'json' }))
+  const second = JSON.stringify(catalogMetadata(secondCatalog, { sourceLocale: 'zh', format: 'json' }))
   assert.strictEqual(first, second)
+  const parsed = JSON.parse(first)
+  assert.strictEqual(parsed.version, 3)
+  assert.ok(Object.values(parsed.entries).every(entry => entry.representation === 'source-text'))
+  assert.ok(Object.values(parsed.entries).every(entry =>
+    entry.occurrences.every(occurrence => occurrence.representation === 'source-text')
+  ))
 })
 

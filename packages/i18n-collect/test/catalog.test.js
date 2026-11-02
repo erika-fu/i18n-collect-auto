@@ -3,7 +3,18 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
-const { automaticKey, buildCatalog, catalogMetadata, conflictMessage, diffCatalog, messageContract, readIdentityConfirmations, upgradeCatalogMetadata } = require('../mycommon/catalog')
+const {
+  OPAQUE_AUTOMATIC_KEY,
+  automaticKey,
+  buildCatalog,
+  catalogMetadata,
+  conflictMessage,
+  createUlid,
+  diffCatalog,
+  messageContract,
+  readIdentityConfirmations,
+  upgradeCatalogMetadata
+} = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { isLocalizationKey } = require('../myloader/directives')
 
@@ -13,6 +24,17 @@ function at(path, kind, line, column, length = 2) {
 
 function snapshot(identity, entries) {
   return { identity, projectPath: identity.split('::')[0], entries }
+}
+
+function keyAt(catalog, location) {
+  return Object.keys(catalog.entries).find(key =>
+    (catalog.entries[key].locations || []).some(item => JSON.stringify(item) === JSON.stringify(location))
+  )
+}
+
+function sequentialUlid() {
+  let sequence = 0
+  return () => `0000000000${String(sequence++).padStart(16, '0')}`
 }
 
 test('catalog metadata records a stable occurrence identity apart from source text and coordinates', () => {
@@ -27,7 +49,7 @@ test('catalog metadata records a stable occurrence identity apart from source te
     ])
   ])
   const metadata = catalogMetadata(catalog, { sourceLocale: 'zh', format: 'json' })
-  assert.strictEqual(metadata.version, 2)
+  assert.strictEqual(metadata.version, 3)
   const keys = Object.keys(metadata.entries).sort()
   assert.strictEqual(keys.length, 2)
 
@@ -36,6 +58,8 @@ test('catalog metadata records a stable occurrence identity apart from source te
   ))
   assert.strictEqual(earlier.occurrences.length, 1)
   assert.strictEqual(later.occurrences.length, 1)
+  assert.strictEqual(earlier.representation, 'source-text')
+  assert.strictEqual(later.representation, 'source-text')
   assert.deepStrictEqual(earlier.occurrences[0].location, first)
   assert.deepStrictEqual(later.occurrences[0].location, second)
   assert.strictEqual(earlier.occurrences[0].semanticHost, 'src/a.js::script')
@@ -46,6 +70,8 @@ test('catalog metadata records a stable occurrence identity apart from source te
   assert.strictEqual(later.occurrences[0].localContext, 'sibling:1')
   assert.strictEqual(earlier.occurrences[0].origin, 'derived')
   assert.strictEqual(later.occurrences[0].origin, 'derived')
+  assert.strictEqual(earlier.occurrences[0].representation, 'source-text')
+  assert.strictEqual(later.occurrences[0].representation, 'source-text')
   assert.match(earlier.occurrences[0].id, /^[0-9a-f]{16}$/)
   assert.match(later.occurrences[0].id, /^[0-9a-f]{16}$/)
   assert.notStrictEqual(earlier.occurrences[0].id, later.occurrences[0].id)
@@ -65,46 +91,41 @@ test('catalog metadata records a stable occurrence identity apart from source te
   assert.notDeepStrictEqual(movedEarlier.occurrences[0].location, earlier.occurrences[0].location)
 })
 
-test('an automatic key is readable, deterministic, and unique per occurrence', () => {
+test('an automatic key is an opaque auto.<ULID> with no path, source text, or coordinates', () => {
   const here = at('src/pages/Home.vue', 'html-text', 4, 2)
   const key = automaticKey({ path: 'src/pages/Home.vue', kind: 'html-text', value: '首页', location: here })
-  assert.match(key, /^src\.pages\.Home\.[0-9a-f]{8}$/)
-  assert.strictEqual(automaticKey({ path: 'src/pages/Home.vue', kind: 'html-text', value: '首页', location: here }), key)
-  assert.notStrictEqual(
-    automaticKey({ path: 'src/pages/Home.vue', kind: 'html-attribute', value: '首页', location: at('src/pages/Home.vue', 'html-attribute', 4, 2) }),
-    key
-  )
-  assert.notStrictEqual(
-    automaticKey({ path: 'src/pages/About.vue', kind: 'html-text', value: '首页', location: at('src/pages/About.vue', 'html-text', 4, 2) }),
-    key
-  )
-  assert.notStrictEqual(
-    automaticKey({ path: 'src/pages/Home.vue', kind: 'html-text', value: '主页', location: here }),
-    key
-  )
-  assert.notStrictEqual(
-    automaticKey({ path: 'src/pages/Home.vue', kind: 'html-text', value: '首页', location: at('src/pages/Home.vue', 'html-text', 9, 0) }),
-    key
-  )
-  assert.match(
-    automaticKey({ path: 'src/my page/1-a.b.js', kind: 'script-string', value: '文', location: at('src/my page/1-a.b.js', 'script-string', 1, 0) }),
-    /^src\.my_page\.1-a_b\.[0-9a-f]{8}$/
-  )
-  for (const path of ['_app.js', '1.js', '首页.vue', '-x/y.js']) {
-    const keyForPath = automaticKey({ path, kind: 'script-string', value: '文', location: at(path, 'script-string', 1, 0) })
-    assert.ok(isLocalizationKey(keyForPath), `${keyForPath} is a valid key`)
-  }
-  assert.match(
-    automaticKey({ path: '_app.js', kind: 'script-string', value: '文', location: at('_app.js', 'script-string', 1, 0) }),
-    /^k_app\.[0-9a-f]{8}$/
-  )
-  assert.throws(
-    () => automaticKey({ path: 'src/a.js', kind: 'script-string', value: '文' }),
-    /Automatic key requires a source location/
-  )
+  assert.match(key, OPAQUE_AUTOMATIC_KEY)
+  assert.ok(isLocalizationKey(key))
+  assert.ok(!key.includes('src'))
+  assert.ok(!key.includes('pages'))
+  assert.ok(!key.includes('Home'))
+  assert.ok(!/首页|主页/.test(key))
+  assert.ok(!/[0-9]+_[0-9]+/.test(key))
 
-  const first = buildCatalog([snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 1, 10)] }])])
-  const moved = buildCatalog([snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 9, 3)] }])])
+  const again = automaticKey({ path: 'src/pages/Home.vue', kind: 'html-text', value: '首页', location: here })
+  assert.match(again, OPAQUE_AUTOMATIC_KEY)
+  assert.notStrictEqual(again, key)
+
+  const withoutLocation = automaticKey({ path: 'src/a.js', kind: 'script-string', value: '文' })
+  assert.match(withoutLocation, OPAQUE_AUTOMATIC_KEY)
+  assert.ok(isLocalizationKey(withoutLocation))
+
+  const stamped = createUlid(1_715_731_200_000, () => Buffer.alloc(10, 0x11))
+  assert.match(stamped, /^[0-9A-HJKMNP-TV-Z]{26}$/)
+  assert.strictEqual(stamped.length, 26)
+  assert.notStrictEqual(stamped, createUlid(1_715_731_200_001, () => Buffer.alloc(10, 0x11)))
+  assert.strictEqual(automaticKey({ createUlid: () => stamped }), `auto.${stamped}`)
+
+  const createUlidSeq = sequentialUlid()
+  const first = buildCatalog(
+    [snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 1, 10)] }])],
+    { createUlid: createUlidSeq }
+  )
+  const moved = buildCatalog(
+    [snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 9, 3)] }])],
+    { createUlid: createUlidSeq }
+  )
+  assert.match(Object.keys(first.messages)[0], OPAQUE_AUTOMATIC_KEY)
   assert.notDeepStrictEqual(Object.keys(moved.messages), Object.keys(first.messages))
 })
 
@@ -254,7 +275,8 @@ test('unmatched occurrences receive new keys without reusing an unsafe historica
   )
   const multiKeys = Object.keys(multiFileAmbiguous.messages).sort()
   assert.strictEqual(multiKeys.length, 2)
-  assert.ok(multiKeys.every(key => key.startsWith('src.b.') || key.startsWith('src.c.')))
+  assert.ok(multiKeys.every(key => /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/.test(key)))
+  assert.ok(multiKeys.every(key => !previousKeys.includes(key)))
 })
 
 test('repeated siblings with several historical candidates report an identity ambiguity and allocate new automatic keys', () => {
@@ -295,9 +317,13 @@ test('repeated siblings with several historical candidates report an identity am
     assert.ok(freshKeys.includes(ambiguity.proposedKey))
     assert.ok(!historicalKeys.includes(ambiguity.proposedKey))
   }
-  assert.strictEqual(
+  assert.match(
     repeated.ambiguities.find(item => item.localContext === 'sibling:2').proposedKey,
-    automaticKey({ path: 'src/a.js', kind: 'script-string', value: '你好', location: third })
+    /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/
+  )
+  assert.strictEqual(
+    repeated.ambiguities.find(item => item.localContext === 'sibling:2').location.start.line,
+    third.start.line
   )
 })
 
@@ -331,10 +357,7 @@ test('a refactor with several historical file candidates reports an identity amb
   const moved = refactored.ambiguities.find(item => item.semanticHost === 'src/b.js::script')
   assert.strictEqual(moved.localContext, 'sibling:0')
   assert.deepStrictEqual(moved.location, here)
-  assert.strictEqual(
-    moved.proposedKey,
-    automaticKey({ path: 'src/b.js', kind: 'script-string', value: '你好', location: here })
-  )
+  assert.match(moved.proposedKey, /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/)
 })
 
 test('an explicit key resolves an occurrence identity ambiguity', () => {
@@ -402,12 +425,16 @@ test('unrelated file replacements are not occurrence identity ambiguities', () =
     snapshot('src/a.js::script', [{ value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] }]),
     snapshot('src/d.js::script', [{ value: '欢迎', locations: [at('src/d.js', 'script-string', 1, 0)] }])
   ]), { sourceLocale: 'zh', format: 'json' })
+  const previousKeys = Object.keys(previousMetadata.entries).sort()
   const next = buildCatalog([
     snapshot('src/b.js::script', [{ value: '订单', locations: [at('src/b.js', 'script-string', 1, 0)] }]),
     snapshot('src/c.js::script', [{ value: '设置', locations: [at('src/c.js', 'script-string', 1, 0)] }])
   ], { previousMetadata })
   assert.deepStrictEqual(next.ambiguities, [])
-  assert.deepStrictEqual(Object.keys(next.messages).sort().map(key => key.split('.').slice(0, 2).join('.')), ['src.b', 'src.c'])
+  const nextKeys = Object.keys(next.messages).sort()
+  assert.strictEqual(nextKeys.length, 2)
+  assert.ok(nextKeys.every(key => /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/.test(key)))
+  assert.ok(nextKeys.every(key => !previousKeys.includes(key)))
 })
 
 test('a confirmation that names an unrelated key leaves the occurrence ambiguous', () => {
@@ -504,10 +531,10 @@ test('every collected location gets an explicit or automatic key, and an explici
       { value: '你好', locations: [at('src/a.js', 'script-string', 1, 0)] },
       { value: 'English only', locations: [at('src/a.js', 'script-string', 7, 0)] }
     ])
-  ])
-  const helloA = automaticKey({ path: 'src/a.js', kind: 'script-string', value: '你好', location: at('src/a.js', 'script-string', 1, 0) })
-  const helloB1 = automaticKey({ path: 'src/b.js', kind: 'script-string', value: '你好', location: at('src/b.js', 'script-string', 1, 0) })
-  const helloB3 = automaticKey({ path: 'src/b.js', kind: 'script-string', value: '你好', location: at('src/b.js', 'script-string', 3, 0) })
+  ], { createUlid: sequentialUlid() })
+  const helloA = keyAt(catalog, at('src/a.js', 'script-string', 1, 0))
+  const helloB1 = keyAt(catalog, at('src/b.js', 'script-string', 1, 0))
+  const helloB3 = keyAt(catalog, at('src/b.js', 'script-string', 3, 0))
   assert.deepStrictEqual(catalog.conflicts, [])
   assert.deepStrictEqual(catalog.messages, {
     [helloA]: '你好',
@@ -518,10 +545,12 @@ test('every collected location gets an explicit or automatic key, and an explici
   assert.deepStrictEqual(Object.keys(catalog.messages), [helloA, helloB1, helloB3, 'home.title'].sort())
   assert.strictEqual(catalog.entries['home.title'].source, '首页')
   assert.strictEqual(catalog.entries['home.title'].origin, 'explicit')
+  assert.strictEqual(catalog.entries['home.title'].representation, 'source-text')
   assert.deepStrictEqual(catalog.entries['home.title'].locations, [at('src/a.js', 'script-string', 5, 4), at('src/b.js', 'script-string', 2, 0)])
   assert.strictEqual(catalog.entries['home.title'].occurrences.length, 2)
   assert.match(catalog.entries['home.title'].fingerprint, /^[0-9a-f]{16}$/)
   assert.strictEqual(catalog.entries[helloB1].origin, 'derived')
+  assert.match(helloB1, /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/)
   assert.deepStrictEqual(catalog.entries[helloB1].locations, [at('src/b.js', 'script-string', 1, 0)])
   assert.deepStrictEqual(catalog.entries[helloB3].locations, [at('src/b.js', 'script-string', 3, 0)])
   assert.strictEqual(catalog.entries[helloA].fingerprint, catalog.entries[helloB1].fingerprint)
@@ -555,15 +584,11 @@ test('an explicit key overrides automatic identity and joins compatible message 
   assert.strictEqual(catalog.entries['greet.user'].origin, 'explicit')
   assert.deepStrictEqual(catalog.entries['greet.user'].locations, [first, second])
   assert.strictEqual(catalog.entries['greet.user'].occurrences.length, 2)
-  const aloneKey = automaticKey({ path: 'src/a.js', kind: 'script-string', value: '旁路', location: alone })
+  const aloneKey = keyAt(catalog, alone)
   assert.strictEqual(catalog.messages[aloneKey], '旁路')
   assert.strictEqual(catalog.entries[aloneKey].origin, 'derived')
-  assert.ok(!Object.prototype.hasOwnProperty.call(catalog.messages, automaticKey({
-    path: 'src/a.js',
-    kind: 'script-string',
-    value: '你好，{name}',
-    location: first
-  })))
+  assert.match(aloneKey, /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/)
+  assert.strictEqual(Object.keys(catalog.messages).length, 2)
 })
 
 test('incompatible message patterns or placeholder contracts under one key fail with every occurrence reported', () => {
@@ -605,7 +630,8 @@ test('incompatible message patterns or placeholder contracts under one key fail 
 test('a key that names incompatible message contracts is a conflict with every location reported', () => {
   const keptLocation = at('src/a.js', 'script-string', 2, 0)
   const automaticLocation = at('src/c.js', 'script-string', 4, 2)
-  const colliding = automaticKey({ path: 'src/c.js', kind: 'script-string', value: '派生', location: automaticLocation })
+  const colliding = 'auto.00000000000000000000000001'
+  const createUlid = sequentialUlid()
   const catalog = buildCatalog([
     snapshot('src/a.js::script', [
       { value: '首页', key: 'home.title', locations: [at('src/a.js', 'script-string', 1, 16)] },
@@ -618,12 +644,11 @@ test('a key that names incompatible message contracts is a conflict with every l
       { value: '派生', locations: [automaticLocation] },
       { value: '冒用', key: colliding, locations: [at('src/c.js', 'script-string', 6, 2)] }
     ])
-  ])
+  ], { createUlid })
+  const keptKey = keyAt(catalog, keptLocation)
   assert.deepStrictEqual(catalog.conflicts.map(conflict => conflict.key), [colliding, 'home.title'].sort())
-  assert.deepStrictEqual(
-    Object.keys(catalog.messages),
-    [automaticKey({ path: 'src/a.js', kind: 'script-string', value: '保留', location: keptLocation })]
-  )
+  assert.deepStrictEqual(Object.keys(catalog.messages), [keptKey])
+  assert.match(keptKey, /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/)
   const message = conflictMessage(catalog.conflicts)
   assert.match(message, /^i18n-collect failed: 2 localization key conflicts/)
   assert.match(message, /"home\.title" names incompatible message contracts/)
@@ -644,11 +669,13 @@ test('catalog metadata records source identity so a later round can tell what ch
     { value: '删除', key: 'gone', locations: [at('src/a.js', 'script-string', 3, 0)] }
   ])
   assert.deepStrictEqual(Object.keys(before), ['version', 'sourceLocale', 'format', 'entries'])
-  assert.strictEqual(before.version, 2)
+  assert.strictEqual(before.version, 3)
   assert.strictEqual(before.sourceLocale, 'zh')
   assert.strictEqual(before.format, 'json')
   assert.deepStrictEqual(before.entries.same.locations, [at('src/a.js', 'script-string', 1, 0)])
   assert.strictEqual(before.entries.same.occurrences.length, 1)
+  assert.strictEqual(before.entries.same.representation, 'source-text')
+  assert.strictEqual(before.entries.same.occurrences[0].representation, 'source-text')
 
   const after = metadataOf([
     { value: '不变', key: 'same', locations: [at('src/a.js', 'script-string', 8, 0)] },
@@ -665,7 +692,7 @@ test('catalog metadata records source identity so a later round can tell what ch
   })
   assert.throws(
     () => diffCatalog({ version: 99, entries: before.entries }, after),
-    /cannot be upgraded to version 2/
+    /cannot be upgraded to version 3/
   )
   assert.deepStrictEqual(diffCatalog(null, after), {
     added: ['edited', 'fresh', 'same'],
@@ -677,7 +704,7 @@ test('catalog metadata records source identity so a later round can tell what ch
   })
 })
 
-test('catalog metadata upgrades version 1 entries and rejects unsupported schemas', () => {
+test('catalog metadata upgrades version 1 and version 2 entries and rejects unsupported schemas', () => {
   const location = at('src/a.js', 'script-string', 1, 0)
   const v1 = {
     version: 1,
@@ -693,20 +720,90 @@ test('catalog metadata upgrades version 1 entries and rejects unsupported schema
     }
   }
   const upgraded = upgradeCatalogMetadata(v1)
-  assert.strictEqual(upgraded.version, 2)
+  assert.strictEqual(upgraded.version, 3)
   assert.deepStrictEqual(upgraded.entries['home.title'].locations, [location])
+  assert.strictEqual(upgraded.entries['home.title'].representation, 'source-text')
   assert.strictEqual(upgraded.entries['home.title'].occurrences.length, 1)
   assert.strictEqual(upgraded.entries['home.title'].occurrences[0].semanticHost, 'src/a.js::script')
   assert.strictEqual(upgraded.entries['home.title'].occurrences[0].childRole, 'script-string')
   assert.strictEqual(upgraded.entries['home.title'].occurrences[0].localContext, 'sibling:0')
   assert.strictEqual(upgraded.entries['home.title'].occurrences[0].origin, 'explicit')
+  assert.strictEqual(upgraded.entries['home.title'].occurrences[0].representation, 'source-text')
   assert.match(upgraded.entries['home.title'].occurrences[0].id, /^[0-9a-f]{16}$/)
   assert.deepStrictEqual(upgraded.entries['home.title'].occurrences[0].location, location)
   assert.deepStrictEqual(upgradeCatalogMetadata(upgraded), upgraded)
 
+  const legacyKey = 'src.a.deadbeef'
+  const v2 = {
+    version: 2,
+    sourceLocale: 'zh',
+    format: 'json',
+    entries: {
+      [legacyKey]: {
+        source: '你好',
+        fingerprint: 'abcd1234abcd1234',
+        origin: 'derived',
+        locations: [location],
+        occurrences: [{
+          id: '0123456789abcdef',
+          semanticHost: 'src/a.js::script',
+          childRole: 'script-string',
+          localContext: 'sibling:0',
+          origin: 'derived',
+          location
+        }]
+      }
+    }
+  }
+  const fromV2 = upgradeCatalogMetadata(v2)
+  assert.strictEqual(fromV2.version, 3)
+  assert.deepStrictEqual(Object.keys(fromV2.entries), [legacyKey])
+  assert.strictEqual(fromV2.entries[legacyKey].representation, 'source-text')
+  assert.strictEqual(fromV2.entries[legacyKey].occurrences[0].representation, 'source-text')
+  assert.strictEqual(fromV2.entries[legacyKey].source, '你好')
+  assert.deepStrictEqual(fromV2.entries[legacyKey].locations, [location])
+
+  const reused = buildCatalog(
+    [snapshot('src/a.js::script', [{ value: '您好', locations: [at('src/a.js', 'script-string', 9, 0)] }])],
+    { previousMetadata: fromV2 }
+  )
+  assert.deepStrictEqual(Object.keys(reused.messages), [legacyKey])
+  assert.strictEqual(reused.messages[legacyKey], '您好')
+  const published = catalogMetadata(reused, { sourceLocale: 'zh', format: 'json' })
+  assert.strictEqual(published.version, 3)
+  assert.deepStrictEqual(Object.keys(published.entries).filter(key => key !== legacyKey), [])
+  assert.strictEqual(published.entries[legacyKey].representation, 'source-text')
+  assert.strictEqual(published.entries[legacyKey].occurrences[0].representation, 'source-text')
+
+  const withLocalized = upgradeCatalogMetadata({
+    version: 3,
+    sourceLocale: 'zh',
+    format: 'json',
+    entries: {
+      'home.call': {
+        source: '首页',
+        fingerprint: 'abc',
+        origin: 'explicit',
+        representation: 'localized-call',
+        locations: [location],
+        occurrences: [{
+          id: '0123456789abcdef',
+          semanticHost: 'src/a.js::script',
+          childRole: 'script-string',
+          localContext: 'sibling:0',
+          origin: 'explicit',
+          representation: 'localized-call',
+          location
+        }]
+      }
+    }
+  })
+  assert.strictEqual(withLocalized.entries['home.call'].representation, 'localized-call')
+  assert.strictEqual(withLocalized.entries['home.call'].occurrences[0].representation, 'localized-call')
+
   assert.throws(
     () => upgradeCatalogMetadata({ version: 99, entries: {} }),
-    /cannot be upgraded to version 2.*restore a version 1 or 2 catalog\.meta\.json/
+    /cannot be upgraded to version 3.*restore a version 1, 2, or 3 catalog\.meta\.json/
   )
   assert.deepStrictEqual(
     upgradeCatalogMetadata({
@@ -735,6 +832,29 @@ test('catalog metadata upgrades version 1 entries and rejects unsupported schema
       }
     }),
     /missing occurrence identities/
+  )
+  assert.throws(
+    () => upgradeCatalogMetadata({
+      version: 3,
+      entries: {
+        broken: {
+          source: '首页',
+          fingerprint: 'abc',
+          origin: 'derived',
+          representation: 'source-text',
+          locations: [location],
+          occurrences: [{
+            id: '0123456789abcdef',
+            semanticHost: 'src/a.js::script',
+            childRole: 'script-string',
+            localContext: 'sibling:0',
+            origin: 'derived',
+            location
+          }]
+        }
+      }
+    }),
+    /unknown occurrence representation/
   )
 })
 

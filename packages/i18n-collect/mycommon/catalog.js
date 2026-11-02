@@ -4,8 +4,14 @@ const path = require('path')
 const { containsHan } = require('../myloader/resource')
 const { normalizeLocation, sortLocations, uniqueLocations } = require('./store')
 
-const CATALOG_VERSION = 2
-const PREVIOUS_CATALOG_VERSION = 1
+const CATALOG_VERSION = 3
+const CATALOG_VERSION_V2 = 2
+const CATALOG_VERSION_V1 = 1
+const REPRESENTATION_SOURCE_TEXT = 'source-text'
+const REPRESENTATION_LOCALIZED_CALL = 'localized-call'
+const REPRESENTATIONS = new Set([REPRESENTATION_SOURCE_TEXT, REPRESENTATION_LOCALIZED_CALL])
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const OPAQUE_AUTOMATIC_KEY = /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex')
@@ -34,49 +40,43 @@ function compatibilityKey(contract) {
   return `${contract.pattern}\0${contract.placeholders.join('\0')}`
 }
 
-function pathSlug(projectPath) {
-  const parsed = path.posix.parse(projectPath)
-  const segments = (parsed.dir ? parsed.dir.split('/') : []).concat(parsed.name || parsed.base)
-  const slug = segments.map(segment => segment.replace(/[^A-Za-z0-9_-]/g, '_') || '_').join('.')
-  return /^[A-Za-z]/.test(slug) ? slug : `k${slug}`
+function encodeCrockford(value, length) {
+  let remaining = value
+  let out = ''
+  for (let index = 0; index < length; index += 1) {
+    out = CROCKFORD[remaining % 32] + out
+    remaining = Math.floor(remaining / 32)
+  }
+  return out
 }
 
-// Automatic keys identify one occurrence. Fresh assignment uses coordinates; later rounds
+function createUlid(now = Date.now(), randomBytes = size => crypto.randomBytes(size)) {
+  const time = encodeCrockford(now, 10)
+  const bytes = randomBytes(10)
+  let entropy = 0n
+  for (const byte of bytes) entropy = (entropy << 8n) | BigInt(byte)
+  let random = ''
+  for (let index = 0; index < 16; index += 1) {
+    random = CROCKFORD[Number(entropy & 31n)] + random
+    entropy >>= 5n
+  }
+  return `${time}${random}`
+}
+
+// Automatic keys identify one occurrence. Fresh assignment is an opaque ULID; later rounds
 // reuse a prior key when collection history uniquely matches the occurrence.
-function automaticKey({ path: projectPath, kind, value, location }) {
-  if (!location || !location.start || !location.end) {
-    throw new Error('Automatic key requires a source location')
-  }
-  const material = [
-    projectPath,
-    kind,
-    value,
-    location.start.line,
-    location.start.column,
-    location.end.line,
-    location.end.column
-  ].join('\0')
-  return `${pathSlug(projectPath)}.${sha256(material).slice(0, 8)}`
+function automaticKey(options = {}) {
+  const allocate = options && typeof options.createUlid === 'function'
+    ? options.createUlid
+    : createUlid
+  return `auto.${allocate()}`
 }
 
-// An unmoved occurrence hashes to the same automatic key as its first sighting.
-// When this round did not uniquely match that history, keep the new assignment
-// off every historical key so an old translation identity is not reused by collision.
-function automaticKeyAvoiding(draft, forbidden) {
-  const natural = automaticKey({
-    path: draft.location.path,
-    kind: draft.location.kind,
-    value: draft.value,
-    location: draft.location
-  })
-  if (!forbidden.has(natural)) return natural
-  const slug = natural.slice(0, natural.lastIndexOf('.'))
-  let salt = 1
-  let key = natural
-  while (forbidden.has(key)) {
-    key = `${slug}.${sha256(`${natural}\0${salt}`).slice(0, 8)}`
-    salt += 1
-  }
+// Keep a freshly allocated automatic key off every reserved historical identity so an old
+// translation identity is not reused by collision.
+function automaticKeyAvoiding(draft, forbidden, createUlidImpl = createUlid) {
+  let key = automaticKey({ createUlid: createUlidImpl })
+  while (forbidden.has(key)) key = automaticKey({ createUlid: createUlidImpl })
   return key
 }
 
@@ -143,6 +143,7 @@ function assignOccurrenceIdentities(drafts) {
       childRole: draft.childRole,
       localContext: draft.localContext,
       origin: draft.origin,
+      representation: draft.representation || REPRESENTATION_SOURCE_TEXT,
       location: draft.location
     }
   }))
@@ -172,6 +173,7 @@ function attachOccurrences(entries) {
       source: entry.source,
       fingerprint: entry.fingerprint,
       origin: entry.origin,
+      representation: entry.representation || REPRESENTATION_SOURCE_TEXT,
       locations: entry.locations,
       occurrences: (byKey.get(key) || []).sort((a, b) => sortLocations(a.location, b.location))
     })
@@ -369,6 +371,9 @@ function buildCatalog(snapshots, options = {}) {
   const previousMetadata = options && options.previousMetadata != null
     ? upgradeCatalogMetadata(options.previousMetadata)
     : null
+  const createUlidImpl = options && typeof options.createUlid === 'function'
+    ? options.createUlid
+    : createUlid
   const placements = []
   for (const snapshot of snapshots || []) {
     for (const entry of (snapshot && snapshot.entries) || []) {
@@ -379,7 +384,8 @@ function buildCatalog(snapshots, options = {}) {
           value: entry.value,
           explicitKey: entry.key || null,
           location,
-          semanticHost: semanticHostOf(snapshot, location)
+          semanticHost: semanticHostOf(snapshot, location),
+          representation: entry.representation || REPRESENTATION_SOURCE_TEXT
         })
       }
     }
@@ -390,6 +396,7 @@ function buildCatalog(snapshots, options = {}) {
     placement,
     value: placement.value,
     origin: placement.explicitKey ? 'explicit' : 'derived',
+    representation: placement.representation,
     semanticHost: placement.semanticHost,
     childRole: placement.location.kind,
     location: placement.location,
@@ -405,7 +412,7 @@ function buildCatalog(snapshots, options = {}) {
   for (const draft of automaticDrafts) {
     const key = matched.reused.has(draft)
       ? matched.reused.get(draft)
-      : automaticKeyAvoiding(draft, proposalReserved)
+      : automaticKeyAvoiding(draft, proposalReserved, createUlidImpl)
     proposalReserved.add(key)
     proposedByDraft.set(draft, key)
   }
@@ -422,9 +429,20 @@ function buildCatalog(snapshots, options = {}) {
     let key = matched.reused.get(draft) || proposedKey
     if (candidates && !matched.reused.has(draft)) {
       const confirmation = confirmationByIdentity.get(confirmationIdentity(draft))
+      // A prior failed round's proposed auto.<ULID> stays confirmable even though this round
+      // allocates a fresh proposed key — ULIDs are not stable across abandoned rounds.
+      const confirmsPriorProposal = Boolean(
+        confirmation &&
+        OPAQUE_AUTOMATIC_KEY.test(confirmation.key) &&
+        !proposalReserved.has(confirmation.key)
+      )
       if (!confirmation) {
         ambiguities.push(ambiguityView(draft, proposedKey, candidates))
-      } else if (confirmation.key !== proposedKey && !candidates.some(candidate => candidate.key === confirmation.key)) {
+      } else if (
+        confirmation.key !== proposedKey &&
+        !candidates.some(candidate => candidate.key === confirmation.key) &&
+        !confirmsPriorProposal
+      ) {
         ambiguities.push(ambiguityView(
           draft,
           proposedKey,
@@ -442,7 +460,9 @@ function buildCatalog(snapshots, options = {}) {
         key = confirmation.key
       }
     }
-    if (!matched.reused.has(draft) && assignedKeys.has(key)) key = automaticKeyAvoiding(draft, assignedKeys)
+    if (!matched.reused.has(draft) && assignedKeys.has(key)) {
+      key = automaticKeyAvoiding(draft, assignedKeys, createUlidImpl)
+    }
     assignedKeys.add(key)
     keyByPlacement.set(draft.placement, key)
   }
@@ -490,6 +510,7 @@ function buildCatalog(snapshots, options = {}) {
       source: only.source,
       fingerprint: fingerprintOf(only.source),
       origin: only.origin,
+      representation: REPRESENTATION_SOURCE_TEXT,
       locations: only.locations,
       hostByLocation: only.hostByLocation
     })
@@ -523,6 +544,7 @@ function cloneMetadataEntry(entry, status) {
     source: entry.source,
     fingerprint: entry.fingerprint,
     origin: entry.origin,
+    representation: entry.representation || REPRESENTATION_SOURCE_TEXT,
     locations: entry.locations,
     occurrences: entry.occurrences,
     status
@@ -637,6 +659,78 @@ function migrateV1ToV2(metadata) {
     }
   }
   return {
+    version: CATALOG_VERSION_V2,
+    sourceLocale: metadata.sourceLocale,
+    format: metadata.format,
+    entries
+  }
+}
+
+function migrateV2ToV3(metadata) {
+  if (!metadata.entries || typeof metadata.entries !== 'object' || Array.isArray(metadata.entries)) {
+    throw migrationError('catalog metadata version 2 has no entries object')
+  }
+  const entries = {}
+  for (const key of Object.keys(metadata.entries).sort()) {
+    const entry = metadata.entries[key]
+    if (!entry || typeof entry.source !== 'string') {
+      throw migrationError(`catalog metadata entry "${key}" is missing source text`)
+    }
+    if (typeof entry.fingerprint !== 'string' || entry.fingerprint.length === 0) {
+      throw migrationError(`catalog metadata entry "${key}" is missing a source fingerprint`)
+    }
+    if (entry.origin !== 'explicit' && entry.origin !== 'derived') {
+      throw migrationError(`catalog metadata entry "${key}" has an unknown origin`)
+    }
+    if (entry.status != null && entry.status !== 'active' && entry.status !== 'orphaned') {
+      throw migrationError(`catalog metadata entry "${key}" has an unknown status`)
+    }
+    if (!Array.isArray(entry.locations)) {
+      throw migrationError(`catalog metadata entry "${key}" has invalid source locations`)
+    }
+    if (!Array.isArray(entry.occurrences) || entry.occurrences.length !== entry.locations.length) {
+      throw migrationError(`catalog metadata entry "${key}" is missing occurrence identities`)
+    }
+    const occurrences = entry.occurrences.map((occurrence, index) => {
+      if (!occurrence || typeof occurrence.id !== 'string' || !/^[0-9a-f]{16}$/.test(occurrence.id)) {
+        throw migrationError(`catalog metadata entry "${key}" has an invalid occurrence id`)
+      }
+      if (typeof occurrence.semanticHost !== 'string' || !occurrence.semanticHost) {
+        throw migrationError(`catalog metadata entry "${key}" is missing a semantic host`)
+      }
+      if (typeof occurrence.childRole !== 'string' || !occurrence.childRole) {
+        throw migrationError(`catalog metadata entry "${key}" is missing a child role`)
+      }
+      if (typeof occurrence.localContext !== 'string' || !occurrence.localContext) {
+        throw migrationError(`catalog metadata entry "${key}" is missing local context`)
+      }
+      if (occurrence.origin !== 'explicit' && occurrence.origin !== 'derived') {
+        throw migrationError(`catalog metadata entry "${key}" has an unknown occurrence origin`)
+      }
+      if (!occurrence.location || locationId(normalizeLocation(occurrence.location)) !== locationId(entry.locations[index])) {
+        throw migrationError(`catalog metadata entry "${key}" occurrence location does not match locations[${index}]`)
+      }
+      return {
+        id: occurrence.id,
+        semanticHost: occurrence.semanticHost,
+        childRole: occurrence.childRole,
+        localContext: occurrence.localContext,
+        origin: occurrence.origin,
+        representation: REPRESENTATION_SOURCE_TEXT,
+        location: occurrence.location
+      }
+    })
+    entries[key] = {
+      source: entry.source,
+      fingerprint: entry.fingerprint,
+      origin: entry.origin,
+      representation: REPRESENTATION_SOURCE_TEXT,
+      locations: entry.locations,
+      occurrences,
+      ...(entry.status != null ? { status: entry.status } : {})
+    }
+  }
+  return {
     version: CATALOG_VERSION,
     sourceLocale: metadata.sourceLocale,
     format: metadata.format,
@@ -653,6 +747,9 @@ function assertCurrentEntry(entry, key) {
   }
   if (entry.origin !== 'explicit' && entry.origin !== 'derived') {
     throw migrationError(`catalog metadata entry "${key}" has an unknown origin`)
+  }
+  if (!REPRESENTATIONS.has(entry.representation)) {
+    throw migrationError(`catalog metadata entry "${key}" has an unknown representation`)
   }
   if (entry.status != null && entry.status !== 'active' && entry.status !== 'orphaned') {
     throw migrationError(`catalog metadata entry "${key}" has an unknown status`)
@@ -680,6 +777,9 @@ function assertCurrentEntry(entry, key) {
     if (occurrence.origin !== 'explicit' && occurrence.origin !== 'derived') {
       throw migrationError(`catalog metadata entry "${key}" has an unknown occurrence origin`)
     }
+    if (!REPRESENTATIONS.has(occurrence.representation)) {
+      throw migrationError(`catalog metadata entry "${key}" has an unknown occurrence representation`)
+    }
     if (!occurrence.location || locationId(normalizeLocation(occurrence.location)) !== locationId(entry.locations[index])) {
       throw migrationError(`catalog metadata entry "${key}" occurrence location does not match locations[${index}]`)
     }
@@ -698,9 +798,10 @@ function upgradeCatalogMetadata(metadata) {
     for (const key of Object.keys(metadata.entries)) assertCurrentEntry(metadata.entries[key], key)
     return metadata
   }
-  if (metadata.version === PREVIOUS_CATALOG_VERSION) return migrateV1ToV2(metadata)
+  if (metadata.version === CATALOG_VERSION_V2) return migrateV2ToV3(metadata)
+  if (metadata.version === CATALOG_VERSION_V1) return migrateV2ToV3(migrateV1ToV2(metadata))
   throw migrationError(
-    `catalog metadata version ${metadata.version} cannot be upgraded to version ${CATALOG_VERSION}; rewrite catalogs with i18n-collect collect or restore a version ${PREVIOUS_CATALOG_VERSION} or ${CATALOG_VERSION} catalog.meta.json`
+    `catalog metadata version ${metadata.version} cannot be upgraded to version ${CATALOG_VERSION}; rewrite catalogs with i18n-collect collect or restore a version ${CATALOG_VERSION_V1}, ${CATALOG_VERSION_V2}, or ${CATALOG_VERSION} catalog.meta.json`
   )
 }
 
@@ -846,7 +947,7 @@ function readCatalogMetadataFile(file) {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch (error) {
     throw new Error(
-      `catalog metadata could not be read; restore a valid version 1 or 2 catalog.meta.json (${error.message})`
+      `catalog metadata could not be read; restore a valid version 1, 2, or 3 catalog.meta.json (${error.message})`
     )
   }
   return upgradeCatalogMetadata(parsed)
@@ -854,11 +955,15 @@ function readCatalogMetadataFile(file) {
 
 module.exports = {
   CATALOG_VERSION,
+  OPAQUE_AUTOMATIC_KEY,
+  REPRESENTATION_LOCALIZED_CALL,
+  REPRESENTATION_SOURCE_TEXT,
   automaticKey,
   ambiguityMessage,
   buildCatalog,
   catalogMetadata,
   conflictMessage,
+  createUlid,
   deriveKey: automaticKey,
   diffCatalog,
   entryStatus,

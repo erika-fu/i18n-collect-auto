@@ -347,7 +347,7 @@ function readJson(root, file) {
 }
 
 function derivedKeyFor(catalog, source) {
-  const keys = Object.keys(catalog).filter(key => catalog[key] === source && /^src\.app\.[0-9a-f]{8}$/.test(key))
+  const keys = Object.keys(catalog).filter(key => catalog[key] === source && /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/.test(key))
   assert.strictEqual(keys.length, 1, `one derived key for ${source}`)
   return keys[0]
 }
@@ -380,14 +380,17 @@ test('collect assigns independent automatic keys to identical text while the has
     ]
   )
   for (const key of keys) {
+    assert.match(key, /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/)
     assert.strictEqual(metadata.entries[key].origin, 'derived')
+    assert.strictEqual(metadata.entries[key].representation, 'source-text')
     assert.strictEqual(metadata.entries[key].locations.length, 1)
     assert.strictEqual(metadata.entries[key].occurrences.length, 1)
     assert.strictEqual(metadata.entries[key].occurrences[0].semanticHost, 'src/app.js::script')
     assert.strictEqual(metadata.entries[key].occurrences[0].childRole, 'script-string')
+    assert.strictEqual(metadata.entries[key].occurrences[0].representation, 'source-text')
     assert.match(metadata.entries[key].occurrences[0].id, /^[0-9a-f]{16}$/)
   }
-  assert.strictEqual(metadata.version, 2)
+  assert.strictEqual(metadata.version, 3)
   const contexts = keys.map(key => metadata.entries[key].occurrences[0].localContext).sort()
   assert.deepStrictEqual(contexts, ['sibling:0', 'sibling:1'])
   assert.strictEqual(JSON.parse(result.stdout).catalog.keys, 2)
@@ -411,11 +414,14 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
   const helloKey = derivedKeyFor(catalog, '你好')
   assert.deepStrictEqual(catalog, { [helloKey]: '你好', 'home.title': '首页' })
   const metadata = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(metadata.version, 2)
+  assert.strictEqual(metadata.version, 3)
   assert.strictEqual(metadata.sourceLocale, 'zh')
   assert.strictEqual(metadata.format, 'json')
   assert.strictEqual(metadata.entries['home.title'].origin, 'explicit')
+  assert.strictEqual(metadata.entries['home.title'].representation, 'source-text')
   assert.strictEqual(metadata.entries[helloKey].origin, 'derived')
+  assert.strictEqual(metadata.entries[helloKey].representation, 'source-text')
+  assert.strictEqual(metadata.entries[helloKey].occurrences[0].representation, 'source-text')
   assert.deepStrictEqual(metadata.entries['home.title'].locations, [{
     path: 'src/app.js',
     kind: 'script-string',
@@ -432,7 +438,7 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
     messages: 'lang/catalog/zh.json',
     metadata: 'lang/catalog/catalog.meta.json',
     sourceLocale: 'zh',
-    added: ['home.title', helloKey],
+    added: [helloKey, 'home.title'].sort(),
     removed: [],
     changed: [],
     unchanged: [],
@@ -446,7 +452,7 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
   assert.strictEqual(again.status, 0, again.stderr)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), catalogBytes)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), metadataBytes)
-  assert.deepStrictEqual(JSON.parse(again.stdout).catalog.unchanged, ['home.title', helloKey])
+  assert.deepStrictEqual(JSON.parse(again.stdout).catalog.unchanged, [helloKey, 'home.title'].sort())
 
   fs.writeFileSync(path.join(root, 'src/app.js'), '\n\nconst title = /* i18n-key: home.title */ "主页"\nconst hello = "您好"\nmodule.exports = [title, hello]\n')
   const edited = run(['collect', '--json'], root)
@@ -457,7 +463,7 @@ test('collect exports a keyed source catalog beside unchanged hash outputs and r
   const report = JSON.parse(edited.stdout).catalog
   assert.deepStrictEqual(
     { added: report.added, removed: report.removed, changed: report.changed, unchanged: report.unchanged },
-    { added: [], removed: [], changed: ['home.title', helloKey], unchanged: [] }
+    { added: [], removed: [], changed: [helloKey, 'home.title'].sort(), unchanged: [] }
   )
 
   const human = run(['collect'], root)
@@ -579,8 +585,8 @@ test('collect refuses unsupported catalog metadata and keeps every previous outp
   const refused = run(['collect', '--json'], root)
   assert.strictEqual(refused.status, 2, refused.stderr)
   assert.strictEqual(JSON.parse(refused.stdout).failure, 'collection')
-  assert.match(refused.stderr, /cannot be upgraded to version 2/)
-  assert.match(refused.stderr, /restore a version 1 or 2 catalog\.meta\.json/)
+  assert.match(refused.stderr, /cannot be upgraded to version 3/)
+  assert.match(refused.stderr, /restore a version 1, 2, or 3 catalog\.meta\.json/)
   for (const file of outputs) {
     if (file === 'lang/catalog/catalog.meta.json') {
       assert.strictEqual(readJson(root, file).version, 99)

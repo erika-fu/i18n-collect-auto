@@ -73,7 +73,7 @@ The stable runtime identifier used by source replacements and translation catalo
 A syntax-valid comment `i18n-key: <key>` that gives the next associated collected fragment an explicit localization key. It associates by the same rules as the exclusion directive. A comment that starts with `i18n-key` but is not well formed fails the collection round.
 
 **Automatic key**:
-A localization key assigned to an occurrence when no adjacent key directive supplies one. Its readable semantic slug is only a diagnostic hint; its stable ID is assigned once and reused through catalog metadata rather than being recalculated from current source text or coordinates.
+A localization key assigned to an occurrence when no adjacent key directive supplies one. New automatic keys are opaque `auto.<ULID>` values with no path, source text, line, or column material. Once assigned, the key is reused through catalog metadata rather than being recalculated from current source text or coordinates.
 
 **Occurrence identity ambiguity**:
 Collection history has more than one viable historical candidate for an occurrence, so the occurrence cannot keep a previous automatic key. Collection assigns a new automatic key, writes an ambiguity report, and fails the round until a durable confirmation.
@@ -109,7 +109,7 @@ One localization key that names incompatible message contracts. It fails the col
 A hash of a key's source text recorded in catalog metadata. A key whose fingerprint differs between two catalogs has source-changed text.
 
 **Catalog metadata**:
-The per-key record next to the source-locale catalog: source text, source fingerprint, explicit or derived origin, source locations, and per-occurrence identity. Each occurrence records a stable ID, semantic host, child role, local context, and source location. The metadata document is versioned; unsupported versions fail with a clear migration path rather than publishing a partial upgrade.
+The per-key record next to the source-locale catalog: source text, source fingerprint, explicit or derived origin, representation (`source-text` or `localized-call`), source locations, and per-occurrence identity. Each occurrence records a stable ID, semantic host, child role, local context, representation, and source location. The metadata document is versioned (current version 3); version 1 and 2 upgrade on a successful collection without rewriting existing localization keys. Unsupported versions fail with a clear migration path rather than publishing a partial upgrade.
 
 **Resource identity**:
 The normalized project resource path plus its semantic block or resource query, used to replace one resource snapshot without overwriting another block from the same file.
