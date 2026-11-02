@@ -432,14 +432,36 @@ test('records static $t and t calls in Vue interpolations as localized-call occu
   const result = extract(source)
   const calls = result.entries.filter(entry => entry.representation === 'localized-call')
   assert.deepStrictEqual(
-    calls.map(entry => ({ key: entry.key, kind: entry.locations[0].kind })),
+    calls.map(entry => ({
+      key: entry.key,
+      kind: entry.locations[0].kind,
+      paramsKind: entry.paramsKind,
+      paramNames: entry.paramNames
+    })),
     [
-      { key: 'home.title', kind: 'template-expression' },
-      { key: 'home.banner', kind: 'html-attribute' }
+      { key: 'home.title', kind: 'template-expression', paramsKind: 'none', paramNames: [] },
+      { key: 'home.banner', kind: 'html-attribute', paramsKind: 'none', paramNames: [] }
     ]
   )
   assert.strictEqual(sliceAt(source, calls[0].locations[0]), "'home.title'")
   assert.ok(result.entries.some(entry => entry.value === '保留文案' && entry.representation !== 'localized-call'))
+})
+
+test('records static and dynamic localization call parameters in Vue templates', () => {
+  const source = [
+    '<section>',
+    '  <p>{{ $t(\'items.deleted\', { count }) }}</p>',
+    '  <p :title="t(\'items.deleted\', params)"></p>',
+    '</section>'
+  ].join('\n')
+  const calls = extract(source).entries.filter(entry => entry.representation === 'localized-call')
+  assert.deepStrictEqual(
+    calls.map(entry => ({ key: entry.key, kind: entry.locations[0].kind, paramsKind: entry.paramsKind, paramNames: entry.paramNames })),
+    [
+      { key: 'items.deleted', kind: 'template-expression', paramsKind: 'static', paramNames: ['count'] },
+      { key: 'items.deleted', kind: 'html-attribute', paramsKind: 'dynamic', paramNames: [] }
+    ]
+  )
 })
 
 test('a colocated i18n-key that disagrees with a localized-call key fails collection', () => {

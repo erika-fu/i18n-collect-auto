@@ -3,14 +3,16 @@
 <body><main><header class="masthead"><p class="eyebrow">课程 · 11 / 11 · 迁移深入理解</p><h1>替换后，调用仍是收集证据</h1><p>把源文本替换为运行时调用，不能让 catalog 忘记已翻译的内容。本课介绍静态调用如何参与收集、校验和 key 生命周期。</p></header>
 <section><h2>1. 支持的静态调用形态</h2><p><a href="../packages/i18n-collect/mycommon/localized-call.js">localized-call.js</a> 仅识别以下调用中的静态第一个参数：</p><pre>t('home.title')
 $t('home.title')
-this.$t('home.title')</pre><p>计算成员、可选调用、动态参数和其他形态不会被误分类。script 与 HTML 提取器会产生一个 <code>localized-call</code> occurrence，其 value 为空，因为调用本身提供的是 key，而不是新的中文源文本。</p></section>
+this.$t('home.title')
+t('items.deleted', { count })</pre><p>计算成员、可选调用、动态 key 和其他形态不会被误分类。script 与 HTML 提取器会产生一个 <code>localized-call</code> occurrence，其 value 为空，因为调用本身提供的是 key，而不是新的中文源文本。第二参数若是静态对象字面量，会记录参数名；需要占位符却传入动态对象时，收集 fail-closed。</p></section>
+<section><h2>1.1 显式消息清单 vs 自动完整静态文案</h2><p>完整静态中文可以留在源码里，由收集分配 automatic key。带变量、复数或需要运行时多语言渲染的消息，则在 <code>explicit-messages.json</code> 声明规范中文源文案与派生 placeholder 契约，再以静态 localized-call 引用该键。清单只读；成功收集后规范文案进入源语言目录与 metadata，源文编辑保留键、更新 fingerprint，并把目标译文标为 <code>needs-review</code>。</p></section>
 <section><h2>2. 调用不会替代规范源文本</h2><div class="flow">替换前
   home.title → 源文本“首页” + source-text occurrence
 
 替换后
   $t('home.title') → localized-call occurrence
   home.title → 仍保留规范源文本“首页” + 相同 fingerprint</div><p>当 source-text 和 localized-call occurrence 并存时，二者都是同一个活动 key 的位置。若只剩调用，收集会恢复此前 catalog 条目的规范源文本和 fingerprint。这保留了翻译上下文，并让之后的源文本修改正确地将翻译标为 <code>needs-review</code>。</p></section>
-<section><h2>3. 引用校验保护 catalog</h2><table><tr><th>调用目标</th><th>收集结果</th></tr><tr><td>活动项目 key</td><td>保持活动状态并添加调用位置。</td></tr><tr><td>未退役的孤立 key</td><td>恢复为 active。</td></tr><tr><td>未知项目 key</td><td>本轮失败；保留此前正式输出。</td></tr><tr><td>已退役 key</td><td>本轮失败。</td></tr><tr><td>配置的 <code>externalKeys</code> 成员</td><td>允许调用，但不创建项目条目。</td></tr><tr><td>32 位旧 MD5 key</td><td>为兼容性而置于带 key 的项目 catalog 之外。</td></tr></table><p><code>externalKeys</code> 是 Plugin 拥有的配置字段，因为它改变的是 catalog 生命周期策略，不是提取语法。</p></section>
+<section><h2>3. 引用校验保护 catalog</h2><table><tr><th>调用目标</th><th>收集结果</th></tr><tr><td>活动项目 key</td><td>保持活动状态并添加调用位置。</td></tr><tr><td>未退役的孤立 key</td><td>恢复为 active。</td></tr><tr><td>显式消息清单中的 key</td><td>用声明源文案播种目录条目，并校验参数契约。</td></tr><tr><td>未知项目 key</td><td>本轮失败；保留此前正式输出。</td></tr><tr><td>已退役 key</td><td>本轮失败。</td></tr><tr><td>占位符不匹配 / 动态参数</td><td>本轮失败；不发布部分正式输出。</td></tr><tr><td>配置的 <code>externalKeys</code> 成员</td><td>允许调用，但不创建项目条目。</td></tr><tr><td>32 位旧 MD5 key</td><td>为兼容性而置于带 key 的项目 catalog 之外。</td></tr></table><p><code>externalKeys</code> 是 Plugin 拥有的配置字段，因为它改变的是 catalog 生命周期策略，不是提取语法。</p></section>
 <section><h2>4. 共置指令不能互相矛盾</h2><p>紧邻调用的指令可以重复其 key，但不能为调用改名：</p><pre>// i18n-key: home.title
 $t('home.title')  // 有效
 

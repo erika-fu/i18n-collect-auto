@@ -15,6 +15,14 @@ _Avoid_: Template, template file
 A user-facing message wholly represented by one statically determinable source fragment, and therefore eligible for automatic collection. A fragment around interpolation, concatenation, conditional construction, or formatting is not complete static copy.
 _Avoid_: Dynamic copy, message fragment
 
+**Explicit source message**:
+A localization key whose canonical Chinese source text and placeholder contract are declared in the project-owned explicit message manifest, then referenced from a static runtime localization call. It is not automatically collected from complete static copy in source.
+_Avoid_: Automatic message, hash dictionary entry
+
+**Explicit message manifest**:
+The versioned document `explicit-messages.json` beside the catalog metadata. Version 1 lists localization keys with their canonical source text. Collection reads it and does not rewrite it. Placeholder contracts are derived from that source text with the same `{identifier}` rules as other message contracts.
+_Avoid_: Confirmation manifest, translation catalog
+
 **Explicit localization boundary**:
 A feature or route that must render user-facing copy in a target locale at runtime. Its user-facing copy uses explicit localized calls rather than automatically collected source text.
 _Avoid_: Translated page

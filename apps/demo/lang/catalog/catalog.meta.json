@@ -1981,6 +1981,49 @@
       ],
       "status": "active"
     },
+    "demo.items.deleted": {
+      "source": "已删除 {count} 项",
+      "fingerprint": "288b44d2ffd08051",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 15,
+            "column": 39
+          },
+          "end": {
+            "line": 15,
+            "column": 59
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "6ccbb29438874547",
+          "semanticHost": "src/pages/MigrationPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:3",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 15,
+              "column": 39
+            },
+            "end": {
+              "line": 15,
+              "column": 59
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
     "demo.shared.title": {
       "source": "共享标题",
       "fingerprint": "ec2a6eec0596d4e8",

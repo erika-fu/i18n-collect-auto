@@ -17,13 +17,36 @@ function staticLocalizationKey(argument) {
   return null
 }
 
+function localizationCallParams(argument) {
+  if (argument == null) return { paramsKind: 'none', paramNames: [] }
+  if (argument.type !== 'ObjectExpression') return { paramsKind: 'dynamic', paramNames: [] }
+  const paramNames = []
+  for (const property of argument.properties || []) {
+    if (!property || property.type !== 'ObjectProperty' || property.computed) {
+      return { paramsKind: 'dynamic', paramNames: [] }
+    }
+    if (!property.key || property.key.type !== 'Identifier') {
+      return { paramsKind: 'dynamic', paramNames: [] }
+    }
+    paramNames.push(property.key.name)
+  }
+  return { paramsKind: 'static', paramNames }
+}
+
 function staticLocalizationCall(node) {
   if (!node || node.type !== 'CallExpression' || node.optional) return null
   const callee = localizationCalleeName(node.callee)
   if (!callee) return null
   const key = staticLocalizationKey(node.arguments && node.arguments[0])
   if (key == null || key === '') return null
-  return { callee, key, argument: node.arguments[0] }
+  const params = localizationCallParams(node.arguments && node.arguments[1])
+  return {
+    callee,
+    key,
+    argument: node.arguments[0],
+    paramsKind: params.paramsKind,
+    paramNames: params.paramNames
+  }
 }
 
 function isStaticLocalizationKeyArgument(nodePath) {

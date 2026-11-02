@@ -307,11 +307,17 @@ test('records static t, $t, and this.$t calls as localized-call occurrences', ()
   const entries = extract(source)
   const calls = entries.filter(entry => entry.representation === 'localized-call')
   assert.deepStrictEqual(
-    calls.map(entry => ({ key: entry.key, path: entry.locations[0].path, kind: entry.locations[0].kind })),
+    calls.map(entry => ({
+      key: entry.key,
+      path: entry.locations[0].path,
+      kind: entry.locations[0].kind,
+      paramsKind: entry.paramsKind,
+      paramNames: entry.paramNames
+    })),
     [
-      { key: 'home.title', path: 'src/example.js', kind: 'script-string' },
-      { key: 'home.banner', path: 'src/example.js', kind: 'script-string' },
-      { key: 'home.cta', path: 'src/example.js', kind: 'script-string' }
+      { key: 'home.title', path: 'src/example.js', kind: 'script-string', paramsKind: 'none', paramNames: [] },
+      { key: 'home.banner', path: 'src/example.js', kind: 'script-string', paramsKind: 'none', paramNames: [] },
+      { key: 'home.cta', path: 'src/example.js', kind: 'script-string', paramsKind: 'none', paramNames: [] }
     ]
   )
   assert.strictEqual(source.slice(
@@ -319,6 +325,26 @@ test('records static t, $t, and this.$t calls as localized-call occurrences', ()
     indexAt(source, calls[0].locations[0].end)
   ), "'home.title'")
   assert.ok(entries.some(entry => entry.value === '保留文案' && entry.representation !== 'localized-call'))
+})
+
+test('records static and dynamic localization call parameters', () => {
+  const source = [
+    "const a = t('items.deleted', { count })",
+    "const b = $t('items.deleted', { count: total, label })",
+    "const c = this.$t('items.deleted', params)",
+    "const d = t('home.title', {})",
+    ''
+  ].join('\n')
+  const calls = extract(source).filter(entry => entry.representation === 'localized-call')
+  assert.deepStrictEqual(
+    calls.map(entry => ({ key: entry.key, paramsKind: entry.paramsKind, paramNames: entry.paramNames })),
+    [
+      { key: 'items.deleted', paramsKind: 'static', paramNames: ['count'] },
+      { key: 'items.deleted', paramsKind: 'static', paramNames: ['count', 'label'] },
+      { key: 'items.deleted', paramsKind: 'dynamic', paramNames: [] },
+      { key: 'home.title', paramsKind: 'static', paramNames: [] }
+    ]
+  )
 })
 
 test('ignores dynamic keys and unsupported call shapes without failing', () => {

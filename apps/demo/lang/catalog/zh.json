@@ -45,6 +45,7 @@
   "auto.01M6D71KFVZ3RPEV4W3VP07M5Y": "示例图片",
   "auto.01M6D71KFVZG2BDSKC2KVEE76G": "脚本字符串",
   "auto.01M6D71KFVZGKB8EV9263GWSCP": "收件箱",
+  "demo.items.deleted": "已删除 {count} 项",
   "demo.shared.title": "共享标题",
   "demo.visit.banner": "欢迎",
   "demo.visit.farewell": "欢迎"

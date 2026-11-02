@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "messages": [
+    {
+      "key": "demo.items.deleted",
+      "source": "已删除 {count} 项"
+    }
+  ]
+}

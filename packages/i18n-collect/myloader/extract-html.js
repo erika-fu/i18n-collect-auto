@@ -495,7 +495,7 @@ function extractHtml({ source, resource, config }) {
   const entries = []
   const ownerStack = []
 
-  function push(value, kind, start, end, suppress, key, representation) {
+  function push(value, kind, start, end, suppress, key, representation, params) {
     entries.push({
       value,
       locations: [{
@@ -508,7 +508,9 @@ function extractHtml({ source, resource, config }) {
       start,
       suppress: suppress === true,
       key: key || null,
-      representation: representation || null
+      representation: representation || null,
+      paramsKind: params && params.paramsKind ? params.paramsKind : null,
+      paramNames: params && Array.isArray(params.paramNames) ? params.paramNames : null
     })
   }
 
@@ -555,7 +557,8 @@ function extractHtml({ source, resource, config }) {
           origin + decoded.starts[endIndex],
           false,
           call.key,
-          REPRESENTATION_LOCALIZED_CALL
+          REPRESENTATION_LOCALIZED_CALL,
+          { paramsKind: call.paramsKind, paramNames: call.paramNames }
         )
       },
       StringLiteral(nodePath) {
@@ -726,6 +729,10 @@ function extractHtml({ source, resource, config }) {
       const mapped = { value: entry.value, locations: entry.locations }
       if (entry.key) mapped.key = entry.key
       if (entry.representation) mapped.representation = entry.representation
+      if (entry.representation === REPRESENTATION_LOCALIZED_CALL) {
+        mapped.paramsKind = entry.paramsKind || 'none'
+        mapped.paramNames = Array.isArray(entry.paramNames) ? entry.paramNames : []
+      }
       return mapped
     }),
     warnings

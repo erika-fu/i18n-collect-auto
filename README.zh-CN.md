@@ -298,6 +298,8 @@ CSS：
 
 静态 `t('key')`、`$t('key')`、`this.$t('key')` 记为 `localized-call` 出现：更新位置与 anchor，保持被引用键 active；当该键的全部 active 出现都是 call 时，仍保留上次规范源文案与指纹，不会写成空值；未退役的 orphaned 键可被恢复；未知或已退役的项目键默认使本轮失败；遗留 MD5 词典调用留在项目目录之外；`externalKeys` 允许外部管理的未知键而不创建项目目录条目。同位 `i18n-key` 与 call 键不一致时失败，一致时接受。把自动键改成显式键后，旧自动键保持 orphaned，译文不会隐式迁移。键离开当前收集后，元数据记为 `orphaned`；用 `retirement-confirmations.json` 或 `pruneOrphaned: true` 退役。version 1/2 元数据在成功收集时升到 version 3（补上默认 `source-text` representation），不改写既有本地化键与 occurrence identity。收集不会按最近行号或打分启发式在多个历史候选里静默择一。
 
+不是完整静态文案的参数化消息，在 `<catalogDir>/explicit-messages.json` 声明规范中文源文案，再以静态调用引用，例如 `t('items.deleted', { count })`。收集用源文案推导的 placeholder 契约校验调用处的静态对象字面量参数名；未知键、占位符不匹配，或在需要占位符时使用动态第二参数，都会使本轮失败且不发布部分正式产物。修改声明源文案会保留键、更新指纹，并把目标译文标为待审阅。仅有声明、没有调用时不会发布 active 目录条目。
+
 ---
 
 ## 迁移产物
@@ -313,6 +315,7 @@ CSS：
 | 审阅状态 | `lang/catalog/translation-state.json`：每个键、每个目标语言记录译文接受时的源指纹，以及 `current` 或 `needs-review`。 |
 | 身份歧义报告 | `lang/catalog/identity-ambiguities.json`：失败歧义轮次的机器可读记录，不是正式收集产物。 |
 | 身份确认 | `lang/catalog/identity-confirmations.json`：歧义 occurrence 的耐久键选择。收集只读不改写。 |
+| 显式消息清单 | `lang/catalog/explicit-messages.json`：参数化 localized-call 的键、规范中文源文案与派生 placeholder 契约。收集只读不改写。 |
 | 退役确认 | `lang/catalog/retirement-confirmations.json`：要退役的 orphaned 本地化键列表。 |
 | 翻译提供方 | 交给 `translate` 的项目模块。它不是产物文件，也不是内置的供应商 SDK。 |
 | 替换预览 | `replace` 的默认结果。它报告将要写成的源码，并且不改任何文件。 |
@@ -642,7 +645,7 @@ export default new VueI18n({
 
 每个区域先放入哈希词典，再放入该区域的键目录，因此目录里的本地化键优先。替换后的调用，例如 `$t('demo.visit.banner')`，从键目录取值。参数仍是文案 MD5 的旧调用，只在目录没有这个键时回退到 `lang/zh_hash.json`。空字符串是一条译文，不会继续回退。
 
-迁移页把区域切到 `en`，并演示稳定键生命周期。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个显式键来自同一句源文案 `欢迎`。`demo.shared.title` 同时保留 source-text 与 localized-call 出现。`apps/demo/src/lifecycle.js` 里两处 `请稍候` 各自拿到独立 automatic key，并都解析为 “Please wait”。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。`apps/demo/fixtures/keyed-migration` 在演示 Webpack 入口外镜像同一生命周期。`packages/i18n-collect/test/demo-runtime-migration.test.js` 在临时副本上执行收集、翻译、替换与源文变更后的 review，再通过 `apps/demo/src/lang/resolve.js` 解析运行时调用，且不会改写已提交的 demo `lang` 产物。
+迁移页把区域切到 `en`，并演示稳定键生命周期。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个显式键来自同一句源文案 `欢迎`。`demo.shared.title` 同时保留 source-text 与 localized-call 出现。`demo.items.deleted` 在 `lang/catalog/explicit-messages.json` 声明为 `已删除 {count} 项`，经 `$t('demo.items.deleted', { count })` 解析为 “Deleted 3 items”。`apps/demo/src/lifecycle.js` 里两处 `请稍候` 各自拿到独立 automatic key，并都解析为 “Please wait”。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。`apps/demo/fixtures/keyed-migration` 在演示 Webpack 入口外镜像同一生命周期。`packages/i18n-collect/test/demo-runtime-migration.test.js` 在临时副本上执行收集、翻译、替换与源文变更后的 review，再通过 `apps/demo/src/lang/resolve.js` 解析运行时调用，且不会改写已提交的 demo `lang` 产物。
 
 只有当每个本地化调用都传入本地化键、不再有调用传入 MD5，并且运行时会选中的每个区域的键目录都已经包含这些键时，才去掉哈希词典回退。在此之前，查找先读当前区域的键目录，仅当目录没有该键时才读 `lang/zh_hash.json`。去掉回退之后，收集仍会写出哈希词典。回退是运行时兼容层，不是收集产物。
 

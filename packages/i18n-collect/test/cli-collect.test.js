@@ -658,3 +658,84 @@ module.exports = {
   assert.strictEqual(fs.existsSync(path.join(root, 'lang/zh_hash.json')), false)
 })
 
+test('collect publishes a manifest-backed parameterized localized call', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-explicit-ok-'))
+  writeWebpackProject(root, {
+    source: [
+      'function t(key, params) { return key }',
+      "module.exports = t('items.deleted', { count: 2 })",
+      ''
+    ].join('\n'),
+    files: {
+      'lang/catalog/explicit-messages.json': `${JSON.stringify({
+        version: 1,
+        messages: [{ key: 'items.deleted', source: '已删除 {count} 项' }]
+      }, null, 2)}\n`
+    }
+  })
+  const result = run(['collect', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const catalog = readJson(root, 'lang/catalog/zh.json')
+  assert.strictEqual(catalog['items.deleted'], '已删除 {count} 项')
+  const metadata = readJson(root, 'lang/catalog/catalog.meta.json')
+  assert.strictEqual(metadata.entries['items.deleted'].origin, 'explicit')
+  assert.strictEqual(metadata.entries['items.deleted'].representation, 'localized-call')
+})
+
+test('collect fails on an invalid explicit message manifest and keeps every previous output', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-explicit-bad-'))
+  writeWebpackProject(root, {
+    source: 'module.exports = "你好"\n'
+  })
+  const first = run(['collect'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const outputs = ['lang/zh_hash.json', 'lang/zh_hash.map.json', 'lang/catalog/zh.json', 'lang/catalog/catalog.meta.json']
+  const before = outputs.map(file => fs.readFileSync(path.join(root, file)))
+
+  fs.writeFileSync(path.join(root, 'lang/catalog/explicit-messages.json'), '{"version":99,"messages":[]}\n')
+  const failed = run(['collect', '--json'], root)
+  assert.strictEqual(failed.status, 2, failed.stderr)
+  assert.strictEqual(JSON.parse(failed.stdout).failure, 'collection')
+  assert.match(failed.stderr, /explicit messages version 99 is unsupported/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+})
+
+test('collect fails on placeholder mismatch and dynamic params without publishing partial outputs', { timeout: 30000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-explicit-params-'))
+  writeWebpackProject(root, {
+    source: 'module.exports = "你好"\n',
+    files: {
+      'lang/catalog/explicit-messages.json': `${JSON.stringify({
+        version: 1,
+        messages: [{ key: 'items.deleted', source: '已删除 {count} 项' }]
+      }, null, 2)}\n`
+    }
+  })
+  const first = run(['collect'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const outputs = ['lang/zh_hash.json', 'lang/zh_hash.map.json', 'lang/catalog/zh.json', 'lang/catalog/catalog.meta.json']
+  const before = outputs.map(file => fs.readFileSync(path.join(root, file)))
+  assert.strictEqual(readJson(root, 'lang/catalog/zh.json')['items.deleted'], undefined)
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), [
+    'function t(key, params) { return key }',
+    "module.exports = t('items.deleted', { total: 2 })",
+    ''
+  ].join('\n'))
+  const mismatch = run(['collect', '--json'], root)
+  assert.strictEqual(mismatch.status, 2, mismatch.stderr)
+  assert.match(mismatch.stderr, /placeholder mismatch/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+
+  fs.writeFileSync(path.join(root, 'src/app.js'), [
+    'function t(key, params) { return key }',
+    'const params = { count: 2 }',
+    "module.exports = t('items.deleted', params)",
+    ''
+  ].join('\n'))
+  const dynamic = run(['collect', '--json'], root)
+  assert.strictEqual(dynamic.status, 2, dynamic.stderr)
+  assert.match(dynamic.stderr, /dynamic parameters/)
+  outputs.forEach((file, index) => assert.deepStrictEqual(fs.readFileSync(path.join(root, file)), before[index]))
+})
+

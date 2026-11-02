@@ -28,12 +28,14 @@ function entry(value, loc, key) {
   return key ? { value, key, locations: [loc] } : { value, locations: [loc] }
 }
 
-function localizedCallEntry(key, loc) {
+function localizedCallEntry(key, loc, params = {}) {
   return {
     key,
     value: '',
     representation: REPRESENTATION_LOCALIZED_CALL,
-    locations: [loc]
+    locations: [loc],
+    paramsKind: params.paramsKind || 'none',
+    paramNames: Array.isArray(params.paramNames) ? params.paramNames : []
   }
 }
 
@@ -62,7 +64,8 @@ function extractScript({ source, resource, config }) {
       }
       entries.push(localizedCallEntry(
         call.key,
-        location(source, resource.projectPath, call.argument, 'script-string')
+        location(source, resource.projectPath, call.argument, 'script-string'),
+        { paramsKind: call.paramsKind, paramNames: call.paramNames }
       ))
     },
     StringLiteral(nodePath) {
