@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "messages": [
+    {
+      "key": "demo.items.deleted",
+      "source": "已删除 {count} 项"
+    },
+    {
+      "key": "demo.unread.count",
+      "source": "你有{count}条未读消息"
+    },
+    {
+      "key": "demo.terms.notice",
+      "source": "请阅读我们的{terms}与{privacy}"
+    },
+    {
+      "key": "demo.terms.link",
+      "source": "服务条款"
+    },
+    {
+      "key": "demo.privacy.link",
+      "source": "隐私政策"
+    },
+    {
+      "key": "demo.multilingual.title",
+      "source": "运行时多语言边界"
+    },
+    {
+      "key": "demo.multilingual.body",
+      "source": "你好，{name}。此页仅通过显式本地化渲染。"
+    }
+  ]
+}

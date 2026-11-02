@@ -28,9 +28,23 @@ test('the committed demo catalogs resolve the stable key lifecycle page', () => 
   assert.strictEqual(zh['demo.visit.banner'], WELCOME)
   assert.strictEqual(zh['demo.visit.farewell'], WELCOME)
   assert.strictEqual(zh['demo.shared.title'], SHARED)
+  assert.strictEqual(zh['demo.items.deleted'], '已删除 {count} 项')
+  assert.strictEqual(zh['demo.terms.notice'], '请阅读我们的{terms}与{privacy}')
+  assert.strictEqual(zh['demo.terms.link'], '服务条款')
+  assert.strictEqual(zh['demo.privacy.link'], '隐私政策')
   assert.strictEqual(meta.entries['demo.visit.banner'].origin, 'explicit')
   assert.strictEqual(meta.entries['demo.visit.farewell'].origin, 'explicit')
   assert.strictEqual(meta.entries['demo.shared.title'].origin, 'explicit')
+  assert.strictEqual(meta.entries['demo.items.deleted'].origin, 'explicit')
+  assert.strictEqual(meta.entries['demo.terms.notice'].origin, 'explicit')
+  assert.strictEqual(meta.entries['demo.terms.link'].origin, 'explicit')
+  assert.strictEqual(meta.entries['demo.privacy.link'].origin, 'explicit')
+  assert.strictEqual(meta.entries['demo.items.deleted'].representation, 'localized-call')
+  assert.strictEqual(meta.entries['demo.terms.notice'].representation, 'localized-call')
+  assert.deepStrictEqual(
+    meta.entries['demo.items.deleted'].occurrences.map(item => item.representation),
+    ['localized-call']
+  )
   assert.deepStrictEqual(
     meta.entries['demo.visit.banner'].occurrences.map(item => item.representation).sort(),
     ['localized-call', 'source-text']
@@ -47,12 +61,18 @@ test('the committed demo catalogs resolve the stable key lifecycle page', () => 
   assert.strictEqual(en['demo.visit.banner'], 'Welcome aboard')
   assert.strictEqual(en['demo.visit.farewell'], 'Welcome back')
   assert.strictEqual(en['demo.shared.title'], 'Shared title')
+  assert.strictEqual(en['demo.items.deleted'], 'Deleted {count} items')
+  assert.strictEqual(en['demo.terms.notice'], 'Please read our {terms} and {privacy}')
+  assert.strictEqual(en['demo.terms.link'], 'Terms of Service')
+  assert.strictEqual(en['demo.privacy.link'], 'Privacy Policy')
   assert.strictEqual(en[waitKeys[0]], 'Please wait')
   assert.strictEqual(en[waitKeys[1]], 'Please wait')
 
   const messages = demoLocaleMessages(en, hashDictionary)
   assert.strictEqual(resolveDemoMessage('demo.visit.banner', en, hashDictionary), 'Welcome aboard')
   assert.strictEqual(resolveDemoMessage('demo.shared.title', en, hashDictionary), 'Shared title')
+  assert.strictEqual(resolveDemoMessage('demo.items.deleted', en, hashDictionary), 'Deleted {count} items')
+  assert.strictEqual(resolveDemoMessage('demo.terms.notice', en, hashDictionary), 'Please read our {terms} and {privacy}')
   assert.strictEqual(resolveDemoMessage(waitKeys[0], en, hashDictionary), 'Please wait')
   assert.strictEqual(resolveDemoMessage(WELCOME_MD5, en, hashDictionary), WELCOME)
   assert.strictEqual(messages[WELCOME_MD5], WELCOME)
@@ -69,6 +89,14 @@ test('the committed demo catalogs resolve the stable key lifecycle page', () => 
   assert.strictEqual(vm.$t('demo.visit.banner'), 'Welcome aboard')
   assert.strictEqual(vm.$t('demo.visit.farewell'), 'Welcome back')
   assert.strictEqual(vm.$t('demo.shared.title'), 'Shared title')
+  assert.strictEqual(vm.$t('demo.items.deleted', { count: 3 }), 'Deleted 3 items')
+  assert.strictEqual(
+    vm.$t('demo.terms.notice', {
+      terms: vm.$t('demo.terms.link'),
+      privacy: vm.$t('demo.privacy.link')
+    }),
+    'Please read our Terms of Service and Privacy Policy'
+  )
   assert.strictEqual(vm.$t(waitKeys[0]), 'Please wait')
   assert.strictEqual(vm.$t(waitKeys[1]), 'Please wait')
   assert.strictEqual(vm.$t(WELCOME_MD5), WELCOME)

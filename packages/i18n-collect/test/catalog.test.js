@@ -680,6 +680,43 @@ test('messageContract keeps literal text and extracts a positional placeholder c
   assert.notDeepStrictEqual(messageContract('你好，{name}'), messageContract('你好， {name}'))
 })
 
+test('messageContract treats structured slot placeholders as ordered named contracts', () => {
+  assert.deepStrictEqual(
+    messageContract('请阅读我们的{terms}与{privacy}'),
+    { pattern: '请阅读我们的{0}与{1}', placeholders: ['terms', 'privacy'] }
+  )
+  assert.deepStrictEqual(
+    messageContract('Read our {privacy} and {terms}'),
+    { pattern: 'Read our {0} and {1}', placeholders: ['privacy', 'terms'] }
+  )
+  assert.notDeepStrictEqual(
+    messageContract('请阅读我们的{terms}与{privacy}'),
+    messageContract('请阅读我们的{privacy}与{terms}')
+  )
+})
+
+test('ordinary identical static Chinese keeps independent automatic keys unless an explicit key is shared', () => {
+  const first = at('src/a.js', 'script-string', 1, 0)
+  const second = at('src/b.js', 'script-string', 2, 0)
+  const independent = buildCatalog([
+    snapshot('src/a.js::script', [{ value: '确认', locations: [first] }]),
+    snapshot('src/b.js::script', [{ value: '确认', locations: [second] }])
+  ], { createUlid: sequentialUlid() })
+  const firstKey = keyAt(independent, first)
+  const secondKey = keyAt(independent, second)
+  assert.notStrictEqual(firstKey, secondKey)
+  assert.match(firstKey, /^auto\./)
+  assert.match(secondKey, /^auto\./)
+
+  const shared = buildCatalog([
+    snapshot('src/a.js::script', [{ value: '确认', key: 'ui.confirm', locations: [first] }]),
+    snapshot('src/b.js::script', [{ value: '确认', key: 'ui.confirm', locations: [second] }])
+  ])
+  assert.deepStrictEqual(shared.conflicts, [])
+  assert.strictEqual(shared.messages['ui.confirm'], '确认')
+  assert.deepStrictEqual(shared.entries['ui.confirm'].locations, [first, second])
+})
+
 test('an explicit key overrides automatic identity and joins compatible message contracts', () => {
   const first = at('src/a.js', 'script-string', 1, 0, 8)
   const second = at('src/b.js', 'script-string', 2, 0, 8)

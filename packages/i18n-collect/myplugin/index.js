@@ -6,6 +6,7 @@ const {
   catalogMetadata,
   conflictMessage,
   readCatalogMetadataFile,
+  readExplicitMessages,
   readIdentityAmbiguities,
   readIdentityConfirmations,
   readRetirementConfirmations,
@@ -160,10 +161,12 @@ class MyI18nPlugin {
       const ambiguitiesFile = path.join(config.root, identities.ambiguities)
       let confirmations
       let retirements
+      let explicitMessages
       let previousAmbiguities
       try {
         confirmations = readIdentityConfirmations(path.join(config.root, identities.confirmations))
         retirements = readRetirementConfirmations(path.join(config.root, identities.retirements))
+        explicitMessages = readExplicitMessages(path.join(config.root, identities.explicitMessages))
         previousAmbiguities = readIdentityAmbiguities(ambiguitiesFile)
       } catch (error) {
         session.abandon(compilation)
@@ -174,6 +177,7 @@ class MyI18nPlugin {
         previousAmbiguities,
         confirmations,
         retirements,
+        explicitMessages,
         prune: config.pruneOrphaned,
         externalKeys: config.externalKeys
       })

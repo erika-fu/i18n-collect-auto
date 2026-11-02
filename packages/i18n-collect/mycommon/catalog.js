@@ -391,35 +391,92 @@ function isHashDictionaryKey(key) {
   return HASH_DICTIONARY_KEY.test(key)
 }
 
+function sameParamSet(actual, expected) {
+  const left = [...new Set(actual || [])].sort()
+  const right = [...new Set(expected || [])].sort()
+  return left.length === right.length && left.every((name, index) => name === right[index])
+}
+
+function callParamError(placement, placeholders) {
+  const kind = placement.paramsKind || 'none'
+  if (kind === 'dynamic') {
+    return placeholders.length > 0 ? 'dynamic-params' : null
+  }
+  const names = kind === 'static' ? (placement.paramNames || []) : []
+  return sameParamSet(names, placeholders) ? null : 'placeholder-mismatch'
+}
+
 function applyLocalizedCallReferences(entries, callPlacements, previousMetadata, options = {}) {
   const externalKeys = new Set(options.externalKeys || [])
   const retirements = new Set(options.retirements || [])
   const conflictKeys = new Set(options.conflictKeys || [])
+  const explicitByKey = new Map((options.explicitMessages || []).map(item => [item.key, item]))
   const previous = previousMetadata ? previousMetadata.entries || {} : {}
   const referenceErrors = []
+  const rejectedKeys = new Set()
   for (const placement of callPlacements) {
     const key = placement.explicitKey
     // Legacy MD5 dictionary calls and externalKeys stay outside the project catalog.
     if (!key || externalKeys.has(key) || isHashDictionaryKey(key)) continue
-    if (entries.has(key)) {
-      appendCallPlacement(entries.get(key), placement)
-      continue
-    }
     // Same-round message-contract conflicts already fail collection for this key.
     if (conflictKeys.has(key)) continue
+    const declared = explicitByKey.get(key)
     const prior = previous[key]
-    if (prior && entryStatus(prior) === 'orphaned' && retirements.has(key)) {
+    const retiredPrior = Boolean(prior && entryStatus(prior) === 'orphaned' && retirements.has(key))
+    const retiredAbsent = Boolean(!prior && !entries.has(key) && retirements.has(key))
+    if (retiredPrior || retiredAbsent) {
       referenceErrors.push({ key, reason: 'retired', location: placement.location })
+      rejectedKeys.add(key)
       continue
     }
-    if (prior) {
+    if (!entries.has(key) && !prior && !declared) {
+      referenceErrors.push({ key, reason: 'unknown', location: placement.location })
+      rejectedKeys.add(key)
+      continue
+    }
+
+    let source
+    let origin
+    if (entries.has(key)) {
+      const entry = entries.get(key)
+      if (declared && declared.source !== entry.source) {
+        if (entry.representation === REPRESENTATION_SOURCE_TEXT) {
+          referenceErrors.push({ key, reason: 'source-mismatch', location: placement.location })
+          rejectedKeys.add(key)
+          continue
+        }
+        entry.source = declared.source
+        entry.fingerprint = fingerprintOf(declared.source)
+        entry.origin = 'explicit'
+      } else if (declared) {
+        entry.origin = 'explicit'
+      }
+      source = entry.source
+      origin = entry.origin
+    } else if (declared) {
+      source = declared.source
+      origin = 'explicit'
+    } else {
+      source = prior.source
+      origin = prior.origin
+    }
+
+    const placeholders = messageContract(source).placeholders
+    const paramError = callParamError(placement, placeholders)
+    if (paramError) {
+      referenceErrors.push({ key, reason: paramError, location: placement.location })
+      rejectedKeys.add(key)
+      continue
+    }
+
+    if (!entries.has(key)) {
       const representationByLocation = new Map([
         [locationId(placement.location), REPRESENTATION_LOCALIZED_CALL]
       ])
       entries.set(key, {
-        source: prior.source,
-        fingerprint: prior.fingerprint || fingerprintOf(prior.source),
-        origin: prior.origin,
+        source,
+        fingerprint: fingerprintOf(source),
+        origin,
         representation: REPRESENTATION_LOCALIZED_CALL,
         locations: [placement.location],
         hostByLocation: new Map([[locationId(placement.location), placement.semanticHost]]),
@@ -427,11 +484,16 @@ function applyLocalizedCallReferences(entries, callPlacements, previousMetadata,
       })
       continue
     }
-    if (retirements.has(key)) {
-      referenceErrors.push({ key, reason: 'retired', location: placement.location })
-      continue
-    }
-    referenceErrors.push({ key, reason: 'unknown', location: placement.location })
+    appendCallPlacement(entries.get(key), placement)
+  }
+  // Drop call-only seeds that failed validation so a failed round exposes no partial key.
+  for (const key of rejectedKeys) {
+    const entry = entries.get(key)
+    if (!entry) continue
+    const representations = entry.representationByLocation
+      ? [...entry.representationByLocation.values()]
+      : [entry.representation]
+    if (!representations.includes(REPRESENTATION_SOURCE_TEXT)) entries.delete(key)
   }
   referenceErrors.sort((a, b) => sortLocations(a.location, b.location) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
   return referenceErrors
@@ -458,7 +520,9 @@ function buildCatalog(snapshots, options = {}) {
             explicitKey: entry.key,
             location,
             semanticHost: semanticHostOf(snapshot, location),
-            representation: REPRESENTATION_LOCALIZED_CALL
+            representation: REPRESENTATION_LOCALIZED_CALL,
+            paramNames: Array.isArray(entry.paramNames) ? entry.paramNames : [],
+            paramsKind: entry.paramsKind || 'none'
           })
         }
         continue
@@ -629,7 +693,8 @@ function buildCatalog(snapshots, options = {}) {
   const referenceErrors = applyLocalizedCallReferences(entries, callPlacements, previousMetadata, {
     externalKeys: options.externalKeys || [],
     retirements: options.retirements || [],
-    conflictKeys
+    conflictKeys,
+    explicitMessages: options.explicitMessages || []
   })
   attachOccurrences(entries)
   ambiguities.sort((a, b) => sortLocations(a.location, b.location))
@@ -973,6 +1038,43 @@ function ambiguityMessage(ambiguities, reportPath) {
 const CONFIRMATION_VERSION = 1
 const AMBIGUITY_REPORT_VERSION = 1
 const RETIREMENT_VERSION = 1
+const EXPLICIT_MESSAGES_VERSION = 1
+
+function readExplicitMessages(file) {
+  if (!fs.existsSync(file)) return []
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`explicit messages could not be read (${error.message})`)
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('explicit messages must be an object')
+  }
+  if (parsed.version !== EXPLICIT_MESSAGES_VERSION) {
+    throw new Error(
+      `explicit messages version ${parsed.version} is unsupported; use version ${EXPLICIT_MESSAGES_VERSION}`
+    )
+  }
+  if (!Array.isArray(parsed.messages)) {
+    throw new Error('explicit messages must include a messages array')
+  }
+  const seen = new Set()
+  return parsed.messages.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`explicit message ${index} must be an object`)
+    }
+    if (typeof item.key !== 'string' || item.key.length === 0) {
+      throw new Error(`explicit message ${index} must be a non-empty localization key`)
+    }
+    if (typeof item.source !== 'string' || item.source.length === 0) {
+      throw new Error(`explicit message ${index} must be a non-empty source`)
+    }
+    if (seen.has(item.key)) throw new Error(`duplicate explicit message for "${item.key}"`)
+    seen.add(item.key)
+    return { key: item.key, source: item.source }
+  })
+}
 
 function readIdentityAmbiguities(file) {
   if (!fs.existsSync(file)) return []
@@ -1105,14 +1207,21 @@ function conflictMessage(conflicts) {
   return lines.join('\n')
 }
 
+function referenceReasonLabel(reason) {
+  if (reason === 'retired') return 'retired project key'
+  if (reason === 'placeholder-mismatch') return 'placeholder mismatch'
+  if (reason === 'source-mismatch') return 'source mismatch with the explicit message'
+  if (reason === 'dynamic-params') return 'call with dynamic parameters'
+  return 'unknown project key'
+}
+
 function referenceMessage(referenceErrors) {
   const noun = referenceErrors.length === 1 ? 'reference' : 'references'
   const lines = [`i18n-collect failed: ${referenceErrors.length} localization key ${noun}`]
   for (const error of referenceErrors) {
-    const reason = error.reason === 'retired' ? 'retired project key' : 'unknown project key'
-    lines.push(`  "${error.key}" is a ${reason} at ${where(error.location)}`)
+    lines.push(`  "${error.key}" is a ${referenceReasonLabel(error.reason)} at ${where(error.location)}`)
   }
-  lines.push('  Restore the key in catalog metadata, retire the call, or list it in externalKeys.')
+  lines.push('  Restore the key in catalog metadata, fix the explicit message or call parameters, retire the call, or list it in externalKeys.')
   return lines.join('\n')
 }
 
@@ -1146,6 +1255,7 @@ module.exports = {
   fingerprintOf,
   messageContract,
   readCatalogMetadataFile,
+  readExplicitMessages,
   readIdentityAmbiguities,
   readIdentityConfirmations,
   readRetirementConfirmations,

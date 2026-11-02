@@ -18,6 +18,9 @@ Webpack resolves those to `apps/demo/lang/zh_hash.json` and the catalog files un
 - `lang/zh_hash.map.json`, the source map. Entries stay at schema version 1 and do not carry localization keys.
 - `lang/catalog/<sourceLocale>.json`, the source-locale catalog. The default is `lang/catalog/zh.json`: a flat map from a localization key to source text.
 - `lang/catalog/catalog.meta.json`, the catalog metadata (schema version 3): source text, source fingerprint, `explicit` or `derived` origin, `source-text` or `localized-call` representation, source locations, per-occurrence identity (stable ID, semantic host, child role, local context, origin, representation), and `active` or `orphaned` status. Version 1 and 2 metadata upgrade on read without rewriting existing localization keys; unsupported or unreadable versions fail the round and leave formal outputs unchanged.
+- `lang/catalog/explicit-messages.json`, optional project-owned declarations of localization key and canonical Chinese source for parameterized localized calls. Collection reads it and does not rewrite it.
+- `lang/catalog/complete-static-copy-baseline.json`, optional committed list of grandfathered complete-static-copy policy violations. `check-policy` reads it and does not rewrite it.
+- `lang/catalog/runtime-multilingual-boundaries.json`, optional committed list of feature or route boundaries that require explicit localization at runtime. `check-policy` reads it and does not rewrite it.
 
 `catalogDir`, `sourceLocale`, and `catalogFormat` select those last two paths. `json` is the only format. `writeOutputs` compares each file's bytes with what would be written and leaves a file that already matches out of the commit. When every file matches, it returns before creating a journal or a temporary file. An unchanged collection therefore does not schedule another compilation.
 
@@ -76,6 +79,24 @@ A key conflict means one localization key names incompatible message contracts. 
 ## A localized-call reference failed the round
 
 A static `t('key')`, `$t('key')`, or `this.$t('key')` is a `localized-call` occurrence. Collection keeps the referenced key active, updates its location and structural anchor, and leaves canonical source text intact when every active occurrence is a call. A non-retired orphaned key becomes active again. An unknown or retired project key fails the round and keeps the previous dictionary, source map, and catalog. Legacy MD5 dictionary calls stay outside the project catalog. List an externally managed key in `externalKeys` to allow the call without creating a project catalog entry. A colocated `i18n-key` that disagrees with the call key also fails; matching keys are accepted.
+
+Declare parameterized messages that are not complete static copy in `<catalogDir>/explicit-messages.json` (`{ version: 1, messages: [{ key, source }] }`). Collection derives the placeholder contract from `source` and checks a static object-literal second argument against those names. A placeholder mismatch, or a dynamic second argument when placeholders are required, fails the round without publishing partial formal outputs. An invalid or unsupported manifest version also fails closed. Editing the declared source keeps the key, updates the fingerprint, and marks target translations for review.
+
+## Complete-static-copy policy check failed
+
+`i18n-collect check-policy` distinguishes complete static Chinese (eligible for automatic collection outside a runtime-multilingual boundary) from message construction that must use an explicit localization call. It reports each violation with a machine-checkable reason (`interpolation`, `concatenation`, `conditional`, `formatting`, or `structured-fragmentation`) and the affected source location. Treat those diagnostics as authoring-policy findings, not as generic collection omissions.
+
+Structured UI copy that mixes Chinese text with links, emphasis, controls, or component slots is `structured-fragmentation`. Translators must control grammatical ordering and accessible structure in one message; fragment-by-fragment automatic keys break word order across locales and can separate a control or link from the sentence that gives it meaning. Declare the whole message in `explicit-messages.json` with named `{slot}` placeholders (for example `请阅读我们的{terms}与{privacy}`), keep compatible calls on that key when the translation is intentionally shared, and render through a static localized call or a component-interpolation host that fills those slots. Ordinary identical static Chinese in separate locations still receives independent automatic keys unless an author deliberately shares an explicit key.
+
+Commit existing complete-static-copy violations in `<catalogDir>/complete-static-copy-baseline.json` (`{ version: 1, violations: [...] }`) so migration can proceed incrementally. The baseline grandfathers an exact match of path, reason, kind, text, and source range. A newly introduced violation, or a baseline entry whose text or location changed, fails the command. The baseline never hides collection failures, identity ambiguities, stale formal outputs, direct source text inside a declared runtime-multilingual boundary, or other hard collection errors—those still fail on their own path.
+
+Migration workflow: run `check-policy`, move a dynamic or structured message into `explicit-messages.json` and a static localized call, remove or update the matching baseline entry, then collect again so catalogs stay current.
+
+## Runtime-multilingual boundary policy check failed
+
+A feature or route that must switch languages at runtime is an explicit localization boundary. Declare it in `<catalogDir>/runtime-multilingual-boundaries.json` (`{ version: 1, boundaries: [{ id, include, exclude? }] }`). `include` and `exclude` are project-relative scope patterns with the same semantics as collection filters: directory patterns inherit to descendants, globs match as documented for `include`/`exclude`, and an exclude vetoes only within the same boundary. Overlapping boundaries use union membership, so another boundary may re-include a path carved out elsewhere.
+
+Inside a matching path, `check-policy` reports every direct user-facing Chinese fragment as `runtime-multilingual-literal`. Static localization key arguments (`t('key')`, `$t('key')`, `this.$t('key')`) are allowed; Chinese source text is not, including text marked `no-i18n-auto`. These violations always fail and cannot be grandfathered by `complete-static-copy-baseline.json`. Being present in the collection result is not the same as being able to switch languages at runtime: automatic collection remains for Chinese-first areas outside the boundary, while boundary copy must render through explicit messages and static localized calls.
 
 ## An occurrence identity ambiguity failed the round
 

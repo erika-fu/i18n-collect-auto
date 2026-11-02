@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "boundaries": [
+    {
+      "id": "react-multilingual",
+      "include": [
+        "src/multilingual"
+      ]
+    }
+  ]
+}

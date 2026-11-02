@@ -11,11 +11,11 @@
           "path": "src/App.jsx",
           "kind": "template-literal",
           "start": {
-            "line": 3,
+            "line": 5,
             "column": 17
           },
           "end": {
-            "line": 3,
+            "line": 5,
             "column": 19
           }
         }
@@ -83,11 +83,11 @@
           "path": "src/App.jsx",
           "kind": "script-string",
           "start": {
-            "line": 1,
+            "line": 3,
             "column": 14
           },
           "end": {
-            "line": 1,
+            "line": 3,
             "column": 26
           }
         }
@@ -101,11 +101,11 @@
           "path": "src/App.jsx",
           "kind": "template-literal",
           "start": {
-            "line": 3,
+            "line": 5,
             "column": 27
           },
           "end": {
-            "line": 3,
+            "line": 5,
             "column": 33
           }
         }

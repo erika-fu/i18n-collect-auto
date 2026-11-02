@@ -1,3 +1,4 @@
+const { checkPolicy } = require('./check-policy')
 const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
 const { replace } = require('./replace')
@@ -16,7 +17,13 @@ async function main(argv) {
     return EXIT.ok
   }
   const command = args[0]
-  if (command !== 'collect' && command !== 'translate' && command !== 'replace' && command !== 'run') {
+  if (
+    command !== 'collect'
+    && command !== 'translate'
+    && command !== 'replace'
+    && command !== 'run'
+    && command !== 'check-policy'
+  ) {
     write(process.stderr, `configuration: unknown command "${command}"`)
     write(process.stdout, helpFor())
     return EXIT.configuration
@@ -32,7 +39,9 @@ async function main(argv) {
       ? await translate(commandArgs)
       : command === 'replace'
         ? replace(commandArgs)
-        : await run(commandArgs)
+        : command === 'check-policy'
+          ? checkPolicy(commandArgs)
+          : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   return outcome.code

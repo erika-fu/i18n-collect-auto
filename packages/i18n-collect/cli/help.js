@@ -126,6 +126,43 @@ Exit codes:
   7  strict mode found a skipped candidate
 `
 
+const CHECK_POLICY_HELP = `i18n-collect check-policy
+
+Scan project sources for complete-static-copy policy violations and runtime-multilingual
+boundary violations.
+A whole static Chinese literal may stay eligible for automatic collection outside a
+declared runtime-multilingual boundary. Interpolation, concatenation, conditional
+construction, and formatting must use an explicit localization call instead of
+independently translated fragments. Structured messages that mix Chinese copy with
+links, emphasis, controls, or component slots must also use explicit localization so
+translators control ordering and placeholders.
+Existing complete-static-copy violations may be listed in
+lang/catalog/complete-static-copy-baseline.json. The baseline grandfathers exact matches
+only; new or modified violations fail. The baseline never hides collection failures,
+identity ambiguities, stale formal outputs, or direct source text inside a declared
+runtime-multilingual boundary.
+Declare runtime-multilingual feature or route boundaries in
+lang/catalog/runtime-multilingual-boundaries.json. Direct user-facing source text inside
+those boundaries always fails and cannot be grandfathered by the complete-static-copy
+baseline: collected automatic copy is not the same as being able to switch languages at
+runtime.
+
+Usage:
+  i18n-collect check-policy [options]
+
+Options:
+  --cwd <dir>          Project root. Defaults to the current directory.
+  --include <pattern>  Replace the configured include scope. Repeat to set several patterns.
+  --exclude <pattern>  Replace the configured exclude scope. Repeat to set several patterns.
+  --json               Print the policy report as JSON on stdout.
+  -h, --help           Show this help.
+
+Exit codes:
+  0  no new or modified policy violations and no runtime-multilingual boundary violations
+  1  configuration failure
+  2  new or modified complete-static-copy policy violations, or runtime-multilingual boundary violations
+`
+
 const ROOT_HELP = `i18n-collect
 
 Automation-friendly commands for this workspace.
@@ -134,10 +171,11 @@ Usage:
   i18n-collect <command> [options]
 
 Commands:
-  collect    Collect Chinese user-facing copy through the project's webpack integration.
-  translate  Fill target-locale catalogs through a project translation provider.
-  replace    Preview safe source replacements, or commit them with --write.
-  run        Run selected collect, translate, and replace stages.
+  collect       Collect Chinese user-facing copy through the project's webpack integration.
+  translate     Fill target-locale catalogs through a project translation provider.
+  replace       Preview safe source replacements, or commit them with --write.
+  run           Run selected collect, translate, and replace stages.
+  check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
 
 Run i18n-collect <command> --help for command options.
 `
@@ -196,7 +234,16 @@ function helpFor(command) {
   if (command === 'translate') return TRANSLATE_HELP
   if (command === 'replace') return REPLACE_HELP
   if (command === 'run') return RUN_HELP
+  if (command === 'check-policy') return CHECK_POLICY_HELP
   return ROOT_HELP
 }
 
-module.exports = { COLLECT_HELP, REPLACE_HELP, ROOT_HELP, RUN_HELP, TRANSLATE_HELP, helpFor }
+module.exports = {
+  CHECK_POLICY_HELP,
+  COLLECT_HELP,
+  REPLACE_HELP,
+  ROOT_HELP,
+  RUN_HELP,
+  TRANSLATE_HELP,
+  helpFor
+}

@@ -12,6 +12,16 @@
     <p data-role="wait-source-a">{{ waitA }}</p>
     <p data-role="wait-source-b">{{ waitB }}</p>
     <p data-role="legacy">{{ $t('47781b8a72bcbb7ecb1f955399a7e718') }}</p>
+    <p data-role="items-deleted">{{ $t('demo.items.deleted', { count: deletedCount }) }}</p>
+    <i18n
+      path="demo.terms.notice"
+      tag="p"
+      data-role="terms-notice"
+    >
+      <a place="terms" href="/terms">{{ $t('demo.terms.link') }}</a>
+      <a place="privacy" href="/privacy">{{ $t('demo.privacy.link') }}</a>
+    </i18n>
+    <p data-role="terms-notice-call">{{ $t('demo.terms.notice', { terms: $t('demo.terms.link'), privacy: $t('demo.privacy.link') }) }}</p>
   </section>
 </template>
 
@@ -29,7 +39,8 @@ export default {
       waitA,
       waitB,
       waitKeyA: '',
-      waitKeyB: ''
+      waitKeyB: '',
+      deletedCount: 3
     }
   },
   created () {

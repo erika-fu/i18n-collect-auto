@@ -13,11 +13,11 @@
           "path": "src/App.jsx",
           "kind": "template-literal",
           "start": {
-            "line": 3,
+            "line": 5,
             "column": 27
           },
           "end": {
-            "line": 3,
+            "line": 5,
             "column": 33
           }
         }
@@ -34,11 +34,11 @@
             "path": "src/App.jsx",
             "kind": "template-literal",
             "start": {
-              "line": 3,
+              "line": 5,
               "column": 27
             },
             "end": {
-              "line": 3,
+              "line": 5,
               "column": 33
             }
           }
@@ -185,11 +185,11 @@
           "path": "src/App.jsx",
           "kind": "template-literal",
           "start": {
-            "line": 3,
+            "line": 5,
             "column": 17
           },
           "end": {
-            "line": 3,
+            "line": 5,
             "column": 19
           }
         }
@@ -206,11 +206,11 @@
             "path": "src/App.jsx",
             "kind": "template-literal",
             "start": {
-              "line": 3,
+              "line": 5,
               "column": 17
             },
             "end": {
-              "line": 3,
+              "line": 5,
               "column": 19
             }
           }
@@ -228,11 +228,11 @@
           "path": "src/App.jsx",
           "kind": "script-string",
           "start": {
-            "line": 1,
+            "line": 3,
             "column": 14
           },
           "end": {
-            "line": 1,
+            "line": 3,
             "column": 26
           }
         }
@@ -249,12 +249,98 @@
             "path": "src/App.jsx",
             "kind": "script-string",
             "start": {
-              "line": 1,
+              "line": 3,
               "column": 14
             },
             "end": {
-              "line": 1,
+              "line": 3,
               "column": 26
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "react.multilingual.body": {
+      "source": "你好，{name}。此页仅通过显式本地化渲染。",
+      "fingerprint": "7664ce829aef5fcf",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/multilingual/MultilingualPanel.jsx",
+          "kind": "script-string",
+          "start": {
+            "line": 7,
+            "column": 42
+          },
+          "end": {
+            "line": 7,
+            "column": 67
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "3df06950c3819e0a",
+          "semanticHost": "src/multilingual/MultilingualPanel.jsx::script",
+          "childRole": "script-string",
+          "localContext": "sibling:1",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/multilingual/MultilingualPanel.jsx",
+            "kind": "script-string",
+            "start": {
+              "line": 7,
+              "column": 42
+            },
+            "end": {
+              "line": 7,
+              "column": 67
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "react.multilingual.title": {
+      "source": "运行时多语言边界",
+      "fingerprint": "7d6b7ba0a630647e",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/multilingual/MultilingualPanel.jsx",
+          "kind": "script-string",
+          "start": {
+            "line": 6,
+            "column": 44
+          },
+          "end": {
+            "line": 6,
+            "column": 70
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "f779ff5972b06b20",
+          "semanticHost": "src/multilingual/MultilingualPanel.jsx::script",
+          "childRole": "script-string",
+          "localContext": "sibling:0",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/multilingual/MultilingualPanel.jsx",
+            "kind": "script-string",
+            "start": {
+              "line": 6,
+              "column": 44
+            },
+            "end": {
+              "line": 6,
+              "column": 70
             }
           }
         }
