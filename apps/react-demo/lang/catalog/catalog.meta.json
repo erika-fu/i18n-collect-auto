@@ -1,0 +1,265 @@
+{
+  "version": 3,
+  "sourceLocale": "zh",
+  "format": "json",
+  "entries": {
+    "auto.01M6DAKXAH4PNP7Q7RHFSXEQGB": {
+      "source": "条待处理任务",
+      "fingerprint": "a9d50ff2df100835",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.jsx",
+          "kind": "template-literal",
+          "start": {
+            "line": 3,
+            "column": 27
+          },
+          "end": {
+            "line": 3,
+            "column": 33
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "fdd3591622a242c5",
+          "semanticHost": "src/App.jsx::script",
+          "childRole": "template-literal",
+          "localContext": "sibling:1",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.jsx",
+            "kind": "template-literal",
+            "start": {
+              "line": 3,
+              "column": 27
+            },
+            "end": {
+              "line": 3,
+              "column": 33
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6DAKXAH7V1NBG6SKE1EE1RE": {
+      "source": "React 静态属性",
+      "fingerprint": "5fcc8d056b1e7d4e",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-attribute",
+          "start": {
+            "line": 8,
+            "column": 14
+          },
+          "end": {
+            "line": 8,
+            "column": 24
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "43a46b12fc050623",
+          "semanticHost": "public/index.html::html",
+          "childRole": "static-html-attribute",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "public/index.html",
+            "kind": "static-html-attribute",
+            "start": {
+              "line": 8,
+              "column": 14
+            },
+            "end": {
+              "line": 8,
+              "column": 24
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6DAKXAH8CN3FPMA1YZV5P7D": {
+      "source": "React 静态页面文案",
+      "fingerprint": "15ccf8ee565b93ba",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-text",
+          "start": {
+            "line": 8,
+            "column": 26
+          },
+          "end": {
+            "line": 8,
+            "column": 38
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "6cf989ddae2f59f4",
+          "semanticHost": "public/index.html::html",
+          "childRole": "static-html-text",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "public/index.html",
+            "kind": "static-html-text",
+            "start": {
+              "line": 8,
+              "column": 26
+            },
+            "end": {
+              "line": 8,
+              "column": 38
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6DAKXAHDGX60AEZ0B9QQMDB": {
+      "source": "React 样式文案",
+      "fingerprint": "c31ae717324b7470",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/base.css",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 2,
+            "column": 12
+          },
+          "end": {
+            "line": 2,
+            "column": 22
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "23db210ff9d0ed5a",
+          "semanticHost": "src/base.css::style[index=0;lang=css]",
+          "childRole": "css-generated-content",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/base.css",
+            "kind": "css-generated-content",
+            "start": {
+              "line": 2,
+              "column": 12
+            },
+            "end": {
+              "line": 2,
+              "column": 22
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6DAKXAHG85HYDNQX78CNB31": {
+      "source": "你有",
+      "fingerprint": "533fa2b46a36380d",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.jsx",
+          "kind": "template-literal",
+          "start": {
+            "line": 3,
+            "column": 17
+          },
+          "end": {
+            "line": 3,
+            "column": 19
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "a54352686db37e92",
+          "semanticHost": "src/App.jsx::script",
+          "childRole": "template-literal",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.jsx",
+            "kind": "template-literal",
+            "start": {
+              "line": 3,
+              "column": 17
+            },
+            "end": {
+              "line": 3,
+              "column": 19
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6DAKXAHP3M291MZA9BQJD01": {
+      "source": "React 脚本文案",
+      "fingerprint": "3ce809d4645b60c6",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.jsx",
+          "kind": "script-string",
+          "start": {
+            "line": 1,
+            "column": 14
+          },
+          "end": {
+            "line": 1,
+            "column": 26
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "dc7d667f4ba6ff27",
+          "semanticHost": "src/App.jsx::script",
+          "childRole": "script-string",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.jsx",
+            "kind": "script-string",
+            "start": {
+              "line": 1,
+              "column": 14
+            },
+            "end": {
+              "line": 1,
+              "column": 26
+            }
+          }
+        }
+      ],
+      "status": "active"
+    }
+  }
+}
