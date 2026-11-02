@@ -4,12 +4,12 @@
 
 **Blocked by:** #01: Introduce Metadata v3 and Opaque Automatic Keys; #02: Collect Localized-Call Occurrences and Validate References
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A compatible source-text occurrence supplies the canonical source text.
-- [ ] When all active occurrences are localized calls, the last canonical source text remains available.
-- [ ] A localized call never replaces canonical source text with an empty value.
-- [ ] A uniquely matched source-text change preserves the key and updates the source fingerprint.
-- [ ] Existing target translations become `needs-review` after a source change.
-- [ ] Incompatible message contracts still fail collection.
-- [ ] Tests cover mixed occurrences, all-localized occurrences, source changes, fingerprints, and review-state transitions.
+- [x] A compatible source-text occurrence supplies the canonical source text.
+- [x] When all active occurrences are localized calls, the last canonical source text remains available.
+- [x] A localized call never replaces canonical source text with an empty value.
+- [x] A uniquely matched source-text change preserves the key and updates the source fingerprint.
+- [x] Existing target translations become `needs-review` after a source change.
+- [x] Incompatible message contracts still fail collection.
+- [x] Tests cover mixed occurrences, all-localized occurrences, source changes, fingerprints, and review-state transitions.

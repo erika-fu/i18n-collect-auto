@@ -394,6 +394,7 @@ function isHashDictionaryKey(key) {
 function applyLocalizedCallReferences(entries, callPlacements, previousMetadata, options = {}) {
   const externalKeys = new Set(options.externalKeys || [])
   const retirements = new Set(options.retirements || [])
+  const conflictKeys = new Set(options.conflictKeys || [])
   const previous = previousMetadata ? previousMetadata.entries || {} : {}
   const referenceErrors = []
   for (const placement of callPlacements) {
@@ -404,6 +405,8 @@ function applyLocalizedCallReferences(entries, callPlacements, previousMetadata,
       appendCallPlacement(entries.get(key), placement)
       continue
     }
+    // Same-round message-contract conflicts already fail collection for this key.
+    if (conflictKeys.has(key)) continue
     const prior = previous[key]
     if (prior && entryStatus(prior) === 'orphaned' && retirements.has(key)) {
       referenceErrors.push({ key, reason: 'retired', location: placement.location })
@@ -607,9 +610,11 @@ function buildCatalog(snapshots, options = {}) {
       representationByLocation: only.representationByLocation
     })
   }
+  const conflictKeys = new Set(conflicts.map(item => item.key))
   const referenceErrors = applyLocalizedCallReferences(entries, callPlacements, previousMetadata, {
     externalKeys: options.externalKeys || [],
-    retirements: options.retirements || []
+    retirements: options.retirements || [],
+    conflictKeys
   })
   attachOccurrences(entries)
   ambiguities.sort((a, b) => sortLocations(a.location, b.location))
