@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>新课 6：静态中文片段识别算法</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script defer src="../assets/lesson.js"></script>
+</head>
+<body><main>
+<header class="masthead">
+  <p class="eyebrow">NEW SERIES · 06 / 06 · IMPLEMENTATION ALGORITHM</p>
+  <h1>从 AST 到 entry：Loader 如何精确识别中文片段</h1>
+  <p>本课专门回答一个实现问题：源码里有普通字符串、模板字面量、字符串拼接、Vue 插值和 CSS content 时，Loader 究竟怎样区分它们？重点是“静态可证明片段”，而不是笼统地扫描中文字符。</p>
+</header>
+
+<section>
+  <h2>1. 先建立总算法</h2>
+  <pre>输入：当前 resource 的原始 source
+
+1. 根据 resource.block 选择语义解析器
+2. 解析 source，得到带位置的结构
+3. 遍历结构中的静态候选
+4. 对每个候选：
+   a. 得到 decoded value
+   b. 判断是否含 Han 字符
+   c. 判断是否是 import、排除指令或过滤上下文
+   d. 确定 semantic kind
+   e. 记录原始 start/end
+5. 每个候选独立生成 entry
+6. Loader 将 entries 包成 snapshot
+
+entry = {
+  value,
+  locations: [{ path, kind, start, end }],
+  key?                       // 可选的 i18n-key
+}</pre>
+  <p>核心原则是：<strong>先识别语法构造，再对构造内部的静态部分做 Han 判断。</strong>不能反过来先搜索所有中文，再猜它属于字符串、注释、属性还是 CSS selector。</p>
+</section>
+
+<section>
+  <h2>2. 为什么使用 AST，而不是正则</h2>
+  <p>JS/TS extractor 在 <a href="../packages/i18n-collect/myloader/extract-script.js">extract-script.js</a> 中使用 Babel parser 和 Babel traverse：</p>
+  <pre>const ast = parser.parse(source, {
+  sourceType: 'unambiguous',
+  plugins: ['jsx', 'typescript']
+})
+
+traverse(ast, {
+  CallExpression(path) { /* localized call */ },
+  StringLiteral(path) { /* 普通字符串 */ },
+  TemplateLiteral(path) { /* 模板字面量 */ }
+})</pre>
+  <p>AST 解决了正则很难可靠处理的问题：</p>
+  <ul>
+    <li>知道引号里的内容是字符串，而不是注释或正则表达式的一部分；</li>
+    <li>知道字符串的父节点是否是 <code>ImportDeclaration</code> / export module specifier；</li>
+    <li>知道模板字面量的静态 quasi 和动态 expression 各在哪里；</li>
+    <li>直接提供节点的 <code>start/end</code>，可以把 entry 定位回原始源码；</li>
+    <li>能够区分嵌套表达式，例如模板中的 <code>${"内嵌"}</code>。</li>
+  </ul>
+  <p>HTML 与 CSS 也使用结构化解析：HTML 由 parse5 提供文本节点、属性节点和 source location；CSS 由 PostCSS 提供 declaration。这里的“AST”不一定都叫 Babel AST，但共同思想是先获得语义结构。</p>
+</section>
+
+<section>
+  <h2>3. 普通字符串：StringLiteral 分支</h2>
+  <pre>const title = "首页"
+const punctuation = "，。！"
+const english = "Loading"
+const modulePath = "./中文模块"
+const message = "你" + unknown + "好"</pre>
+  <p>遍历到 Babel 的 <code>StringLiteral</code> 后，当前实现按近似以下顺序处理：</p>
+  <ol>
+    <li>如果节点是 import/export module specifier，跳过。</li>
+    <li>如果它是静态本地化调用的 key 参数，例如 <code>t('home.title')</code>，跳过普通字符串分支，由 localized-call 分支处理。</li>
+    <li>读取 <code>node.value</code>。这是 Babel 解码后的字符串值。</li>
+    <li>应用 exclusion directive 和 context filter。</li>
+    <li>执行 <code>containsHan(value)</code>；命中才创建 entry。</li>
+    <li>kind 固定为 <code>script-string</code>，location 使用该节点的 <code>start/end</code>。</li>
+  </ol>
+  <table>
+    <tr><th>源码</th><th>行为</th><th>说明</th></tr>
+    <tr><td><code>"首页"</code></td><td>收集一个完整值“首页”</td><td>一个 StringLiteral</td></tr>
+    <tr><td><code>"，。！"</code></td><td>不收集</td><td>没有 Han</td></tr>
+    <tr><td><code>"./中文模块"</code></td><td>不收集</td><td>它是模块路径，不是用户文案</td></tr>
+    <tr><td><code>"你" + unknown + "好"</code></td><td>收集“你”和“好”两个 entry</td><td>两个独立 StringLiteral</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>4. 模板字符串：TemplateLiteral 的两条平行数组</h2>
+  <p>JavaScript 模板字面量在 AST 中不是一个“最终字符串”。可以把它理解为两组互相交错的数据：</p>
+  <pre>源码：`你好，${name}！`
+
+node.quasis     = ["你好，", "！"]  // 静态片段
+node.expressions = [name]           // 动态表达式
+
+语义顺序：quasis[0] → expressions[0] → quasis[1]</pre>
+  <p>提取器只遍历 <code>node.quasis</code>：</p>
+  <pre>for (const quasi of nodePath.node.quasis) {
+  const value = quasi.value.cooked
+  if (!value || !containsHan(value)) continue
+  entries.push(entry(
+    value,
+    location(source, resource.projectPath, quasi,
+             'template-literal')
+  ))
+}</pre>
+  <p>所以：</p>
+  <table>
+    <tr><th>源码</th><th>entry</th><th>不会做什么</th></tr>
+    <tr><td><code>`你好${name}世界`</code></td><td>“你好”和“世界”</td><td>不读取 name 的运行时值</td></tr>
+    <tr><td><code>`a${x}中文${y}后缀`</code></td><td>“中文”和“后缀”</td><td>不把英文静态片段强行保留</td></tr>
+    <tr><td><code>`前${"内嵌"}后`</code></td><td>“前”“内嵌”“后”</td><td>不把三个值合并；内嵌字符串是另一个 AST 节点</td></tr>
+  </table>
+  <p>外层 quasi 的 kind 是 <code>template-literal</code>；嵌套表达式里的普通字符串节点仍由 <code>StringLiteral</code> 分支处理，所以 kind 是 <code>script-string</code>。kind 来自节点/语义来源，不来自字符串长相。</p>
+</section>
+
+<section>
+  <h2>5. “拼接”策略：项目选择不拼接</h2>
+  <pre>const a = "你" + unknown + "好"
+const b = "你" + "好"
+const c = `你${name}好`
+const d = "你好，" + name</pre>
+  <p>当前结果：</p>
+  <pre>a → "你", "好"
+b → "你", "好"
+c → "你", "好"
+d → "你好，"</pre>
+  <p>这不是遗漏，而是有意的安全边界。若自动拼接，需要至少回答：</p>
+  <ul>
+    <li><code>unknown</code> 的运行时值是什么？</li>
+    <li>条件表达式、函数调用、循环和异常路径会产生哪个结果？</li>
+    <li>拼接后的一个翻译 key 应该定位到哪几个原始范围？</li>
+    <li>翻译后的词序是否仍能适配原来的字符串加法？</li>
+  </ul>
+  <p>项目因此采用保守规则：只收集“不执行程序也能证明的静态片段”。即使两边都是字面量，也不做常量折叠，因为一旦加入折叠规则，就会产生新的边界、位置和语义复杂度。动态拼接应通过显式本地化调用和参数化消息表达，而不是依靠自动收集猜测。</p>
+  <aside class="warning"><strong>容易误解：</strong>“模板字面量被拆成片段”不等于“字符串拼接被支持”。模板字面量的静态 quasi 有明确 AST 边界；普通 <code>+</code> 表达式的最终值需要语义求值，当前项目不做这件事。</aside>
+</section>
+
+<section>
+  <h2>6. Vue HTML 中为什么仍然使用 Babel</h2>
+  <pre>&lt;p&gt;欢迎，{{ name }}！&lt;/p&gt;
+&lt;input :title="'查看' + user.name"&gt;
+&lt;div&gt;{{ `前缀${name}后缀` }}&lt;/div&gt;</pre>
+  <p><a href="../packages/i18n-collect/myloader/extract-html.js">extract-html.js</a> 先用 parse5 找到 HTML text node 或 allowlisted attribute，再把插值/动态属性内部的表达式交给 Babel。</p>
+  <div class="flow">parse5 HTML node
+  ↓ 拆出普通文本和 {{ expression }}
+Babel parseExpression(expression)
+  ↓
+StringLiteral / TemplateLiteral / localized CallExpression
+  ↓
+push(value, kind, original source range)</div>
+  <p>表达式中的静态片段不会改成 <code>script-string</code>，因为它仍位于 HTML 语义位置：</p>
+  <ul>
+    <li>Vue 插值中的字符串 → <code>template-expression</code>；</li>
+    <li>动态 allowlisted attribute 中的字符串 → <code>html-attribute</code>；</li>
+    <li>普通 HTML text node → <code>html-text</code>。</li>
+  </ul>
+  <p>HTML entity 还需要额外保存“解码值”和“原始范围”的映射：例如源码 <code>保存&amp;#x540E;关闭</code> 的 value 是“保存后关闭”，但 location 必须覆盖原始 entity 拼写。值不能反推范围，所以 extractor 在一次扫描中同时产出两者。</p>
+</section>
+
+<section>
+  <h2>7. CSS 为什么不走 Babel，也不拼接 content</h2>
+  <pre>.badge::before {
+  content: "第" counter(item) "项";
+}</pre>
+  <p>CSS extractor 使用 PostCSS 找到 <code>content</code> declaration，然后只扫描 declaration value 中的 CSS string：</p>
+  <pre>"第"             → 一个 css-generated-content entry
+counter(item)    → 忽略，运行时才知道值
+"项"             → 一个 css-generated-content entry</pre>
+  <p>CSS 中的多个字符串是多个静态 fragment，而不是一个可安全拼接的最终文案。这样每个 fragment 都有独立源码 range；<code>counter</code>、<code>attr</code>、<code>var</code> 等动态来源不被执行。</p>
+</section>
+
+<section>
+  <h2>8. 从候选到 entry 的统一模板</h2>
+  <pre>function consider(value, kind, start, end, context) {
+  if (!value) return
+  if (!containsHan(value)) return
+  if (context.isExcluded) return
+  if (context.isFiltered) return
+
+  entries.push({
+    value,
+    locations: [{
+      path: projectPath,
+      kind,
+      start: offsetToPosition(source, start),
+      end: offsetToPosition(source, end)
+    }]
+  })
+}</pre>
+  <p>各 extractor 的差别主要在“候选从哪里来”：</p>
+  <table><tr><th>来源</th><th>候选生成器</th><th>范围来源</th></tr>
+    <tr><td>普通 JS 字符串</td><td>Babel <code>StringLiteral</code></td><td>node.start/end</td></tr>
+    <tr><td>JS 模板静态段</td><td>Babel <code>TemplateLiteral.quasis</code></td><td>quasi.start/end</td></tr>
+    <tr><td>HTML 文本</td><td>parse5 text node</td><td>node.sourceCodeLocation + decode map</td></tr>
+    <tr><td>HTML 动态属性</td><td>parse5 attribute + Babel expression</td><td>attribute 内容 + expression node</td></tr>
+    <tr><td>CSS generated content</td><td>PostCSS declaration + CSS string scanner</td><td>string start/end，排除引号</td></tr>
+  </table>
+</section>
+
+<section class="exercise">
+  <h2>综合检索练习</h2>
+  <p>请预测下面代码的 entry 值和 kind：</p>
+  <pre>const x = `你好${user}世界`
+const y = "你" + getWord() + "好"
+const z = `前${"内嵌"}后`
+import label from "中文路径"
+</pre>
+  <button data-answer="answer">显示答案</button>
+  <div id="answer" class="answer"><p>结果是：<code>你好</code>（template-literal）、<code>世界</code>（template-literal）、<code>你</code>（script-string）、<code>好</code>（script-string）、<code>前</code>（template-literal）、<code>内嵌</code>（script-string）、<code>后</code>（template-literal）。<code>中文路径</code>位于 import module specifier，被排除。没有任何一步执行 <code>user</code> 或 <code>getWord()</code>，也没有把相邻片段拼接。</p></div>
+</section>
+
+<aside class="callout"><strong>一句话记忆：</strong>AST 负责回答“这是什么语法构造”，Han 判断负责回答“这个静态值是否值得收集”，semantic kind 负责回答“它来自哪种语义位置”，source range 负责回答“原文在哪里”。四者共同生成一个 entry。</aside>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0016-design-debugging.html">← 上一课：设计与排错</a><a class="map" href="index.html">课程地图</a><a class="next" href="index.html">回到课程地图 →</a></nav>
+<footer><p>主来源：<a href="../packages/i18n-collect/myloader/extract-script.js">extract-script.js</a>、<a href="../packages/i18n-collect/myloader/extract-html.js">extract-html.js</a>、<a href="../packages/i18n-collect/myloader/extract-css.js">extract-css.js</a>、<a href="../packages/i18n-collect/test/script-extractor.test.js">script-extractor.test.js</a>。这些问题仍不清楚时，可以把一段具体源码交给我，我们逐个 AST 节点追踪。</p></footer>
+</main></body></html>

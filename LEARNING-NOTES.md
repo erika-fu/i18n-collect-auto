@@ -40,6 +40,33 @@ src/App.vue::style[index=1;lang=scss]
 
 identity 不是 CSS selector，不是 source map 坐标，也不是必须暴露在公开 hash source map 中的字段。它是 Session 管理 resource snapshot 的内部 key。
 
+### 示例：订单页中的三种 identity
+
+同一个文件中的 template、script、style 是不同的语义资源，因此会有不同 identity：
+
+```text
+src/pages/Order.vue::template[lang=html]
+src/pages/Order.vue::script[lang=js]
+src/pages/Order.vue::style[index=0;lang=css]
+```
+
+例如，删除 `<h1>订单详情</h1>` 时，只应更新 template 的 snapshot；`const submitLabel = '提交订单'` 和 CSS 的 `暂无订单` 不能因此消失。
+
+对 `<h1>订单详情</h1>` 而言，三种标识分别回答不同问题：
+
+```text
+resource identity：src/pages/Order.vue::template[lang=html]
+  → 哪个语义资源提供了它？
+
+文案 hash：md5('订单详情')
+  → 运行时旧版 hash 字典怎样按文本查到它？
+
+localization key：order.title
+  → 翻译 catalog 和后续替换代码使用什么稳定名称？
+```
+
+若另一个页面也写了“订单详情”，两处可以有相同的文本 hash，却仍可因为各自的 `i18n-key` 而使用不同翻译单元，例如 `order.title` 与 `history.order-title`。所以不能把“文本相同”误解为“业务语义一定相同”。
+
 ## 2. 为什么公开 map 没有 `resource` 字段
 
 内部 snapshot 可以包含 identity 和 owner 信息：
@@ -117,6 +144,24 @@ added   = currentSnapshot - oldSnapshot
 - 未变化 Module 在缓存命中并恢复 metadata 时，可以继续贡献已有 snapshot；
 - Plugin 汇总当前 Module graph 中仍有效的 snapshot。
 
+### 示例：删除属性文案时的 snapshot 替换
+
+第一次构建时，template 的完整贡献可能是：
+
+```text
+旧 snapshot：订单详情、保存订单、保存
+```
+
+开发者随后删除了 `title="保存订单"`。第二次收集到的完整 snapshot 是：
+
+```text
+新 snapshot：订单详情、保存
+```
+
+Plugin 用新 snapshot 覆盖旧 snapshot 后，`保存订单` 才会从输出 catalog 中移除。
+
+如果只做“发现一个词就 add”的追加逻辑，第二次构建没有发现 `保存订单` 并不等于主动删除它，旧词会错误地永久留在语言包中。这就是完整 snapshot 的价值。
+
 ## 4. Webpack 的构建对象与增量构建
 
 一次普通构建通常有：
@@ -190,6 +235,26 @@ main Compilation → candidate round
 
 child Compilation 会通过 `mainCompilation()` 沿 `parentCompilation` 找到主 Compilation，因此同一主构建的 child Compilation 归入主 Compilation 的 round。
 
+### 示例：只修改 script 时如何保留页面的完整贡献
+
+Vue SFC 不必只对应一个 Webpack Module。该文件可能产生类似请求：
+
+```text
+src/pages/Order.vue?vue&type=template&lang=html
+src/pages/Order.vue?vue&type=script&lang=js
+src/pages/Order.vue?vue&type=style&index=0&lang=css
+```
+
+当只修改 `const submitLabel = '提交订单'` 为 `const submitLabel = '确认提交'` 时，Webpack 可能重新处理 script 模块，而 template 和 style 模块命中缓存。此时：
+
+```text
+本轮 Loader submission：script 的新 snapshot
+缓存恢复的 Module metadata：template、style 的旧但仍有效 snapshot
+最终 live set：template + 新 script + style
+```
+
+因此，“只改了一行 JS”不等于 Plugin 的最终输出只含 JS 文案；Plugin 仍要从当前 Module graph 汇总整个页面乃至整个项目的有效贡献。
+
 ## 5. 资源 snapshot 与 Webpack 增量构建
 
 精确模型是：
@@ -253,6 +318,110 @@ account.profile_name
 
 格式错误的 `i18n-key`，或者同一片段被两个不同 key 命名，会使本轮失败，而不是静默猜测。
 
+### 示例：显式 key、自动 key 与排除指令
+
+`i18n-key` 是对“下一段文案”的命名：
+
+```vue
+<!-- i18n-key: order.title -->
+<h1>订单详情</h1>
+```
+
+其结果类似：
+
+```json
+{
+  "key": "order.title",
+  "source": "订单详情",
+  "location": {
+    "path": "src/pages/Order.vue",
+    "kind": "html-text",
+    "start": { "line": 4, "column": 6 }
+  }
+}
+```
+
+如果没有注释，系统首次会分配一个不透明的自动 key，例如 `auto.<ULID>`。后续收集通过 semantic host、child role 与 local context 等 structural anchor，唯一匹配历史 occurrence 时复用这个 key。把 `<h1>` 从第 4 行移动到第 10 行时，坐标会变化，但它不是 key 身份本身；若 structural anchor 仍能唯一匹配，就不应仅因格式化源码生成新 key。
+
+#### 为什么 structural anchor 只能作为候选信号
+
+结构锚点（structural anchor）并不直接证明“新旧两个节点就是同一个 occurrence”。它回答的是一个更谨慎的问题：
+
+> 旧 occurrence 在新 AST 中**可能**迁移到了哪些节点？
+
+同一个 occurrence 经历常规编辑后，通常仍保留“在程序结构中扮演什么角色”的信息。比如旧代码：
+
+```jsx
+export function Header() {
+  return <h1>{'欢迎'}</h1>
+}
+```
+
+可以为 `'欢迎'` 记录近似如下的结构信息：
+
+```text
+module: src/Header.jsx
+enclosing function: Header
+ancestor path: ReturnStatement
+  > JSXElement(h1)
+  > JSXExpressionContainer
+  > StringLiteral
+role: expression of JSXExpressionContainer
+```
+
+之后即使只改了格式、加了空行，或在函数中插入不相关语句：
+
+```jsx
+export function Header() {
+  logRender()
+
+  return (
+    <h1>{'欢迎'}</h1>
+  )
+}
+```
+
+行列号已经漂移，但这个 occurrence 仍同时满足：位于同一文件、同一个 `Header` 函数、`return` 中的 `h1`，并且仍是 `JSXExpressionContainer` 的表达式。因此，新的所有字符串 occurrence 中符合这些约束的节点，构成了合理的**候选集**。只有候选集恰好为一个，系统才有较强依据让它继承旧 occurrence 的自动 key。
+
+它编码的是 occurrence 的**相对语义位置**，而非绝对字符位置。可以将三类信息类比为地址：
+
+| 信息 | 地址类比 | 编辑后的稳定性 | 身份强度 |
+|---|---|---|---|
+| `line: 10, column: 15` | GPS 坐标 | 排版一改就漂移 | 弱 |
+| `Header` 的 `return` 中 `h1` 的文本表达式 | 某栋楼的某个房间 | 小范围编辑后通常仍成立 | 候选信号 |
+| 显式 `i18n-key` | 正式门牌号 | 人为维护时最明确 | 强 |
+
+候选信号必须有足够区分度。以下代码中，两个 `'欢迎'` 的祖先路径和角色几乎相同：
+
+```jsx
+function Header() {
+  return (
+    <>
+      <h1>{'欢迎'}</h1>
+      <h1>{'欢迎'}</h1>
+    </>
+  )
+}
+```
+
+此时 structural anchor 只能判断“这两个新节点都像旧节点”，不能判断“哪一个是旧 occurrence”。候选集大小为 2，身份恢复必须失败、保守地分配新自动 key，或要求维护者提供显式 `i18n-key`；绝不能任意挑选其中一个。
+
+因此 structural anchor 能作为候选信号，不是因为 AST 天然携带身份，而是因为：
+
+1. 同一节点经过常见编辑时，结构特征常能保留；
+2. 不同节点通常具有不同的父节点链、属性角色或语义宿主；
+3. 这些特征可将“全文件所有文本”缩小为少量可能继承旧身份的节点；
+4. 仅当过滤结果唯一时，系统才有资格继续把它视为同一 occurrence。
+
+与之相反，下面的 `no-i18n-auto` 表示跳过关联片段：
+
+```js
+/* no-i18n-auto */
+const protocolLabel = '内部订单状态'
+```
+
+这里不会产生翻译条目；它不是“给条目命名”，而是明确告诉收集器该字符串不应自动本地化。
+
 ## 7. Han 门槛
 
 Han 门槛是 extractor 已经识别出语义静态片段后应用的最低内容条件：
@@ -273,6 +442,25 @@ function containsHan(value) {
 | `class-name` | 跳过 | 通常是技术标识，且不含 Han |
 
 它不是“只截取汉字”，也不是完整语言识别器，而是对已经处于正确语义位置的候选片段进行噪声过滤。JavaScript 中的纯英文字符串不会仅因为是字符串而被收集；不支持的技术位置也不会因为出现中文就变成文案。
+
+### 示例：在转换前观察原始源码，并用 Han 门槛过滤
+
+假设 Loader 链中有会重写 Vue 内容的 Loader。`myloader.pitch` 在转换发生前读取原始 `Order.vue`，可以记录“订单详情”位于原文件的正确行列；它只观察，不修改返回源码。
+
+```text
+原始源码 → i18n-collect 的 pitch 观察并提取 → 后续 Loader 转换 → bundle
+```
+
+Han 门槛随后过滤候选：
+
+| 源码片段 | 是否收集 | 示例原因 |
+|---|---:|---|
+| `'提交订单'` | 是 | 包含 Han 字符，整段作为文案保留 |
+| `'保存成功（2 项）'` | 是 | 数字和括号不影响收集 |
+| `'order-submit-button'` | 否 | 没有 Han，通常是技术标识 |
+| `'Hello world'` | 否 | 没有 Han，不会仅因它是字符串而收集 |
+
+注意：`'订单号：A-1024'` 会整体收集，而不是只提取“订单号”。收集器保留完整可翻译句子，翻译者才能调整词序和标点。
 
 ## 8. Loader 的 `pitch`
 
@@ -614,6 +802,31 @@ live set → A、B、C
 
 如果 C 已经不在当前 Module graph，即使上一轮 committed 有 C，普通资源也不会无条件保留 C；成功轮次会淘汰 C。
 
+### 示例：candidate、live 与 committed 如何在一次修改中变化
+
+设上一次成功构建的 committed 包含：
+
+```text
+订单详情、保存、提交订单、暂无订单
+```
+
+本轮把 `提交订单` 改为 `确认提交`。流程可理解为：
+
+```text
+candidate / submitted
+  = Loader 本轮刚从 script 得到的“确认提交”
+
+live
+  = 当前 Module graph 中 template 的“订单详情、保存”
+    + script 的“确认提交”
+    + style 的“暂无订单”
+
+committed
+  = 只有 catalog 校验和所有输出文件都写成功后，才更新为上述 live 的正式版本
+```
+
+若本轮发现两个位置都声明 `i18n-key: order.title`，但一个源文本是“订单详情”、另一个是“订单历史”，就产生 key conflict。本轮必须失败，旧 committed 仍然保留；不能把一半新结果写到磁盘。
+
 ## 15. `release`、失败和输出事务
 
 一次收集只有在以下条件全部满足时才正式提交：
@@ -644,6 +857,21 @@ commit 当前 snapshots 到内存
 - 下一次构建再基于当前 graph 产生候选。
 
 [packages/i18n-collect/mycommon/output.js](packages/i18n-collect/mycommon/output.js) 对多文件写入使用 journal：先写记录，再写临时文件、备份旧文件、逐个 rename；全部成功后删除 journal，任一步失败则按 journal 恢复。进程中途退出时，下一次提交先恢复残留 journal，避免多文件出现半新半旧。
+
+### 示例：多文件发布失败时如何恢复
+
+一次成功发布通常同时更新多个文件，例如：
+
+```text
+lang/zh.json
+lang/zh_hash.map.json
+catalog.json
+catalog.meta.json
+```
+
+若 `catalog.json` 已写成功，但接着写 `catalog.meta.json` 时磁盘报错，journal 会把前面已经替换的文件恢复。最终磁盘应保持“全部旧版本”，而不是出现“词典是新版本、metadata 是旧版本”的不一致状态。
+
+这也是为什么“收集到了候选文案”不等于“它已经成为可以被团队使用的正式翻译目录”。
 
 ## 16. 量的生命周期边界总表
 
@@ -742,3 +970,247 @@ Plugin 汇总并校验这些状态
 最关键的一句话是：
 
 > **Webpack 负责决定哪些 Module 重新处理或从 cache 恢复；Loader 负责为处理过的 resource 创建完整 snapshot；metadata 为 cache 恢复提供模块级数据载体；Plugin 从当前 Module graph 组装 live set，并通过 Session 的 round 与 committed 完成安全发布。**
+
+## 21. 本次讨论：replacement 是改源码，不是改构建产物
+
+收集（collect）和替换（replace）是两个连续但职责不同的阶段：
+
+```text
+源代码中的中文
+  ↓ collect
+catalog / catalog metadata / 语言包
+  ↓ 人工或平台补齐翻译
+已知 key 与已知源码位置
+  ↓ replace --write
+源代码中的 t('key')、$t('key') 或 this.$t('key')
+  ↓ 正常 build
+新的 dist 构建产物
+```
+
+最容易混淆的一点是：**replace 的写入目标是项目源码，`dist` 是随后正常构建产生的结果。** replace 不直接搜索、修改或依赖已有的 `dist` 文件。
+
+### 21.1 为什么 replacement 不重新扫描项目
+
+replace 读取 catalog metadata 中已经记录的信息，而不是再次扫描所有中文：
+
+```json
+{
+  "key": "order.save",
+  "source": "保存",
+  "location": {
+    "path": "src/pages/Order.vue",
+    "kind": "html-text",
+    "start": { "line": 5, "column": 24 },
+    "end": { "line": 5, "column": 26 }
+  }
+}
+```
+
+例如，以下两个“保存”可能含义不同：
+
+```vue
+<button>保存</button>       <!-- order.save -->
+<button>保存</button>       <!-- profile.save -->
+```
+
+如果 replacement 按文本值全局查找并统一替换，它无法知道第一个应变为 `$t('order.save')`，第二个应变为 `$t('profile.save')`。因此它必须按 metadata 的文件和精确位置逐项验证。
+
+### 21.2 `replace` 实际如何验证一处文本
+
+假设 metadata 记录：
+
+```text
+src/pages/Order.vue，第 5 行第 24 至 26 列，原文“保存”，key 为 order.save
+```
+
+replace 的简化步骤是：
+
+```text
+1. 读取当前 src/pages/Order.vue
+2. 将行列坐标换算为字符串 offset
+3. 取出该范围的当前 slice
+4. 确认 slice 仍然等于 metadata 中的“保存”
+5. 分析它所在的语法位置和 adapter
+6. 生成一个安全 edit，或明确报告 skip
+```
+
+如果 collect 之后有人把源码改成：
+
+```vue
+<button>存储</button>
+```
+
+原记录仍指向同一范围，但当前 slice 已是“存储”，不是“保存”。replace 必须跳过，并报告：
+
+```text
+catalog location does not match the current source
+```
+
+它绝不能因为 key 名为 `order.save` 就把新的“存储”强行改成 `$t('order.save')`；那会把人工改动悄悄覆盖为可能不正确的翻译单元。
+
+### 21.3 preview、`--strict`、`--write` 的区别
+
+仍用上例：metadata 记录“保存”，但源码已改为“存储”。三种模式的行为如下：
+
+| 命令或模式 | 会得到什么 | 是否修改源码 |
+|---|---|---:|
+| 默认 preview | 计划结果与 skip 理由 | 否 |
+| `replace --strict` | 发现 skip 后以退出码 7 结束 | 否 |
+| `replace --write` | 仍先验证；这条不合法则不会替换 | 不会改这条 |
+| `replace --strict --write` | 有任一 skip 就整体不提交 | 否 |
+
+正常、可写入的例子是：
+
+```vue
+<!-- 写入前 -->
+<button>保存</button>
+
+<!-- vue2 / vue3 template 写入后 -->
+<button>{{ $t('order.save') }}</button>
+```
+
+对于普通 JavaScript：
+
+```js
+// 写入前
+const label = '提交订单'
+
+// js adapter 或具备既有 t 的 vue3 script setup，写入后
+const label = t('order.submit')
+```
+
+默认 preview 可能把上述“写入后内容”展示给开发者审阅，但只存在于报告或内存中；只有加 `--write` 才会写回 [src/pages/Order.vue](src/pages/Order.vue)。
+
+### 21.4 adapter 不是自动安装运行时
+
+replacement 只能使用项目已经具备的本地化调用方式：
+
+| adapter | 可生成的例子 | 需要已存在的运行时条件 |
+|---|---|---|
+| `js` | `t('order.submit')` | 项目已有可用的 `t` 函数；不会自动插入 import |
+| `vue2` | template 中 `$t('order.save')`；方法中 `this.$t('order.save')` | 已使用 VueI18n 8 |
+| `vue3` | template 中 `$t('order.save')`；Options API 中 `this.$t(...)` | 已配置 vue-i18n 9+；script setup 还必须已有可用的 `t` |
+
+反例：源码只有
+
+```js
+const label = '提交订单'
+```
+
+但项目既没有 `t` 的 import、也没有定义 `t`。replace 不应擅自输出：
+
+```js
+const label = t('order.submit')
+```
+
+因为这段代码会在运行时报 `t is not defined`。它不会替用户安装依赖、修改应用入口、创建 i18n 实例或猜测 import 来源。
+
+### 21.5 能收集不代表一定能安全替换
+
+collect 的工作是“识别并记录静态文本”；replace 的工作还要判断“生成调用后是否保持语法和运行时正确”。例如：
+
+```js
+// 支持：变量 value 位置
+const title = '订单详情'
+// → const title = t('order.title')
+
+// 通常跳过：对象 key 位置
+const labels = { '订单详情': value }
+// 不应盲目变为 { t('order.title'): value }
+
+// 已本地化：不重复嵌套
+const title = t('order.title')
+// 不应变为 t('order.title') 外再包一层 t(...)
+```
+
+Vue 属性也不能只替换字符串内容，必须转换为正确模板语法：
+
+```vue
+<!-- 写入前 -->
+<button title="保存">保存</button>
+
+<!-- 静态属性的安全写入形式 -->
+<button :title="$t('order.save')">{{ $t('order.save') }}</button>
+```
+
+replace 会拒绝不支持的语义位置、重叠 edit、超出当前范围的 React JSX、CSS generated content 与独立 HTML 等情况。报告 skip 不是“忽略错误”，而是为了避免生成语法错误或运行时错误。
+
+### 21.6 写入后的中文去了哪里
+
+写入成功后，业务源码中的中文确实会被 key 调用替代：
+
+```js
+// 源码写入前
+const title = '订单详情'
+
+// 源码写入后
+const title = t('order.title')
+```
+
+但原文和对应翻译不应丢失，它们存在 catalog/语言包中：
+
+```json
+{
+  "order.title": {
+    "zh-CN": "订单详情",
+    "en-US": "Order details"
+  }
+}
+```
+
+因此用户最终看到的不是 key：运行时 `t('order.title')` 会根据当前语言取出相应文本。例如中文环境显示“订单详情”，英文环境显示“Order details”。
+
+这里的“中文从源码消失”是有意的迁移结果；它不代表中文被删除，而是从业务代码移动到了专门管理翻译的目录。
+
+### 21.7 为什么 `--write` 仍然需要事务
+
+一次 replace 的事务会同时覆盖：
+
+```text
+src/pages/Order.vue             ← 替换源码
+catalog 的既有文件               ← 与源码一起作为事务参与者原样重写
+replacements.json               ← 记录替换结果
+```
+
+这里的 catalog 与 `catalog.meta.json` 不会被 replace 重新收集或改写业务内容；CLI 将它们作为同一份提交中的既有文件纳入 targets，保证这次迁移涉及的文件不会出现半新半旧。若 `Order.vue` 已成功写入 `$t('order.save')`，但随后 `replacements.json` 写入失败，系统必须通过同一个 journal 恢复 `Order.vue`。否则下一次运行会看到源码已本地化、报告却说尚未替换，形成半迁移状态。
+
+成功重复执行也应保持幂等：
+
+```js
+// 第一次运行后
+const label = t('order.submit')
+
+// 第二次运行
+// 识别为 already localized，不写成 t(t('order.submit'))
+```
+
+### 21.8 这次讨论的结论
+
+```text
+collect：发现中文，建立带 key、source、位置的 catalog metadata
+replace preview：验证并展示计划，不写文件
+replace --write：验证通过后修改项目源码，而非 dist
+正常 build：根据已改源码生成新的 dist
+运行时：通过 key 从语言包取得当前语言文本
+```
+
+最重要的判断口诀是：
+
+> **收集阶段回答“有什么文案”；替换阶段回答“这个已记录的位置现在能否安全改成 key 调用”；构建阶段才把改过的源码编译成产物。**
+
+## 22. 新增问题清单
+
+19. collect 与 replace 分别读取什么事实来源？
+20. 为什么 replacement 不能按“相同中文”做全局替换？
+21. 默认 preview、`--strict`、`--write` 与 `--strict --write` 分别会不会写源码？
+22. 为什么 replace 修改的是 `src`，而不是直接修改 `dist`？
+23. adapter 为什么不能自动添加 import、安装 `vue-i18n` 或创建 `t`？
+24. 为什么“收集成功”不保证“替换一定成功”？
+25. 源码里的中文被替换后，原文和译文保存在哪里？
+26. replacement 为什么也必须使用 journal 和幂等检测？
+
+## 23. 补充源码与课程索引
+
+- [替换预览实现](packages/i18n-collect/mycommon/replace-preview.js)
+- [CLI replace 实现](packages/i18n-collect/cli/replace.js)
+- [第九课：替换预览与写入](lessons/0009-replacement.html)

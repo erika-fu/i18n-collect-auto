@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>新课 4：Snapshot、Session 与 Plugin 发布</title><link rel="stylesheet" href="../assets/course.css"><script defer src="../assets/lesson.js"></script></head>
+<body><main>
+<header class="masthead"><p class="eyebrow">NEW SERIES · 04 / 05 · BUILD LIFECYCLE</p><h1>一次收集 round 如何从多个 Loader 结果变成文件</h1><p>Loader 只知道当前资源；Plugin 才知道本次 Compilation 的全局结果。本课解释 snapshot 替换、Module metadata、缓存恢复、Session round 和事务写出的连接。</p></header>
+<section><h2>1. Snapshot 是“一个资源的完整事实”</h2><pre>snapshot = {
+  identity: "src/App.vue::template[lang=html]",
+  projectPath: "src/App.vue",
+  owner: { block: "template", styleIndex: null, lang: "html" },
+  entries: [ ... ]
+}</pre><p>一个 Loader invocation 提交的是该 identity 的<strong>完整替换 snapshot</strong>，不是向全局数组 append。若本次文件删掉了“欢迎”，空 snapshot 就会替换旧 snapshot，使旧文案能够消失。</p><p>这也是为什么两个 Vue style block 不能共用 identity：后一次提交会覆盖前一次，而不是合并。</p></section>
+<section><h2>2. record 同时写两条状态链</h2><div class="flow">extractor entries
+  ↓ snapshotFor
+snapshot
+  ├── module.buildInfo.i18nCollect
+  │     （可由 Webpack cache 恢复）
+  └── session.submit(compilation, module, snapshot)
+        （本轮 candidate round）</div><p><a href="../packages/i18n-collect/myloader/index.js#L79-L94">record</a> 把普通可序列化 metadata 写到当前 Module。它不是把结果写到磁盘，也不是依赖旧的 Loader Context。</p><p>为什么要两份？本轮 Loader 重新执行时，Session 立即有 candidate；未变化模块命中 Webpack filesystem cache 时，Plugin 仍可从 Module metadata 恢复它的 snapshot。</p></section>
+<section><h2>3. Plugin 的生命周期</h2><div class="flow">thisCompilation
+  → session.begin(compilation)
+      ↓ Loader invocations
+afterSeal
+  → assembleLiveSet(main modules)
+  → assembleLiveSet(child modules)
+  → 检查 metadata / loader evidence
+      ↓ stats 无错误
+ done
+  → snapshotsForRelease()
+  → retainStaticHtmlSnapshots()
+  → buildCatalog()
+  → 检查 key conflict / reference / ambiguity
+  → session.release(..., writeOutputs)
+</div><p><a href="../packages/i18n-collect/myplugin/index.js">MyI18nPlugin</a> 的 <code>afterSeal</code> 更适合发现集成诊断；<code>done</code> 只有在 Compilation 成功后才建 catalog 并发布。<code>live</code> 来自当前 Module graph，<code>submitted</code> 来自本轮 Loader，child compiler 的 HTML 还可能需要恢复和有限保留。</p></section>
+<section><h2>4. 为什么失败不能发布半份结果</h2><p>在正式写文件前可能发生：</p><ul><li>其他模块编译失败；</li><li>同一个 localization key 对应互不兼容的 message contract；</li><li>automatic occurrence identity 出现歧义；</li><li>未知 localized-call key；</li><li>文件写入中途失败。</li></ul><p>前几种情况直接 abandon 当前 round，保留上一次正式输出。写入阶段由 <a href="../packages/i18n-collect/mycommon/output.js">output.js</a> 使用 temp、backup 和 journal 成组提交；若中途异常，恢复已替换文件，Session 也用 checkpoint 回滚内存。</p><pre>candidate round
+  ↓ 所有校验通过
+release：checkpoint → commit memory → write group
+  ├─ 成功：committed + 4 类正式输出更新
+  └─ 失败：rollback + previous outputs remain</pre></section>
+<section><h2>5. 四类输出不要混淆</h2><table><tr><th>输出</th><th>身份来源</th><th>用途</th></tr><tr><td><code>zh_hash.json</code></td><td>MD5(text)</td><td>兼容旧运行时 dictionary，按文案值去重。</td></tr><tr><td><code>zh_hash.map.json</code></td><td>MD5 + locations</td><td>定位来源；不携带 localization key。</td></tr><tr><td><code>catalog/zh.json</code></td><td>localization key</td><td>翻译与替换的源语言目录。</td></tr><tr><td><code>catalog.meta.json</code></td><td>occurrence identity + fingerprint</td><td>恢复自动 key、记录生命周期与来源。</td></tr></table></section>
+<section class="exercise"><h2>检索练习</h2><p>watch 第二轮只重新运行 B 的 Loader，A 命中 filesystem cache；C 已经从当前 Module graph 删除。Plugin 应保留哪些 snapshot？如果 B 的新 snapshot 为空，旧 B 文案是否继续存在？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>A 从合法 Module metadata 恢复，B 使用本轮新提交，C 不因旧 committed 而永久保留，会在成功轮次淘汰。B 的空 snapshot 是有效替换，表示 B 当前不再贡献文案，因此旧 B 文案应删除。</p></div></section>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0014-extractor-examples.html">← 上一课：提取器实例</a><a class="map" href="index.html">课程地图</a><a class="next" href="0016-design-debugging.html">下一课：设计与排错 →</a></nav>
+<footer><p>主来源：<a href="../packages/i18n-collect/myplugin/index.js">myplugin/index.js</a>、<a href="../packages/i18n-collect/mycommon/session.js">session.js</a>、<a href="../docs/collection-architecture.md#L208-L317">Session 与 round</a>。</p></footer>
+</main></body></html>
