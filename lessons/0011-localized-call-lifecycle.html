@@ -5,7 +5,7 @@
 $t('home.title')
 this.$t('home.title')
 t('items.deleted', { count })</pre><p>计算成员、可选调用、动态 key 和其他形态不会被误分类。script 与 HTML 提取器会产生一个 <code>localized-call</code> occurrence，其 value 为空，因为调用本身提供的是 key，而不是新的中文源文本。第二参数若是静态对象字面量，会记录参数名；需要占位符却传入动态对象时，收集 fail-closed。</p></section>
-<section><h2>1.1 显式消息清单 vs 自动完整静态文案</h2><p>完整静态中文可以留在源码里，由收集分配 automatic key。带变量、复数或需要运行时多语言渲染的消息，则在 <code>explicit-messages.json</code> 声明规范中文源文案与派生 placeholder 契约，再以静态 localized-call 引用该键。清单只读；成功收集后规范文案进入源语言目录与 metadata，源文编辑保留键、更新 fingerprint，并把目标译文标为 <code>needs-review</code>。</p></section>
+<section><h2>1.1 显式消息清单 vs 自动完整静态文案</h2><p>完整静态中文可以留在源码里，由收集分配 automatic key。插值、拼接、条件构造与格式化不是完整静态文案：不要把片段当作可独立翻译单元。带变量、复数或需要运行时多语言渲染的消息，应在 <code>explicit-messages.json</code> 声明规范中文源文案与派生 placeholder 契约，再以静态 localized-call 引用该键。清单只读；成功收集后规范文案进入源语言目录与 metadata，源文编辑保留键、更新 fingerprint，并把目标译文标为 <code>needs-review</code>。</p><p>用 <code>i18n-collect check-policy</code> 做本地校验：每条违规带策略原因与源码位置。既有违规可写入 <code>complete-static-copy-baseline.json</code> 做增量迁移；baseline 只 grandfather 精确匹配，新增或改动违规会失败，且不能掩盖收集失败、身份歧义或过期正式产物。</p></section>
 <section><h2>2. 调用不会替代规范源文本</h2><div class="flow">替换前
   home.title → 源文本“首页” + source-text occurrence
 

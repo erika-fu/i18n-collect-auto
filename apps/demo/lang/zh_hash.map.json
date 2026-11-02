@@ -34,24 +34,6 @@
       ]
     },
     {
-      "key": "11e73ceb0ded21acb285563bcbf11888",
-      "value": "你有",
-      "locations": [
-        {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-literal",
-          "start": {
-            "line": 24,
-            "column": 14
-          },
-          "end": {
-            "line": 24,
-            "column": 16
-          }
-        }
-      ]
-    },
-    {
       "key": "1a2c609f4f9f408c8ed3c613c5834e5c",
       "value": "独立样式",
       "locations": [
@@ -222,11 +204,11 @@
           "kind": "template-expression",
           "start": {
             "line": 4,
-            "column": 11
+            "column": 47
           },
           "end": {
             "line": 4,
-            "column": 13
+            "column": 49
           }
         }
       ]
@@ -484,24 +466,6 @@
       ]
     },
     {
-      "key": "7d91279a27343749c78df5d60820d0bc",
-      "value": "条未读消息",
-      "locations": [
-        {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-literal",
-          "start": {
-            "line": 24,
-            "column": 29
-          },
-          "end": {
-            "line": 24,
-            "column": 34
-          }
-        }
-      ]
-    },
-    {
       "key": "8093e3921d80b5da7947f65844cdac87",
       "value": "请输入姓名",
       "locations": [
@@ -576,11 +540,11 @@
           "kind": "template-expression",
           "start": {
             "line": 4,
-            "column": 20
+            "column": 56
           },
           "end": {
             "line": 4,
-            "column": 22
+            "column": 58
           }
         }
       ]
@@ -629,12 +593,12 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
           "start": {
-            "line": 6,
-            "column": 11
+            "line": 5,
+            "column": 40
           },
           "end": {
-            "line": 6,
-            "column": 16
+            "line": 5,
+            "column": 45
           }
         }
       ]
@@ -647,12 +611,12 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
           "start": {
-            "line": 7,
-            "column": 18
+            "line": 6,
+            "column": 54
           },
           "end": {
-            "line": 7,
-            "column": 26
+            "line": 6,
+            "column": 62
           }
         }
       ]

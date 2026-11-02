@@ -4,6 +4,10 @@
     {
       "key": "demo.items.deleted",
       "source": "已删除 {count} 项"
+    },
+    {
+      "key": "demo.unread.count",
+      "source": "你有{count}条未读消息"
     }
   ]
 }

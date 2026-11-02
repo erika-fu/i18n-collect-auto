@@ -23,6 +23,10 @@ _Avoid_: Automatic message, hash dictionary entry
 The versioned document `explicit-messages.json` beside the catalog metadata. Version 1 lists localization keys with their canonical source text. Collection reads it and does not rewrite it. Placeholder contracts are derived from that source text with the same `{identifier}` rules as other message contracts.
 _Avoid_: Confirmation manifest, translation catalog
 
+**Complete-static-copy baseline**:
+The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. `check-policy` reads it and does not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide collection failures, identity ambiguities, or stale formal outputs.
+_Avoid_: Hash collection output, confirmation manifest, journal restore baseline
+
 **Explicit localization boundary**:
 A feature or route that must render user-facing copy in a target locale at runtime. Its user-facing copy uses explicit localized calls rather than automatically collected source text.
 _Avoid_: Translated page

@@ -4,11 +4,11 @@
 
 **Blocked by:** 01: Add an explicit message manifest and dynamic-call catalog lifecycle.
 
-**Status:** ready-for-agent
+**Status:** implemented (uncommitted)
 
-- [ ] Define a machine-checkable policy for complete static copy: a whole static literal may be automatically collected, while interpolation, concatenation, conditional construction, and formatting cannot be treated as independently translatable fragments.
-- [ ] Provide a local validation entry point that reports the policy reason and the affected source location, rather than treating policy violations as generic collection omissions.
-- [ ] Support a versioned committed baseline for existing policy violations; it may not hide collection failures, identity ambiguities, stale formal outputs, or newly added and modified violations.
-- [ ] Add unit and integration coverage across JavaScript/TypeScript, Vue templates and bindings, and the supported React demo source shapes, including a baseline regression suite.
-- [ ] Update a demo to contrast permitted automatically collected static Chinese with a dynamic message migrated to the explicit manifest-backed call, then refresh its committed collection artifacts.
-- [ ] Update documentation and lessons with the complete-static-copy rule, migration workflow, and baseline semantics.
+- [x] Define a machine-checkable policy for complete static copy: a whole static literal may be automatically collected, while interpolation, concatenation, conditional construction, and formatting cannot be treated as independently translatable fragments.
+- [x] Provide a local validation entry point that reports the policy reason and the affected source location, rather than treating policy violations as generic collection omissions.
+- [x] Support a versioned committed baseline for existing policy violations; it may not hide collection failures, identity ambiguities, stale formal outputs, or newly added and modified violations.
+- [x] Add unit and integration coverage across JavaScript/TypeScript, Vue templates and bindings, and the supported React demo source shapes, including a baseline regression suite.
+- [x] Update a demo to contrast permitted automatically collected static Chinese with a dynamic message migrated to the explicit manifest-backed call, then refresh its committed collection artifacts.
+- [x] Update documentation and lessons with the complete-static-copy rule, migration workflow, and baseline semantics.

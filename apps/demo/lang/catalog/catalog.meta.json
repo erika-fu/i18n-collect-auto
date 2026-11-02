@@ -401,11 +401,11 @@
           "kind": "template-expression",
           "start": {
             "line": 4,
-            "column": 20
+            "column": 56
           },
           "end": {
             "line": 4,
-            "column": 22
+            "column": 58
           }
         }
       ],
@@ -422,11 +422,11 @@
             "kind": "template-expression",
             "start": {
               "line": 4,
-              "column": 20
+              "column": 56
             },
             "end": {
               "line": 4,
-              "column": 22
+              "column": 58
             }
           }
         }
@@ -1002,12 +1002,12 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
           "start": {
-            "line": 7,
-            "column": 18
+            "line": 6,
+            "column": 54
           },
           "end": {
-            "line": 7,
-            "column": 26
+            "line": 6,
+            "column": 62
           }
         }
       ],
@@ -1023,12 +1023,12 @@
             "path": "src/pages/LiteralPage.vue",
             "kind": "template-expression",
             "start": {
-              "line": 7,
-              "column": 18
+              "line": 6,
+              "column": 54
             },
             "end": {
-              "line": 7,
-              "column": 26
+              "line": 6,
+              "column": 62
             }
           }
         }
@@ -1347,11 +1347,11 @@
           "kind": "template-expression",
           "start": {
             "line": 4,
-            "column": 11
+            "column": 47
           },
           "end": {
             "line": 4,
-            "column": 13
+            "column": 49
           }
         }
       ],
@@ -1368,11 +1368,11 @@
             "kind": "template-expression",
             "start": {
               "line": 4,
-              "column": 11
+              "column": 47
             },
             "end": {
               "line": 4,
-              "column": 13
+              "column": 49
             }
           }
         }
@@ -1420,7 +1420,7 @@
           }
         }
       ],
-      "status": "active"
+      "status": "orphaned"
     },
     "auto.01M6D71KFVS4FT9GGP4GE39CNR": {
       "source": "的名字呀",
@@ -1647,12 +1647,12 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
           "start": {
-            "line": 6,
-            "column": 11
+            "line": 5,
+            "column": 40
           },
           "end": {
-            "line": 6,
-            "column": 16
+            "line": 5,
+            "column": 45
           }
         }
       ],
@@ -1668,12 +1668,12 @@
             "path": "src/pages/LiteralPage.vue",
             "kind": "template-expression",
             "start": {
-              "line": 6,
-              "column": 11
+              "line": 5,
+              "column": 40
             },
             "end": {
-              "line": 6,
-              "column": 16
+              "line": 5,
+              "column": 45
             }
           }
         }
@@ -1764,7 +1764,7 @@
           }
         }
       ],
-      "status": "active"
+      "status": "orphaned"
     },
     "auto.01M6D71KFVX0VRPX4VDDB7N8WA": {
       "source": "来自独立脚本的公共词条",
@@ -2093,6 +2093,49 @@
             "end": {
               "line": 9,
               "column": 56
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.unread.count": {
+      "source": "你有{count}条未读消息",
+      "fingerprint": "d304739da72dcad2",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/pages/LiteralPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 7,
+            "column": 41
+          },
+          "end": {
+            "line": 7,
+            "column": 60
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "87c8e8c4d65d0446",
+          "semanticHost": "src/pages/LiteralPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:4",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/LiteralPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 7,
+              "column": 41
+            },
+            "end": {
+              "line": 7,
+              "column": 60
             }
           }
         }

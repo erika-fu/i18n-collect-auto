@@ -11,6 +11,7 @@ const IDENTITY_CONFIRMATIONS_FILE = 'identity-confirmations.json'
 const IDENTITY_AMBIGUITIES_FILE = 'identity-ambiguities.json'
 const RETIREMENT_CONFIRMATIONS_FILE = 'retirement-confirmations.json'
 const EXPLICIT_MESSAGES_FILE = 'explicit-messages.json'
+const COMPLETE_STATIC_COPY_BASELINE_FILE = 'complete-static-copy-baseline.json'
 const LOCALE = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$/
 
 const DEFAULTS = {
@@ -179,7 +180,8 @@ function identityFiles(config) {
     confirmations: path.posix.join(config.catalogDir, IDENTITY_CONFIRMATIONS_FILE),
     ambiguities: path.posix.join(config.catalogDir, IDENTITY_AMBIGUITIES_FILE),
     retirements: path.posix.join(config.catalogDir, RETIREMENT_CONFIRMATIONS_FILE),
-    explicitMessages: path.posix.join(config.catalogDir, EXPLICIT_MESSAGES_FILE)
+    explicitMessages: path.posix.join(config.catalogDir, EXPLICIT_MESSAGES_FILE),
+    completeStaticCopyBaseline: path.posix.join(config.catalogDir, COMPLETE_STATIC_COPY_BASELINE_FILE)
   }
 }
 
