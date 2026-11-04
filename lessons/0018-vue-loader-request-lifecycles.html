@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>新课 7：Vue Loader、子请求与 Loader 生命周期</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script defer src="../assets/lesson.js"></script>
+</head>
+<body><main>
+<header class="masthead">
+  <p class="eyebrow">NEW SERIES · 07 / 07 · VUE LOADER LIFECYCLES</p>
+  <h1>为什么 <code>vue-loader</code> 可以“先于”子请求的 <code>myloader.pitch</code>？</h1>
+  <p>本课区分 Vue SFC 的根模块请求与 script、template、style block 子请求，避免把跨请求的递归构建顺序误认为同一条 Loader 链中的 pitch/normal 执行顺序。</p>
+</header>
+
+<section>
+  <h2>1. 先区分两个层级</h2>
+  <p>对普通 JavaScript，Webpack 可以直接处理一个请求：</p>
+  <pre>src/main.js
+  ↓
+匹配 JS Loader 链
+  ↓
+myloader、thread-loader、babel-loader</pre>
+  <p>但一个 Vue 单文件组件有额外一层。以 <code>src/App.vue</code> 为例：</p>
+  <pre>根请求：src/App.vue
+  ↓
+vue-loader 解析 SFC 结构
+  ↓
+生成组件模块，并依赖 block 子请求
+  ├─ src/App.vue?vue&amp;type=script
+  ├─ src/App.vue?vue&amp;type=template
+  └─ src/App.vue?vue&amp;type=style&amp;index=0&amp;lang=css</pre>
+  <p>子请求不是磁盘上的新文件，而是同一个 <code>App.vue</code> 的不同语义资源。Webpack 会把每个子请求当成独立模块：重新匹配规则、创建独立 Loader Context，并运行独立的 Loader 生命周期。</p>
+</section>
+
+<section>
+  <h2>2. 同一个请求中的顺序从不例外</h2>
+  <p>假设 Webpack 为<strong>一个具体 request</strong>得到以下最终 Loader 列表：</p>
+  <pre>配置列表：A → B → C</pre>
+  <p>执行顺序固定为：</p>
+  <pre>pitch：   A.pitch() → B.pitch() → C.pitch()
+normal：  C()       → B()       → A()</pre>
+  <p>因此，同一个 request 不会发生这种交错：</p>
+  <pre>错误理解：A.pitch() → C() → B.pitch()</pre>
+  <p>除非某个 pitch 返回结果而短路请求，否则 Webpack 会先完成该 request 的 pitch 遍历，再开始 normal 遍历。</p>
+</section>
+
+<section>
+  <h2>3. 为什么 Vue 的顺序看起来不同？</h2>
+  <p>“<code>vue-loader</code> 先运行，子请求的 <code>myloader.pitch</code> 后运行”比较的是<strong>两个 request</strong>：</p>
+  <pre>Request A：App.vue
+  └─ 根模块的 vue-loader 生命周期
+       ↓ 创建 / 发现依赖
+
+Request B：App.vue?vue&amp;type=template
+  └─ template 子模块自己的 Loader 生命周期
+       └─ myloader.pitch()</pre>
+  <p>这不表示 <code>vue-loader</code> 的 normal 函数插到了 Request B 的 <code>myloader.pitch()</code> 前面。它只表示根 SFC 模块先暴露出后续要构建的 block 模块，Webpack 再递归构建这些模块。</p>
+</section>
+
+<section>
+  <h2>4. 本项目如何把 <code>myloader</code> 接到 Vue block？</h2>
+  <p>Vue demo 不是把 collector 简单放到根 <code>App.vue</code> 的 <code>vue-loader</code> 前或后，而是用 <code>resourceQuery</code> 选择 block 子请求：</p>
+  <pre>type=template → 加入 myloader
+type=script   → 加入 myloader
+type=style    → 加入 myloader</pre>
+  <p>当 collector 处理 template 请求时，Loader Context 的关键字段可理解为：</p>
+  <pre>resourcePath:  /project/src/App.vue
+resourceQuery: ?vue&amp;type=template&amp;id=abc</pre>
+  <p><code>resourcePath</code> 指向完整物理文件；<code>resourceQuery</code> 标明当前语义 block。<code>describeResource</code> 会将它规范化为：</p>
+  <pre>projectPath: src/App.vue
+block: template
+identity: src/App.vue::template[lang=html]</pre>
+  <p>style 请求还必须包含 <code>index</code>，以区分同一个 SFC 中多个独立的 <code>&lt;style&gt;</code> block；这与 CSS cascade 无关。</p>
+</section>
+
+<section>
+  <h2>5. <code>myloader</code> 到底什么时候收集？</h2>
+  <p><code>myloader</code> 的正常路径在 pitch 中主动从磁盘读取原始文件：</p>
+  <pre>loader.pitch = function pitch() {
+  runCollect(this, fs.readFileSync(this.resourcePath, 'utf8'))
+  this.data.collected = true
+}</pre>
+  <p>pitch 没有 Webpack 自动传入的 <code>source</code> 参数。这里的原始源码来自 <code>fs.readFileSync(resourcePath)</code>，而不是来自 <code>vue-loader</code> 或模板编译器的输出。</p>
+  <p>对 Vue 子请求，collector 再用 query 选出原始 SFC 中正确的 block：</p>
+  <pre>App.vue 原始文本 + type=template
+  ↓
+定位原始 &lt;template&gt; block
+  ↓
+extractHtml
+  ↓
+src/App.vue 的准确行列位置</pre>
+</section>
+
+<section>
+  <h2>6. normal 阶段的后备路径防御什么？</h2>
+  <p>正常情况下，pitch 已完成收集，normal 函数只原样传递：</p>
+  <pre>if (!this.data || !this.data.collected) runCollect(this, source)
+this.callback(null, source, sourceMap, meta)</pre>
+  <p>只有 pitch 没有完成收集时，才会用 normal 阶段的 <code>source</code> 作为后备。对于 Vue block，这个 <code>source</code> 可能已经被同一子请求中、位于 collector 右侧且在 normal 阶段先运行的 Loader 改写，例如 template compiler、Babel 或 CSS transform。</p>
+  <p>所以 Vue 分支会重新读取完整原始 <code>App.vue</code>，而不是信任 fallback <code>source</code>。这不是因为 <code>myloader.pitch</code> 收到了被 <code>vue-loader</code> 改写的源码；相反，pitch 本来就主动读取原始磁盘字节。它是为了保证后备收集仍以原始 SFC 和原始坐标为准。</p>
+</section>
+
+<section>
+  <h2>7. <code>enforce</code> 改变什么？</h2>
+  <p>Webpack 的 <code>enforce: 'pre'</code>、普通规则和 <code>enforce: 'post'</code> 会影响最终 Loader 列表如何组成。可以先将它理解为：</p>
+  <pre>pre rules → normal rules → post rules</pre>
+  <p>但 <code>enforce</code> 不会创造新的执行阶段。最终列表确定后，每个 request 仍遵守同一规则：</p>
+  <pre>pitch：从左到右
+normal：从右到左</pre>
+  <p>inline Loader request 的前缀也可能决定哪些 normal、pre 或 post 规则参与。因此不能只根据 chain-webpack 声明的先后、rule 名称或注释判断运行顺序；必须检查最终 Webpack config，最好用真实编译测试验证。</p>
+</section>
+
+<section class="exercise">
+  <h2>检索练习</h2>
+  <p>有人说：“既然 <code>vue-loader</code> 已经 normal 执行过，<code>App.vue?vue&amp;type=template</code> 中的 <code>myloader.pitch</code> 一定拿到 transformed source。”这句话哪里不准确？请分别说明根 request、block request 与 <code>myloader.pitch</code> 的原始输入来源。</p>
+  <button data-answer="answer">显示答案</button>
+  <div id="answer" class="answer"><p>根 <code>App.vue</code> request 与 template block request 是独立模块和独立 Loader 生命周期。vue-loader 在根 request 中解析 SFC 并暴露 block 子请求；随后 Webpack 构建 template request。myloader 的 pitch 没有接收 source 参数，而是用 <code>fs.readFileSync(resourcePath)</code> 主动读取原始 <code>App.vue</code>。只有 pitch 未收集、进入 normal fallback 时，传入的 source 才可能已被当前 block 链中的后续 Loader 转换。</p></div>
+</section>
+
+<aside class="callout"><strong>本课结论：</strong>先问“这是同一个 request 吗？”，再问“这是 pitch 还是 normal 吗？”。根 SFC 与 block 子请求的递归关系，不能替代同一 Loader 链的执行顺序。</aside>
+<nav class="lesson-nav" aria-label="课程导航"><a class="previous" href="0017-static-fragment-analysis.html">← 上一课：静态片段识别</a><a class="map" href="index.html">课程地图</a><a class="next" href="0019-loader-implementation-design.html">下一课：实现与设计取舍 →</a></nav>
+<footer><p>主来源：<a href="../apps/demo/vue.config.js">Vue demo webpack 配置</a>、<a href="../packages/i18n-collect/myloader/index.js">myloader/index.js</a>、<a href="../packages/i18n-collect/test/loader-order.test.js">loader-order.test.js</a>、<a href="../docs/vue-loader-loader-lifecycle-notes.md">学习笔记</a>。</p></footer>
+</main></body></html>

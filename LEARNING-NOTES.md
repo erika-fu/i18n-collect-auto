@@ -1214,3 +1214,1098 @@ replace --write：验证通过后修改项目源码，而非 dist
 - [替换预览实现](packages/i18n-collect/mycommon/replace-preview.js)
 - [CLI replace 实现](packages/i18n-collect/cli/replace.js)
 - [第九课：替换预览与写入](lessons/0009-replacement.html)
+
+## 24. AST 与 `extract-script.js` 详解
+
+本节围绕 `packages/i18n-collect/myloader/extract-script.js`，说明脚本提取器怎样利用 Babel AST 同时发现：
+
+1. 源码中包含汉字的普通字符串；
+2. 模板字符串中静态可确定的汉字段落；
+3. 已经存在的静态显式本地化调用，例如 `t('home.title')`；
+4. 与这些内容相邻的 `no-i18n-auto`、`i18n-key` 指令；
+5. 日志、测试和埋点等可配置排除上下文。
+
+这个文件的职责不是翻译，也不是修改源码。它只负责把一段脚本源码转换为结构化的收集结果：
+
+```text
+脚本源码
+  → Babel 解析为 AST
+  → 遍历感兴趣的节点
+  → 应用语法、注释、上下文和内容过滤
+  → 生成 entries
+  → 交给后续 catalog、policy 和 replacement 流程
+```
+
+### 24.1 总调用链
+
+脚本提取器在整个 Loader 收集流程中的位置可以概括为：
+
+```text
+Webpack 调用 myloader
+  ↓
+myloader/index.js: runCollect()
+  ↓
+describeResource() 判断当前 request 的语义资源类型
+  ↓
+collectedFor()
+  ↓ resource.block === 'script'
+extractScript({ source, resource, config })
+  ↓
+parser.parse(source)
+  ↓
+traverse(ast, visitors)
+  ├─ CallExpression(nodePath)
+  ├─ StringLiteral(nodePath)
+  └─ TemplateLiteral(nodePath)
+  ↓
+entries
+  ↓
+snapshotFor(resource, entries)
+  ↓
+Session / catalog / formal outputs
+```
+
+这条调用链体现了职责分层：
+
+- `myloader/index.js` 负责 Loader 生命周期、资源识别和结果提交；
+- `extract-script.js` 负责脚本语义分析；
+- `localized-call.js` 负责识别已本地化调用；
+- `directives.js` 负责解析注释指令；
+- `context-filter.js` 负责识别应排除的调用上下文；
+- `resource.js` 负责 Han 判断和源码坐标转换。
+
+### 24.2 AST、AST node 与 `NodePath`
+
+AST 是源代码的结构化树形表示。例如：
+
+```js
+const message = '你好'
+```
+
+可以粗略表示为：
+
+```text
+VariableDeclaration
+└── VariableDeclarator
+    ├── id: Identifier(message)
+    └── init: StringLiteral('你好')
+```
+
+Babel 遍历时传给 visitor 的参数不是单纯的 AST node，而是 `NodePath`：
+
+```js
+traverse(ast, {
+  StringLiteral(nodePath) {
+    // nodePath 是 NodePath
+    // nodePath.node 才是 StringLiteral AST node
+  }
+})
+```
+
+可以把两者理解为：
+
+```text
+AST node
+  = 当前语法节点本身的数据
+
+NodePath
+  = 当前语法节点在整棵树中的“导航包装器”
+  = node + 父子关系 + 所在容器 + 作用域 + 遍历辅助方法
+```
+
+常见属性和能力如下：
+
+| 属性或方法 | 含义 | 本文件中的用途 |
+|---|---|---|
+| `nodePath.node` | 当前 AST node | 读取节点类型、值、起止偏移量 |
+| `nodePath.parent` | 原始父 AST node | 判断字符串是否直接位于 import/export 中 |
+| `nodePath.parentPath` | 父节点的 `NodePath` | 向上查找调用上下文 |
+| `nodePath.scope` | 当前词法作用域 | 本文件未直接使用，但 Babel 插件常用它分析绑定关系 |
+| `nodePath.key` | 当前节点在父容器中的 key 或下标 | 可判断节点位于父节点的哪个字段 |
+| `nodePath.listKey` | 当前节点所在数组字段名 | `context-filter.js` 用它确认节点是否位于 `arguments` |
+| `nodePath.isCallExpression()` | 判断当前 path 是否包装调用节点 | 上下文过滤向上寻找最近调用时使用 |
+
+当前编辑器选中的第 72 行是：
+
+```js
+if (MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)) return
+```
+
+这里应当是完整变量名 `nodePath`；如果编辑器只选中了 `odePath`，那只是选择范围少了首字母 `n`，不是另一个变量。
+
+这一行具体做了三件事：
+
+```text
+nodePath
+  → 当前 StringLiteral 的路径对象
+
+nodePath.parent
+  → 当前字符串的直接父 AST node
+
+nodePath.parent.type
+  → 父节点的语法类型名称
+```
+
+例如：
+
+```js
+import page from './中文页面'
+```
+
+`'./中文页面'` 是 `StringLiteral`，其直接父节点是 `ImportDeclaration`，所以：
+
+```js
+nodePath.parent.type === 'ImportDeclaration'
+```
+
+它会命中 `MODULE_SPECIFIER_PARENTS` 并直接返回，避免把模块地址误认为用户界面文案。
+
+为什么这里不能只传 `nodePath.node`？因为原始 node 只描述当前字符串本身：
+
+```js
+{
+  type: 'StringLiteral',
+  value: './中文页面',
+  start: 17,
+  end: 25
+}
+```
+
+仅看这些数据无法判断它究竟是：
+
+```js
+import page from './中文页面' // 模块地址，应排除
+const label = './中文页面'    // 普通字符串，按其他规则判断
+```
+
+`NodePath` 提供的父节点和祖先链让提取器能够根据语法上下文，而不是只根据文本内容做判断。
+
+### 24.3 文件依赖分别解决什么问题
+
+文件开头的依赖可以分成五组。
+
+#### Babel 解析与遍历
+
+```js
+const parser = require('@babel/parser')
+const traverse = require('@babel/traverse').default
+```
+
+- `parser.parse()`：把源码字符串转换为 AST；
+- `traverse()`：遍历 AST，并在遇到指定类型的节点时调用对应 visitor。
+
+#### 已本地化调用识别
+
+```js
+const {
+  REPRESENTATION_LOCALIZED_CALL,
+  isStaticLocalizationKeyArgument,
+  staticLocalizationCall
+} = require('../mycommon/localized-call')
+```
+
+- `staticLocalizationCall()`：判断一个调用是否为受支持的静态本地化调用；
+- `isStaticLocalizationKeyArgument()`：判断一个字符串是否已经是本地化调用的 key 参数；
+- `REPRESENTATION_LOCALIZED_CALL`：为这类 entry 标记来源类型。
+
+当前实现只识别：
+
+```js
+t('home.title')
+$t('home.title')
+this.$t('home.title')
+```
+
+当前实现不识别：
+
+```js
+i18n.t('home.title')
+obj.$t('home.title')
+this.t('home.title')
+t(dynamicKey)
+t(`home.${section}`)
+```
+
+这里需要区分“通用 i18n 提取器可能支持什么”和“这个仓库当前代码实际支持什么”。本文件以 `localized-call.js` 的实现为准。
+
+#### 注释指令
+
+```js
+const {
+  babelComments,
+  directivesBefore,
+  runtimeKeyConflict,
+  scanDirectives
+} = require('./directives')
+```
+
+支持两类指令：
+
+```js
+/* no-i18n-auto */
+/* i18n-key: home.title */
+```
+
+- `babelComments()`：把 Babel comment 转成项目内部的简化结构；
+- `scanDirectives()`：预扫描并校验所有有效指令；
+- `directivesBefore()`：查找某个语法结构前紧邻的指令；
+- `runtimeKeyConflict()`：生成显式 key 冲突错误。
+
+#### 上下文过滤
+
+```js
+const { contextSuppresses } = require('./context-filter')
+```
+
+它根据 `config.contextFilters` 判断当前节点是否位于日志、测试或埋点调用中。
+
+#### 内容与位置工具
+
+```js
+const { containsHan, offsetToPosition } = require('./resource')
+```
+
+- `containsHan()`：判断文本中是否至少包含一个 Unicode Han 字符；
+- `offsetToPosition()`：把 Babel 的字符偏移量转换为 `{ line, column }`。
+
+### 24.4 输出 entry 的两种主要形态
+
+提取器不是只收集中文，也不是只收集 key。它生成两类主要记录。
+
+#### 源码文案 entry
+
+```js
+const title = '首页'
+```
+
+结果大致为：
+
+```js
+{
+  value: '首页',
+  locations: [
+    {
+      path: 'src/example.js',
+      kind: 'script-string',
+      start: { line: 1, column: 14 },
+      end: { line: 1, column: 18 }
+    }
+  ]
+}
+```
+
+如果使用显式注释 key：
+
+```js
+const title = /* i18n-key: home.title */ '首页'
+```
+
+结果还会包含：
+
+```js
+{
+  key: 'home.title',
+  value: '首页',
+  locations: [/* ... */]
+}
+```
+
+#### 已本地化调用 entry
+
+```js
+t('home.title')
+```
+
+结果大致为：
+
+```js
+{
+  key: 'home.title',
+  value: '',
+  representation: 'localized-call',
+  locations: [/* key 参数的位置 */],
+  paramsKind: 'none',
+  paramNames: []
+}
+```
+
+这里的 `value` 是空字符串，因为 `'home.title'` 是本地化 key，不是中文源文案。真正的规范中文源文案应由 catalog 或 explicit message manifest 提供。
+
+### 24.5 `MODULE_SPECIFIER_PARENTS`
+
+```js
+const MODULE_SPECIFIER_PARENTS = new Set([
+  'ImportDeclaration',
+  'ExportAllDeclaration',
+  'ExportNamedDeclaration'
+])
+```
+
+它列出“字符串虽然可能包含汉字，但语义上是模块地址”的直接父节点类型：
+
+```js
+import local from './中文模块'
+import './另一个模块'
+export * from './导出全部'
+export { value } from './导出命名'
+```
+
+使用 `Set` 的原因是这里表达的是一个固定成员集合，并需要反复执行成员判断：
+
+```js
+MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)
+```
+
+这比一串重复的 `||` 更清晰，也更方便扩展。
+
+### 24.6 `location()`：统一源码位置
+
+```js
+function location(source, projectPath, node, kind) {
+  return {
+    path: projectPath,
+    kind,
+    start: offsetToPosition(source, node.start),
+    end: offsetToPosition(source, node.end)
+  }
+}
+```
+
+Babel node 使用 `start`、`end` 字符偏移量记录源码范围，项目对外需要的是项目路径、来源类型和行列位置。因此 `location()` 把 Babel 坐标适配成统一的 source range。
+
+`kind` 在本文件中主要有：
+
+```text
+script-string    普通脚本字符串，或本地化调用的字符串 key 参数
+template-literal 模板字符串的静态 quasi
+```
+
+位置数据用于：
+
+- 报告文案来源；
+- 识别 occurrence；
+- 检测冲突；
+- replacement 时定位源码；
+- 在 CLI 错误信息中显示具体行列。
+
+### 24.7 `entry()`：创建源码文案记录
+
+```js
+function entry(value, loc, key) {
+  return key ? { value, key, locations: [loc] } : { value, locations: [loc] }
+}
+```
+
+它处理包含实际源码文案的记录：
+
+```js
+entry('首页', loc)
+// { value: '首页', locations: [loc] }
+
+entry('首页', loc, 'home.title')
+// { value: '首页', key: 'home.title', locations: [loc] }
+```
+
+这里不把缺失的 key 写成 `key: null`，而是直接省略字段，使“自动文案”和“显式 key 文案”的数据形态保持清楚。
+
+### 24.8 `localizedCallEntry()`：创建已本地化调用记录
+
+```js
+function localizedCallEntry(key, loc, params = {}) {
+  return {
+    key,
+    value: '',
+    representation: REPRESENTATION_LOCALIZED_CALL,
+    locations: [loc],
+    paramsKind: params.paramsKind || 'none',
+    paramNames: Array.isArray(params.paramNames) ? params.paramNames : []
+  }
+}
+```
+
+它记录源码已经使用了哪个静态 key，以及调用参数契约是什么。
+
+```js
+t('home.title')
+// paramsKind: 'none'
+// paramNames: []
+
+t('items.deleted', { count })
+// paramsKind: 'static'
+// paramNames: ['count']
+
+t('items.deleted', params)
+// paramsKind: 'dynamic'
+// paramNames: []
+```
+
+`paramsKind` 的含义是：
+
+| 值 | 含义 |
+|---|---|
+| `none` | 没有第二个参数 |
+| `static` | 第二个参数是可静态分析的对象字面量 |
+| `dynamic` | 第二个参数无法安全得出固定参数名集合 |
+
+这些信息可以让后续流程检查同一个显式消息的 placeholder contract 是否一致。
+
+### 24.9 `extractScript()` 的入口校验
+
+```js
+function extractScript({ source, resource, config }) {
+  if (typeof source !== 'string') throw new TypeError('Script extractor requires source text')
+  if (!resource || typeof resource.projectPath !== 'string' || !resource.projectPath) {
+    throw new TypeError('Script extractor requires a project path')
+  }
+```
+
+入口立即验证两个必要条件：
+
+- `source` 必须是源码字符串；
+- `resource.projectPath` 必须是有效的项目相对路径。
+
+这是边界处尽早失败的设计。没有项目路径，后续 entry 即使成功收集，也无法形成可追踪的位置记录。
+
+### 24.10 解析源码
+
+```js
+const ast = parser.parse(source, {
+  sourceType: 'unambiguous',
+  plugins: ['jsx', 'typescript']
+})
+```
+
+`sourceType: 'unambiguous'` 让 Babel 根据源码判断它更像 ESM 还是普通脚本，因此可以兼容：
+
+```js
+import app from './app.js'
+const app = require('./app.js')
+```
+
+`plugins: ['jsx', 'typescript']` 表示解析器能读懂 JSX 和 TypeScript 语法。这里的“支持 TypeScript”主要是语法解析能力，不代表本文件会进行 TypeScript 类型检查。
+
+例如它可以解析：
+
+```ts
+const title: string = '首页'
+```
+
+但不会使用 TypeScript 类型系统判断某个值在运行时必然是什么字符串。
+
+### 24.11 `fail()`：把偏移量错误转换为源码位置错误
+
+```js
+const fail = (offset, message) => {
+  const error = new Error(message)
+  error.loc = offsetToPosition(source, offset)
+  throw error
+}
+```
+
+`directives.js` 只需要提供：
+
+```text
+错误偏移量 + 错误消息
+```
+
+当前提取器负责补充当前源码上下文，并转换为：
+
+```js
+error.loc = { line, column }
+```
+
+这种写法让错误位置的生成逻辑集中在一个地方，同时通过闭包复用当前 `source`。
+
+### 24.12 注释指令预扫描
+
+```js
+const directives = scanDirectives(babelComments(ast.comments), fail)
+```
+
+这里先统一扫描全部注释，再开始处理字符串节点。这样 visitor 不需要反复解析注释文本，只需查询当前节点前方是否存在已经验证过的指令。
+
+普通注释不会成为文案：
+
+```js
+// 这是开发说明
+const title = '首页'
+```
+
+结果只收集 `'首页'`，不会收集注释中的中文。
+
+只有格式精确匹配的注释才是指令：
+
+```js
+/* no-i18n-auto */          // 有效排除指令
+/* i18n-key: home.title */  // 有效显式 key 指令
+
+/* no-i18n-auto extra */    // 普通注释，不是有效排除指令
+/* NO-I18N-AUTO */          // 大小写不匹配，不是有效指令
+/* i18n-key home.title */   // 形似 key 指令但格式错误，会失败
+```
+
+`directivesBefore()` 还要求指令与目标语法结构之间只有空白。若中间隔着其他代码，指令不会跨越代码绑定到后面的字符串。
+
+### 24.13 Visitor 之一：`CallExpression`
+
+```js
+CallExpression(nodePath) {
+  const call = staticLocalizationCall(nodePath.node)
+  if (!call) return
+  // ...
+}
+```
+
+`CallExpression` 表示函数或方法调用：
+
+```js
+alert('Hi')
+t('home.title')
+this.$t('home.title')
+```
+
+以：
+
+```js
+t('home.title', { name })
+```
+
+为例，其核心 AST 结构可粗略表示为：
+
+```text
+CallExpression
+├── callee: Identifier(t)
+└── arguments
+    ├── StringLiteral('home.title')
+    └── ObjectExpression
+        └── ObjectProperty(name)
+```
+
+处理步骤如下。
+
+#### 第一步：识别受支持的静态本地化调用
+
+```js
+const call = staticLocalizationCall(nodePath.node)
+if (!call) return
+```
+
+只有调用者和第一个参数都满足规则时才继续：
+
+```js
+t('home.title')           // 收集
+$t('home.title')          // 收集
+this.$t('home.title')     // 收集
+
+t(key)                    // 动态 key，不收集
+t(`home.${page}`)         // 动态模板 key，不收集
+i18n.t('home.title')      // 当前实现不支持
+obj.$t('home.title')      // 当前实现不支持
+```
+
+#### 第二步：读取调用前的指令
+
+```js
+const directive = directivesBefore(source, directives, nodePath.node.start, fail)
+```
+
+它检查的是整个调用表达式前的相邻指令，而不是只检查 key 字符串前的注释。
+
+#### 第三步：应用排除和上下文过滤
+
+```js
+if (directive.exclude) return
+if (contextSuppresses(nodePath, config && config.contextFilters)) return
+```
+
+显式的 `no-i18n-auto` 可以排除调用记录；配置也可以排除位于特定上下文中的调用。
+
+#### 第四步：检查 key 冲突
+
+```js
+if (directive.key && directive.key !== call.key) {
+  fail(nodePath.node.start, runtimeKeyConflict(directive.key, call.key))
+}
+```
+
+下面的代码表达了两个互相矛盾的 key：
+
+```js
+/* i18n-key: home.title */
+t('home.other')
+```
+
+提取器不会猜测哪一个正确，而是立即失败，避免 catalog 和运行时代码对同一位置产生不同理解。
+
+#### 第五步：生成 localized-call entry
+
+```js
+entries.push(localizedCallEntry(
+  call.key,
+  location(source, resource.projectPath, call.argument, 'script-string'),
+  { paramsKind: call.paramsKind, paramNames: call.paramNames }
+))
+```
+
+位置使用 `call.argument`，也就是第一个 key 参数，而不是整个调用表达式。因此 source range 精确覆盖：
+
+```js
+'home.title'
+```
+
+而不是：
+
+```js
+t('home.title', { name })
+```
+
+### 24.14 Visitor 之二：`StringLiteral`
+
+```js
+StringLiteral(nodePath) {
+  if (MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)) return
+  if (isStaticLocalizationKeyArgument(nodePath)) return
+  const directive = directivesBefore(source, directives, nodePath.node.start, fail)
+  if (directive.exclude) return
+  if (contextSuppresses(nodePath, config && config.contextFilters)) return
+  const value = nodePath.node.value
+  if (!containsHan(value)) return
+  entries.push(entry(
+    value,
+    location(source, resource.projectPath, nodePath.node, 'script-string'),
+    directive.key
+  ))
+}
+```
+
+这是普通字符串提取的完整过滤管线。
+
+#### 过滤一：模块地址
+
+```js
+if (MODULE_SPECIFIER_PARENTS.has(nodePath.parent.type)) return
+```
+
+排除 import/export module specifier。
+
+#### 过滤二：已本地化调用的 key 参数
+
+```js
+if (isStaticLocalizationKeyArgument(nodePath)) return
+```
+
+遍历：
+
+```js
+t('home.title')
+```
+
+时，Babel 会先后遇到整个 `CallExpression` 和内部的 `StringLiteral('home.title')`。如果不排除这个字符串，它可能被重复或错误地作为普通源码文本处理。
+
+该判断确保它只生成一条：
+
+```js
+{
+  key: 'home.title',
+  representation: 'localized-call'
+}
+```
+
+#### 过滤三：相邻注释指令
+
+```js
+const directive = directivesBefore(/* ... */)
+if (directive.exclude) return
+```
+
+例如：
+
+```js
+const internal = /* no-i18n-auto */ '内部标记'
+```
+
+不会进入结果。
+
+#### 过滤四：调用上下文
+
+```js
+if (contextSuppresses(nodePath, config && config.contextFilters)) return
+```
+
+如果启用了对应配置，日志、测试和埋点参数中的字符串可以被排除。
+
+#### 过滤五：Han 门槛
+
+```js
+const value = nodePath.node.value
+if (!containsHan(value)) return
+```
+
+结果如下：
+
+```js
+'首页'           // 收集
+'你好 ABC 123'   // 收集整个字符串
+'𠀀'             // 收集，属于 Unicode Han
+'hello'          // 不收集
+'123'            // 不收集
+'，。！'          // 不收集
+'   '            // 不收集
+```
+
+它不是从字符串中截取汉字，而是以“是否至少包含一个 Han 字符”作为整段字符串的准入门槛。
+
+### 24.15 Visitor 之三：`TemplateLiteral`
+
+模板字符串：
+
+```js
+const message = `你好，${name}世界`
+```
+
+可粗略表示为：
+
+```text
+TemplateLiteral
+├── quasis[0]: TemplateElement('你好，')
+├── expressions[0]: Identifier(name)
+└── quasis[1]: TemplateElement('世界')
+```
+
+visitor 的实现是：
+
+```js
+TemplateLiteral(nodePath) {
+  if (contextSuppresses(nodePath, config && config.contextFilters)) return
+  let pending = directivesBefore(source, directives, nodePath.node.start, fail)
+  for (const node of nodePath.node.quasis) {
+    const value = node.value.cooked
+    if (!value || !containsHan(value)) continue
+    const applied = pending
+    pending = null
+    if (applied && applied.exclude) continue
+    entries.push(entry(
+      value,
+      location(source, resource.projectPath, node, 'template-literal'),
+      applied && applied.key
+    ))
+  }
+}
+```
+
+#### 为什么遍历 `quasis`
+
+`quasis` 是模板字符串中静态可确定的片段。提取器不会执行 `${...}` 中的表达式，也不会尝试计算最终运行时字符串。
+
+```js
+`你好，${name}世界`
+```
+
+会得到静态片段：
+
+```text
+你好，
+世界
+```
+
+不会得到：
+
+```text
+你好，张三世界
+```
+
+因为 `name` 的值只能在运行时确定。
+
+#### `cooked` 是什么
+
+```js
+const value = node.value.cooked
+```
+
+`cooked` 是处理过转义后的模板片段值。例如源码转义序列会按 JavaScript 模板字符串规则得到对应文本值。位置仍然来自原始 AST node，因此可以继续锚定源码范围。
+
+#### `pending` 为什么只消费一次
+
+```js
+const applied = pending
+pending = null
+```
+
+模板前的一个指令只应用到第一个符合 Han 门槛的静态片段：
+
+```js
+const greet = /* i18n-key: home.greet */ `你好${name}世界`
+```
+
+结果相当于：
+
+```js
+{ value: '你好', key: 'home.greet' }
+{ value: '世界' }
+```
+
+同一个显式 key 不会自动同时赋给多个独立 fragment。
+
+排除指令也是一次性消费：
+
+```js
+const message = /* no-i18n-auto */ `排除${name}保留`
+```
+
+当前实现会排除第一个符合条件的静态片段 `'排除'`，但仍收集后面的 `'保留'`。这不是“排除整个模板字符串”，而是“排除该指令绑定的下一个 collected fragment”。理解测试时必须注意这个边界。
+
+#### 模板表达式里的字符串怎样处理
+
+```js
+const message = `前缀${'内嵌'}后缀`
+```
+
+- `'前缀'` 和 `'后缀'` 由 `TemplateLiteral` visitor 处理；
+- `'内嵌'` 本身是 `StringLiteral`，由 `StringLiteral` visitor 独立处理。
+
+因此三段都能得到各自准确的位置和 `kind`。
+
+### 24.16 上下文过滤怎样使用 `NodePath`
+
+`contextSuppresses(nodePath, filters)` 不只查看当前 node，还会沿 `parentPath` 向上寻找语法上下文。
+
+支持的配置值包括：
+
+```js
+{
+  contextFilters: ['logging', 'tests', 'analytics']
+}
+```
+
+#### 日志上下文
+
+```js
+console.log('日志文案')
+logger.warn('警告文案')
+```
+
+启用 `logging` 时，作为对应调用参数的文案被排除。
+
+#### 测试上下文
+
+```js
+it('用例标题', () => {
+  const sample = '断言文案'
+})
+```
+
+启用 `tests` 时，过滤器沿祖先链发现节点位于 `it()` 等测试调用内部，因而可以排除整个测试调用范围中的文案。
+
+#### 埋点上下文
+
+```js
+track('埋点文案')
+analytics.track('用户登录')
+dataLayer.push({ event: '页面打开' })
+```
+
+启用 `analytics` 时，相应调用参数中的文案被排除。
+
+这里必须使用 `NodePath`，因为过滤器需要：
+
+- 通过 `parentPath` 向上寻找最近调用；
+- 通过 `isCallExpression()` 判断祖先节点类型；
+- 通过 `listKey === 'arguments'` 确认当前内容确实处在调用参数中。
+
+仅有 `nodePath.node.value` 无法回答这些语义问题。
+
+### 24.17 过滤规则总表
+
+| 内容或上下文 | 默认行为 | 条件或原因 |
+|---|---|---|
+| `'首页'` | 收集 | 包含 Han 字符 |
+| `'hello'` | 不收集 | 不包含 Han 字符 |
+| `'你好 ABC'` | 收集整个字符串 | Han 是准入门槛，不做字符切片 |
+| import/export 模块地址 | 不收集 | 父节点属于 module specifier 类型 |
+| 普通中文注释 | 不收集 | 没有访问 comment 作为文案 |
+| `/* no-i18n-auto */ '首页'` | 不收集 | 有效相邻排除指令 |
+| `/* i18n-key: home.title */ '首页'` | 收集文案和 key | 显式 key 指令 |
+| `t('home.title')` | 收集静态 key | 生成 `localized-call` entry |
+| `t(key)` | 不作为 localized call 收集 | key 无法静态确定 |
+| `i18n.t('home.title')` | 当前不收集 | 当前 callee 规则不支持 |
+| `console.log('日志')` | 默认收集 | 只有配置 `logging` 才过滤 |
+| `it('用例', ...)` | 默认收集 | 只有配置 `tests` 才过滤 |
+| `track('埋点')` | 默认收集 | 只有配置 `analytics` 才过滤 |
+| 模板 `${expression}` | 不执行表达式 | 只收集静态 quasi 或表达式中独立出现的字符串节点 |
+
+### 24.18 完整示例
+
+输入源码：
+
+```js
+import page from './中文页面'
+
+const title = /* i18n-key: home.title */ '首页'
+const greeting = `你好，${name}世界`
+const ignored = /* no-i18n-auto */ '内部标记'
+
+console.log('调试信息')
+t('button.submit', { count })
+```
+
+若没有启用 `logging`，核心结果大致为：
+
+```js
+[
+  {
+    value: '首页',
+    key: 'home.title',
+    locations: [/* script-string 位置 */]
+  },
+  {
+    value: '你好，',
+    locations: [/* template-literal 位置 */]
+  },
+  {
+    value: '世界',
+    locations: [/* template-literal 位置 */]
+  },
+  {
+    value: '调试信息',
+    locations: [/* script-string 位置 */]
+  },
+  {
+    key: 'button.submit',
+    value: '',
+    representation: 'localized-call',
+    paramsKind: 'static',
+    paramNames: ['count'],
+    locations: [/* 'button.submit' 的位置 */]
+  }
+]
+```
+
+没有进入结果的内容：
+
+```text
+./中文页面  → 模块地址
+内部标记    → no-i18n-auto 排除
+name        → 动态表达式，不执行
+```
+
+若配置：
+
+```js
+{
+  contextFilters: ['logging']
+}
+```
+
+则 `'调试信息'` 也不会进入结果。
+
+### 24.19 这里使用的设计思想
+
+#### AST 静态分析
+
+提取器分析代码结构，不执行用户代码。这样可以避免副作用、运行时依赖和动态结果的不确定性。
+
+#### Visitor Pattern
+
+```js
+traverse(ast, {
+  CallExpression() {},
+  StringLiteral() {},
+  TemplateLiteral() {}
+})
+```
+
+AST 结构相对稳定，不同操作按节点类型分开。增加新的语法支持时，可以增加 visitor 或扩展辅助识别函数，而不需要把所有语法写进一套正则表达式。
+
+#### 关注点分离
+
+```text
+extract-script.js   组织脚本提取流程
+localized-call.js  识别本地化调用
+directives.js      解析注释指令
+context-filter.js  分析排除上下文
+resource.js        处理字符和位置
+```
+
+每个模块只处理一类规则，降低主 visitor 的复杂度。
+
+#### Fail-fast
+
+格式错误或互相冲突的显式 key 会立即失败，而不是静默猜测：
+
+```js
+/* i18n-key home.title */        // malformed
+/* i18n-key: a */ /* i18n-key: b */ '首页' // conflict
+/* i18n-key: a */ t('b')         // runtime key conflict
+```
+
+这保护了 catalog、源码和运行时调用之间的一致性。
+
+#### 统一中间表示
+
+不同 JavaScript 语法最终都转换成 entry。后续流程只需理解 entry，不必重新遍历 JavaScript AST。
+
+#### 精确来源追踪
+
+每个 entry 都带 source range。位置不是附加展示数据，而是 occurrence identity、冲突诊断和安全 replacement 的基础。
+
+### 24.20 提取不等于最终允许自动本地化
+
+需要区分两个阶段：
+
+```text
+extractor
+  → 发现源码中静态可见的片段和调用
+
+policy / catalog
+  → 判断这些结果是否符合完整静态文案、显式消息和运行时多语言边界规则
+```
+
+例如：
+
+```js
+`你好，${name}世界`
+```
+
+脚本提取器能够发现 `'你好，'` 和 `'世界'` 两个静态片段，但它们围绕动态插值形成 fragmented copy，不代表这两个片段适合独立翻译。按照仓库的 hybrid localization 规则，依赖变量、格式或结构的完整消息应优先写成显式本地化调用，并由一个消息控制 placeholder 和语序。
+
+因此：
+
+> “能被 AST 提取器看见”回答的是语法发现问题；“能否作为完整静态文案自动本地化”回答的是领域策略问题。
+
+### 24.21 当前实现的边界
+
+当前脚本提取器有意保持保守：
+
+- 不执行变量、函数或模板表达式；
+- 不解析动态 key；
+- 不推断 `const key = 'home.title'; t(key)`；
+- 不支持任意命名的翻译函数；
+- 不支持当前规则以外的 `i18n.t()`、`obj.$t()`；
+- 不根据 TypeScript 类型系统推断字符串值；
+- 不负责判断翻译文本是否正确；
+- 不负责把源码改写成 `t()`；
+- 不负责跨文件合并 catalog。
+
+这些限制减少误判，并让 extractor 保持可预测。需要增加调用形态时，应优先扩展 `localized-call.js` 的显式规则和对应测试，而不是在 `extract-script.js` 中加入模糊猜测。
+
+### 24.22 推荐阅读顺序
+
+继续学习这条链路时，可以按以下顺序阅读：
+
+1. `packages/i18n-collect/myloader/extract-script.js`：掌握三个 visitor 的主流程；
+2. `packages/i18n-collect/mycommon/localized-call.js`：理解静态 key 和参数契约识别；
+3. `packages/i18n-collect/myloader/directives.js`：理解注释怎样绑定到后续语法结构；
+4. `packages/i18n-collect/myloader/context-filter.js`：观察 `parentPath`、`listKey` 和祖先遍历；
+5. `packages/i18n-collect/myloader/resource.js`：理解 Han 判断和源码坐标；
+6. `packages/i18n-collect/test/script-extractor.test.js`：用测试确认每条边界规则；
+7. `packages/i18n-collect/myloader/index.js`：把提取器放回 Loader 总调用链。
+
+本节最重要的心智模型是：
+
+```text
+node 告诉我们“当前是什么语法”；
+NodePath 告诉我们“当前语法处在整棵树的什么位置”；
+visitor 决定“遇到这种语法要做什么”；
+过滤规则决定“这次发现是否应进入收集结果”；
+entry 是交给后续领域流程的统一结果。
+```

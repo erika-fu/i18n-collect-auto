@@ -20,9 +20,15 @@ JS/TS/JSX extension  → block=script
 .html                → block=html
 configured .css      → block=style,   index=0
 其他                 → 无可收集 block</div><p>因此 <code>App.vue?vue&amp;type=template&amp;scoped=true&amp;prod=true</code> 中的 <code>scoped</code> 和 <code>prod</code> 不改变收集 identity；真正影响语义的是 block、style index 和 lang。</p></section>
-<section><h2>3. include / exclude 是 Loader 的门</h2><pre>included = include 为空
-         或命中任一 include
-included = true 且没有命中任何 exclude</pre><p>exclude 拥有最终否决权。被过滤的资源不会调用 extractor，但仍然会执行 <code>record(..., included=false, snapshot=null)</code>，因此旧 snapshot 能在成功 round 中被清理。</p><p>这里有一个设计选择：过滤发生在资源分派之后、解析之前。这样规则匹配的是规范化的项目相对路径，而不是带 query 的 Webpack request。</p></section>
+<section><h2>3. include / exclude 是 Loader 的门</h2><pre>Webpack request
+  ↓
+describeResource：Resource 归类
+  - 规范化 projectPath
+  - 确定 block、lang、styleIndex、identity
+  ↓
+isResourceIncluded：应用 include / exclude
+  ↓
+collectedFor：选择并执行 extractor</pre><p>included = include 为空<br>         或命中任一 include<br>included = true 且没有命中任何 exclude</p><p>exclude 拥有最终否决权。被过滤的资源不会调用 extractor，但仍然会执行 <code>record(..., included=false, snapshot=null)</code>，因此旧 snapshot 能在成功 round 中被清理。</p><p>这里要区分两种“分派”：<code>describeResource</code> 做的是 <strong>Resource 归类</strong>，把 Webpack request 转换成规范化资源；<code>collectedFor</code> 才负责 <strong>extractor 分派</strong>，选择并执行 <code>extractScript</code>、<code>extractHtml</code> 或 <code>extractCss</code>。过滤发生在 Resource 归类之后、extractor 选择与解析之前。这样规则匹配的是规范化的项目相对路径，而不是带 query 的 Webpack request。</p></section>
 <section><h2>4. <code>collectedFor</code> 为什么有一个 Vue 特例</h2><p>普通 JS 可以直接解析 Loader 收到的 source。但 Vue loader 可能已经对 block 做了行填充或去缩进，直接使用 transformed source 会让位置偏离原始 <code>.vue</code> 文件。</p><p>所以：</p><ul><li>Vue script：<code>extractVueScript</code> 读取当前 <code>.vue</code>，遮罩 template/style，只保留 script 的真实行位置，再委托 <code>extractScript</code>。</li><li>Vue template：<code>extractHtml</code> 读取当前文件，定位唯一匹配的 template block。</li><li>Vue style：<code>extractCss</code> 读取当前文件，按 style index 定位 block。</li><li>外部 <code>&lt;template src&gt;</code> / <code>&lt;style src&gt;</code>：实际提供源码字节的外部资源是位置来源。</li></ul><p>这不是目录扫描：Loader 只读取“当前正在处理的资源自身”，Plugin 仍然不读取业务源码。</p></section>
 <section><h2>5. 分派后的三个纯 extractor</h2><table><tr><th>Extractor</th><th>输入</th><th>主要工具</th><th>输出 kind</th></tr><tr><td><code>extractScript</code></td><td>JS/TS/JSX 代码</td><td>Babel parser + traverse</td><td><code>script-string</code>、<code>template-literal</code></td></tr><tr><td><code>extractHtml</code></td><td>Vue template / standalone HTML</td><td>parse5 + Babel expression parser</td><td><code>html-text</code>、<code>html-attribute</code>、<code>template-expression</code> 等</td></tr><tr><td><code>extractCss</code></td><td>标准 CSS</td><td>PostCSS + 字符串扫描</td><td><code>css-generated-content</code></td></tr></table><p>它们是纯模块：不访问 Webpack hook、不写输出、不修改 Session。Loader adapter 负责 Webpack 语境，extractor 负责语义识别。</p></section>
 <section class="exercise"><h2>检索练习</h2><p>同一个 <code>App.vue</code> 有两个 style block：第一个是 CSS，第二个是 SCSS。为什么不能只用 <code>src/App.vue</code> 作为 identity？SCSS 应该让构建失败吗？</p><button data-answer="answer">显示答案</button><div id="answer" class="answer"><p>两个 block 是两个独立资源；若 identity 相同，第二次提交会覆盖第一个 snapshot。identity 必须包含 style index 和 lang。当前设计不解析 SCSS：提交空 snapshot，并产生一次 <code>unsupported-style-preprocessor</code> warning，不使构建失败。</p></div></section>

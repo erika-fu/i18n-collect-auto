@@ -18,10 +18,17 @@
   <section>
     <h2>1. 项目到底在做什么</h2>
     <p>它不是“扫描整个项目目录，找出所有中文”的脚本。只有进入 <code>myloader</code> 的资源才会被收集；Loader 观察资源并提交快照，Plugin 在一次 compilation 成功后汇总并发布结果。</p>
-    <div class="flow">Webpack module request
+    <div class="flow">直接资源请求（JS / CSS / HTML）
       ↓
 myloader：识别语义资源，提取候选文案，提交 resource snapshot
-      ↓
+
+Vue SFC 的两层请求：
+App.vue → vue-loader 解析 SFC 并创建 block 子请求
+       ├─ App.vue?vue&type=script
+       ├─ App.vue?vue&type=template
+       └─ App.vue?vue&type=style&index=0
+       ↓ 每个 block 子请求由 myloader 独立收集并提交 snapshot
+
 MyI18nPlugin：收集本轮所有仍存活的 snapshot，验证并聚合
       ↓
 zh_hash.json + zh_hash.map.json + source-locale catalog
@@ -29,6 +36,7 @@ zh_hash.json + zh_hash.map.json + source-locale catalog
 translate：根据 catalog 生成目标语言目录
       ↓（可选）
 replace：预览或显式写入源码改写</div>
+    <p>图中的 <code>Webpack module request</code> 应理解为一次具体的 Loader 请求。Vue 的根 <code>.vue</code> 模块先经过 <code>vue-loader</code>，之后才产生由 <code>myloader</code> 分别处理的 script、template 和 style 子请求；它们不是一次 <code>myloader</code> 调用中的并列分支。</p>
     <p>四个阶段故意分开：收集不依赖翻译服务，翻译不修改应用源码，替换默认只预览。这种分离让每个阶段都能单独失败、重试和验证。</p>
   </section>
 
