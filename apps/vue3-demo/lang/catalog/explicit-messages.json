@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "messages": [
+    {
+      "key": "vue3.htmlNotice",
+      "source": "已通过 Vue I18n 本地化"
+    }
+  ]
+}

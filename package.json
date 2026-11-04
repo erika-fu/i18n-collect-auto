@@ -9,6 +9,8 @@
     "serve": "npm run serve -w i18n-auto-webpack-demo",
     "build": "npm run build -w i18n-auto-webpack-demo",
     "update-demo-collection": "npm run build -w i18n-auto-webpack-demo",
+    "build-vue3-demo": "npm run build -w i18n-auto-webpack-vue3-demo",
+    "update-vue3-demo-collection": "npm run build -w i18n-auto-webpack-vue3-demo",
     "build-react-demo": "npm run build -w i18n-auto-webpack-react-demo",
     "update-react-demo-collection": "npm run build -w i18n-auto-webpack-react-demo",
     "lint": "npm run lint -w i18n-auto-webpack-demo",
