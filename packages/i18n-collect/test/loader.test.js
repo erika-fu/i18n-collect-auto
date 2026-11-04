@@ -5,6 +5,7 @@ const path = require('path')
 const test = require('node:test')
 const webpack = require('webpack')
 const loader = require('../myloader')
+const { installVue2 } = require('./vue2-fixture')
 
 function runLoader({ root, source, sourceMap, meta, resourcePath, resourceQuery = '', options = {}, track }) {
   const buildInfo = {}
@@ -70,6 +71,7 @@ test('passes Buffer source through unchanged', () => {
 
 test('commits an empty Vue template snapshot and skips excluded scripts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const template = '<template><p>hello</p></template>'
   const vuePath = path.join(root, 'src/App.vue')
@@ -144,6 +146,7 @@ test('a script parse error names the project path, block, and source location', 
 
 test('a Vue template expression error names the project path, block, and source location', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const source = '<template>\n  <p>{{ \'你好\' + }}</p>\n</template>\n'
   const vuePath = path.join(root, 'src/App.vue')
@@ -165,6 +168,7 @@ test('a Vue template expression error names the project path, block, and source 
 
 test('reads an external Vue template from the requested file and does not guess a source block', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const vuePath = path.join(root, 'src/App.vue')
   const htmlPath = path.join(root, 'src/copy.html')

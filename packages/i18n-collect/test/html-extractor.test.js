@@ -1,5 +1,8 @@
 const assert = require('assert')
 const crypto = require('crypto')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 const test = require('node:test')
 const { extractHtml } = require('../myloader/extract-html')
 
@@ -43,6 +46,52 @@ function indexAt(source, position) {
 function values(result) {
   return result.entries.map(entry => entry.value)
 }
+
+test('uses the owning Vue compiler for Vue templates but not standalone HTML', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-template-adapter-'))
+  const vueSource = '<template><p>&#20320;&#22909;</p></template>'
+  const vueResource = {
+    absolutePath: path.join(root, 'src', 'App.vue'),
+    projectPath: 'src/App.vue',
+    query: '?vue&type=template',
+    lang: 'html',
+    block: 'template'
+  }
+
+  assert.throws(
+    () => extractHtml({ source: vueSource, resource: vueResource, config: { attributeAllowlist: ALLOWLIST } }),
+    /no vue\/package\.json was found/
+  )
+
+  const html = extractHtml({
+    source: '<p>&#20320;&#22909;</p>',
+    resource: {
+      absolutePath: path.join(root, 'public', 'index.html'),
+      projectPath: 'public/index.html',
+      query: '',
+      lang: null,
+      block: 'html'
+    },
+    config: { attributeAllowlist: ALLOWLIST }
+  })
+  assert.deepStrictEqual(values(html), ['\u4f60\u597d'])
+})
+
+test('ignores a non-HTML Vue template without resolving a compiler', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-vue-pug-'))
+  const result = extractHtml({
+    source: '<template lang="pug">\np \u4f60\u597d\n</template>',
+    resource: {
+      absolutePath: path.join(root, 'src', 'App.vue'),
+      projectPath: 'src/App.vue',
+      query: '?vue&type=template&lang=pug',
+      lang: 'pug',
+      block: 'template'
+    },
+    config: { attributeAllowlist: ALLOWLIST }
+  })
+  assert.deepStrictEqual(result, { entries: [], warnings: [] })
+})
 
 test('collects each Vue text node on its own and keeps formatting rules distinct from trim', () => {
   const source = [
@@ -162,6 +211,17 @@ test('keeps interpolation as template-expression and accepts braces inside the e
   assert.strictEqual(sliceAt(source, result.entries[4].locations[0]), '模板}}片段')
   assert.strictEqual(sliceAt(source, result.entries[6].locations[0]), "'单独字符串'")
   assert.ok(!values(result).some(value => value.includes('{{')))
+})
+
+test('collects Vue conditional branches and scoped slot templates in source order', () => {
+  const source = [
+    '<section>',
+    '  <p v-if="ready">\u7532</p>',
+    '  <p v-else>\u4e59</p>',
+    '  <widget><template v-slot:default>\u4e19</template></widget>',
+    '</section>'
+  ].join('\n')
+  assert.deepStrictEqual(values(extract(source)), ['\u7532', '\u4e59', '\u4e19'])
 })
 
 test('maps Vue template ranges through CRLF, astral characters, and indentation', () => {

@@ -10,6 +10,7 @@ const { VueLoaderPlugin } = require('@vue/vue-loader-v15')
 const { loadConfig } = require('../mycommon/config')
 const { getSession } = require('../mycommon/session')
 const MyI18nPlugin = require('../myplugin')
+const { installVue2 } = require('./vue2-fixture')
 
 const HELLO = '7eca689f0d3389d9dea66ae112e5cfd7'
 
@@ -223,6 +224,7 @@ test('collection reads the original file before a later loader replaces the sour
 
 test('vue blocks keep independent snapshots through the loader chain', { timeout: 20000 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-blocks-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const source = `<template>
   <div>{{ \`这是\${a}的名字呀\` }}</div>
@@ -390,6 +392,7 @@ export default { name: 'App' }
 
 test('a Vue template parse error keeps the previous published output', { timeout: 20000 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-vue-fail-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const vue = path.join(root, 'src/App.vue')
   const entry = path.join(root, 'src/main.js')
@@ -508,6 +511,7 @@ test('drops a snapshot when its file leaves the module graph', { timeout: 20000 
 
 test('drops a deleted Vue block and a replaced style identity', { timeout: 20000 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-evict-vue-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const vue = path.join(root, 'src/App.vue')
   const entry = path.join(root, 'src/main.js')
@@ -1177,6 +1181,7 @@ test('the demo scss fixture warns once and does not publish its stylesheet copy'
   assert.match(fixture, /lang="scss"/)
   assert.match(fixture, /预处理文案/)
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-scss-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const vue = path.join(root, 'src/UnsupportedStyle.vue')
   const entry = path.join(root, 'src/main.js')
@@ -1750,6 +1755,7 @@ test('vue style output stays unchanged and content keeps original block coordina
 
 test('exclusion directives suppress one fragment and the next compilation replaces that snapshot', { timeout: 20000 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-directive-'))
+  installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const entry = path.join(root, 'src/main.js')
   const copy = path.join(root, 'src/copy.js')

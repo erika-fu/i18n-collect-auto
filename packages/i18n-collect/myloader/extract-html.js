@@ -82,7 +82,7 @@ function extractHtml({ source, resource, config }) {
   const attributeKind = standalone ? 'static-html-attribute' : 'html-attribute'
   const allowlist = new Set((config && config.attributeAllowlist) || DEFAULTS.attributeAllowlist)
   const contextFilters = config && config.contextFilters
-  const template = parseTemplate({ source, resource, standalone })
+  const template = parseTemplate({ source, resource, standalone, config })
   const entries = []
 
   function push(value, kind, start, end, owners, suppress, key, representation, params) {
