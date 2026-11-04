@@ -210,6 +210,20 @@ test('keeps loader and plugin options on their own fields and drops htmlEntries'
   assert.throws(() => loadConfig({ root, pluginOptions: { htmlEntries: ['public/index.html'] } }), /unknown explicit option "htmlEntries"/)
 })
 
+test('accepts only Vue 2 or Vue 3 as an explicit loader compiler version', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-vue-version-'))
+  const automatic = loadConfig({ root })
+  const vue2 = loadConfig({ root, loaderOptions: { vueVersion: 2 } })
+  assert.strictEqual(automatic.vueVersion, null)
+  assert.strictEqual(vue2.vueVersion, 2)
+  assert.strictEqual(loadConfig({ root, loaderOptions: { vueVersion: 3 } }).vueVersion, 3)
+  assert.notStrictEqual(vue2.configHash, automatic.configHash)
+  assert.strictEqual(vue2.fileConfigHash, automatic.fileConfigHash)
+  assert.throws(() => loadConfig({ root, loaderOptions: { vueVersion: 4 } }), /vueVersion/)
+  assert.throws(() => loadConfig({ root, loaderOptions: { vueVersion: '3' } }), /vueVersion/)
+  assert.throws(() => loadConfig({ root, pluginOptions: { vueVersion: 3 } }), /unknown explicit option "vueVersion"/)
+})
+
 test('counts offsets as 1-based lines and 0-based UTF-16 columns', () => {
   assert.deepStrictEqual(offsetToPosition('ab\ncd', 0), { line: 1, column: 0 })
   assert.deepStrictEqual(offsetToPosition('ab\ncd', 3), { line: 2, column: 0 })

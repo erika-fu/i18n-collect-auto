@@ -20,6 +20,7 @@ const DEFAULTS = {
   include: [],
   exclude: [],
   contextFilters: [],
+  vueVersion: null,
   attributeAllowlist: ['title', 'placeholder', 'alt', 'aria-label', 'value'],
   outputPath: 'lang/zh_hash.json',
   sourceMapFilename: 'lang/zh_hash.map.json',
@@ -34,7 +35,7 @@ const DEFAULTS = {
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
-const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'attributeAllowlist', 'styleExtensions'])
+const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'vueVersion', 'attributeAllowlist', 'styleExtensions'])
 const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrphaned', 'externalKeys']
 const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
@@ -128,6 +129,9 @@ function validate(root, input) {
     value => CONTEXT_FILTERS.has(value),
     'contextFilters must be an array of "logging", "tests", and "analytics"'
   )
+  if (config.vueVersion !== null && config.vueVersion !== 2 && config.vueVersion !== 3) {
+    fail('vueVersion must be 2 or 3')
+  }
   config.include = filterList(root, config.include, 'include')
   config.exclude = filterList(root, config.exclude, 'exclude')
   config.outputPath = projectPath(root, config.outputPath, 'outputPath')
@@ -205,6 +209,7 @@ function collectionHash(config) {
   const collection = { ...config }
   for (const field of CATALOG_FIELDS) delete collection[field]
   for (const field of TRANSLATION_FIELDS) delete collection[field]
+  if (collection.vueVersion === null) delete collection.vueVersion
   return hashConfig(collection)
 }
 
