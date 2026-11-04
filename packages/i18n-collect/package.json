@@ -8,6 +8,10 @@
   "scripts": {
     "test": "node --test test/*.test.js"
   },
+  "devDependencies": {
+    "@vue/compiler-dom": "3.5.42",
+    "@vue/compiler-sfc": "3.5.42"
+  },
   "peerDependencies": {
     "webpack": "^5.0.0"
   },

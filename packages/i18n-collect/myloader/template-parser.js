@@ -1,6 +1,7 @@
 const path = require('path')
 const parse5Adapter = require('./template-parser-parse5')
 const vue2Adapter = require('./template-parser-vue2')
+const vue3Adapter = require('./template-parser-vue3')
 const { resolveVueCompilers } = require('./vue-compiler-resolver')
 
 function requestedLang(resource) {
@@ -26,6 +27,11 @@ function parseTemplate(input) {
         templateCompiler: compilers.templateCompiler
       })
     }
+    return vue3Adapter.parse({
+      ...input,
+      compilerSfc: compilers.compilerSfc,
+      compilerDom: compilers.compilerDom
+    })
   }
   return parse5Adapter.parse(input)
 }
