@@ -505,10 +505,14 @@ Script 把字符串字面量或模板字面量当作构造。模板字面量只�
 
 ## 13. HTML 提取语义
 
-HTML 使用 `parse5`，并将其声明为 package 的直接依赖。
+独立 HTML 使用 `parse5`，并将其声明为 package 的直接依赖。Vue template 与独立 HTML
+都先经过内部 `parseTemplate` adapter seam，转换为不包含 parser-specific node type 的
+Template IR，再由 extractor 应用收集策略。原生 Vue compiler adapter 的分阶段决策见
+`docs/adr/0002-native-vue-template-parser-adapters.md`。
 
 - 独立 HTML 使用 document 模式。
-- Vue template block 使用 fragment 模式。
+- 当前 prefactor 阶段的 Vue template block 仍由 parse5 adapter 使用 fragment 模式；
+- 后续 Vue 2 与 Vue 3 adapter 在同一 seam 后分别使用原生 compiler；
 - EJS 风格占位符不会被执行或改写。
 
 ## 13.1 HTML 文本节点

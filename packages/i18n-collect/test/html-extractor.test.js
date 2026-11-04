@@ -490,3 +490,93 @@ test('a colocated i18n-key that matches a localized-call key is accepted', () =>
     ]
   )
 })
+
+test('characterizes Vue parser seam output without exposing parser nodes', () => {
+  const source = [
+    '<template>',
+    '  <!-- i18n-key: page.title -->',
+    '  <section title="保存&nbsp;成功">',
+    '    <template><h1>😀标题</h1></template>',
+    '    <!-- no-i18n-auto -->',
+    '    <p>排除文案</p>',
+    '    <p :aria-label="`前缀${name}后缀`">{{ $t(\'items.count\', { count }) }}</p>',
+    '    <my-button />',
+    '  </section>',
+    '</template>'
+  ].join('\r\n')
+  const result = extract(source, {
+    projectPath: 'src/App.vue',
+    query: '?vue&type=template&id=characterization',
+    lang: 'html'
+  })
+
+  assert.deepStrictEqual(
+    result.entries.map(entry => ({
+      value: entry.value,
+      key: entry.key,
+      representation: entry.representation,
+      paramsKind: entry.paramsKind,
+      paramNames: entry.paramNames,
+      path: entry.locations[0].path,
+      kind: entry.locations[0].kind,
+      source: sliceAt(source, entry.locations[0])
+    })),
+    [
+      {
+        value: '保存\u00A0成功',
+        key: 'page.title',
+        representation: undefined,
+        paramsKind: undefined,
+        paramNames: undefined,
+        path: 'src/App.vue',
+        kind: 'html-attribute',
+        source: '保存&nbsp;成功'
+      },
+      {
+        value: '😀标题',
+        key: undefined,
+        representation: undefined,
+        paramsKind: undefined,
+        paramNames: undefined,
+        path: 'src/App.vue',
+        kind: 'html-text',
+        source: '😀标题'
+      },
+      {
+        value: '前缀',
+        key: undefined,
+        representation: undefined,
+        paramsKind: undefined,
+        paramNames: undefined,
+        path: 'src/App.vue',
+        kind: 'html-attribute',
+        source: '前缀'
+      },
+      {
+        value: '后缀',
+        key: undefined,
+        representation: undefined,
+        paramsKind: undefined,
+        paramNames: undefined,
+        path: 'src/App.vue',
+        kind: 'html-attribute',
+        source: '后缀'
+      },
+      {
+        value: '',
+        key: 'items.count',
+        representation: 'localized-call',
+        paramsKind: 'static',
+        paramNames: ['count'],
+        path: 'src/App.vue',
+        kind: 'template-expression',
+        source: '\'items.count\''
+      }
+    ]
+  )
+  assert.deepStrictEqual(result.entries[1].locations[0].start, { line: 4, column: 18 })
+  assert.deepStrictEqual(result.entries[1].locations[0].end, { line: 4, column: 22 })
+  assert.deepStrictEqual(result.warnings, [
+    { code: 'non-void-html-element-start-tag-with-trailing-solidus' }
+  ])
+})
