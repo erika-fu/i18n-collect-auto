@@ -5,10 +5,12 @@
 - **运行时词典**：供应用或后续国际化流程消费；
 - **来源映射（source map）**：记录每条文案来自哪个文件、什么语义位置及其精确坐标。
 
-本仓库包含两个部分：
+本仓库包含以下部分：
 
 - `packages/i18n-collect`：实际的 Webpack Loader / Plugin 包；
-- `apps/demo`：基于 Vue 2、Vue CLI、vue-loader 15 与 Vue I18n 8 的完整接入示例。
+- `apps/demo`：基于 Vue 2、Vue CLI、vue-loader 15 与 Vue I18n 8 的完整接入示例；
+- `apps/vue3-demo`：基于 Vue 3、Webpack 5、vue-loader 17 与 Vue I18n 9 的完整接入示例；
+- `apps/react-demo`：基于 React 与 Webpack 5 的完整接入示例。
 
 > 收集阶段负责发现和汇总待国际化文案，并且不改写业务源码。`translate` 通过项目自己的 translation provider 填写翻译目录，默认保留已有译文。`replace` 默认只做替换预览，只有显式 `--write` 才会把受支持的位置改成运行时本地化调用。本工具不内置第三方翻译 SDK，也不负责运行时语言切换。
 
@@ -63,7 +65,7 @@
 - 希望获得“词条值 + 全部来源位置”的稳定清单；
 - 需要在 watch、增量编译、文件系统缓存及构建失败时保持收集结果可信。
 
-仓库中的演示项目验证了 Vue 2 + Vue CLI 的接入方式，但提取器本身被设计为独立于 Vue 业务逻辑的纯模块。
+仓库中的演示项目验证了 Vue 2 + Vue CLI、Vue 3 + Webpack 5 和 React + Webpack 5 的接入方式。Vue 2 与 Vue 3 template 分别使用项目本地的原生 compiler，独立 HTML 继续使用 parse5；非 HTML template language 和 compiler 生成的 render function 都不是收集输入。
 
 ### 不做什么
 
@@ -583,11 +585,14 @@ lang/zh_hash.map.json
 npm install
 npm run serve
 npm run build
+npm run build-vue3-demo
+npm run build-react-demo
 npm test
 npm run verify
+npm run regression
 ```
 
-其中 `apps/demo` 是实际可运行的参考实现。`npm run verify` 是混合本地化质量门禁：正式产物是否过期、策略/baseline、包测试与两个 demo 构建。
+三个 `apps/*-demo` 项目都是实际可运行的参考实现。`npm run verify` 是混合本地化质量门禁；`npm run regression` 依次运行完整包测试、Vue 2、Vue 3 与 React 生产构建，再运行混合本地化验证。
 
 ### 2. 注册 Plugin
 

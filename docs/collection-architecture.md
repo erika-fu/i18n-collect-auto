@@ -48,7 +48,7 @@ Plugin 不可以：
 
 ### 2.3 运行时集成范围
 
-本期只交付 webpack 5 和当前 Vue 2 工程的集成。Extractor 保持为不依赖 webpack 的纯模块，以便独立测试和未来复用；本期不实现 Vite、Rollup 等适配器。
+本期交付 webpack 5 下的 Vue 2、Vue 3 和独立 HTML 集成。Extractor 保持为不依赖 webpack 的纯模块，以便独立测试和未来复用；本期不实现 Vite、Rollup 等适配器。
 
 webpack 4 不再属于受支持范围，package 的 peer dependency 应相应收缩。
 
@@ -511,8 +511,11 @@ Template IR，再由 extractor 应用收集策略。原生 Vue compiler adapter 
 `docs/adr/0002-native-vue-template-parser-adapters.md`。
 
 - 独立 HTML 使用 document 模式。
-- 当前 prefactor 阶段的 Vue template block 仍由 parse5 adapter 使用 fragment 模式；
-- 后续 Vue 2 与 Vue 3 adapter 在同一 seam 后分别使用原生 compiler；
+- Vue 2 template block 使用资源所属项目的 `vue-template-compiler`；
+- Vue 3 template block 使用资源所属项目的 `@vue/compiler-sfc` 与 `@vue/compiler-dom`；
+- compiler 从资源最近的 Vue 项目中解析，因此同一 monorepo 可同时包含 Vue 2 与 Vue 3；Vue 2 compiler 版本必须与 Vue 精确匹配；
+- 只支持 HTML template block。`lang="pug"` 等非 HTML 模板不调用预处理器，也不产生 template entries；
+- compiler 生成的 render function 不作为收集输入；收集始终锚定原始 SFC template source；
 - EJS 风格占位符不会被执行或改写。
 
 ## 13.1 HTML 文本节点

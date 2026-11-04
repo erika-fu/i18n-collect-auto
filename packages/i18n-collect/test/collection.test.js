@@ -48,6 +48,14 @@ test('declares webpack 5 and the dependencies the package imports', () => {
   assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5', 'postcss'])
 })
 
+test('exposes the complete regression gate from the workspace root', () => {
+  const workspace = require('../../../package.json')
+  assert.strictEqual(
+    workspace.scripts.regression,
+    'npm test && npm run build && npm run build-vue3-demo && npm run build-react-demo && npm run verify'
+  )
+})
+
 test('sorts locations by path, kind, and numeric line and column', () => {
   const store = new CollectionStore()
   const columnTen = {

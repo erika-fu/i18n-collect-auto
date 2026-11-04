@@ -1,9 +1,10 @@
 # i18n-collect
 
-This repository collects Chinese user-facing copy during a webpack 5 build and can carry that copy into a keyed translation catalog and into source replacement. It contains Vue 2 and React demos alongside the `i18n-collect` package. Collection does not rewrite application source. Source replacement is a separate command and stays a replacement preview unless `--write` is set.
+This repository collects Chinese user-facing copy during a webpack 5 build and can carry that copy into a keyed translation catalog and into source replacement. It contains Vue 2, Vue 3, and React demos alongside the `i18n-collect` package. Collection does not rewrite application source. Source replacement is a separate command and stays a replacement preview unless `--write` is set.
 
 - `packages/i18n-collect` exports `myloader` and `myplugin`.
 - `apps/demo` is the Vue 2 / Vue CLI demo. It uses vue-loader 15 and vue-i18n 8.
+- `apps/vue3-demo` is the Vue 3 / standalone Webpack 5 demo. It uses vue-loader 17 and vue-i18n 9.
 - `apps/react-demo` is the React / standalone Webpack 5 demo.
 
 The loader owns collection. The plugin owns the collection session, aggregation, and output. The plugin does not read business source and does not scan the project. A resource that never enters the loader is absent from the result. A failed round does not publish a partial result.
@@ -19,10 +20,14 @@ npm install
 ```
 npm run serve
 npm run build
+npm run build-vue3-demo
 npm run build-react-demo
+npm run regression
 ```
 
-`npm test` runs the package tests, including the migration workflow against `packages/i18n-collect/fixtures/replacement`. Those tests use temporary directories and a local fake translation provider. They do not rewrite either demo's `lang` directory, and they do not need an API key, a vendor SDK, or an outbound network request.
+`npm test` runs the package tests, including the migration workflow against `packages/i18n-collect/fixtures/replacement`. Those tests use temporary directories and a local fake translation provider. They do not leave changes in the demo `lang` directories, and they do not need an API key, a vendor SDK, or an outbound network request.
+
+`npm run regression` runs the package suite, all three production demo builds, and hybrid localization verification.
 
 Refresh checked-in dictionaries and source maps with the appropriate production build:
 

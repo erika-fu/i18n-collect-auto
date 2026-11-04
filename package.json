@@ -13,6 +13,7 @@
     "update-vue3-demo-collection": "npm run build -w i18n-auto-webpack-vue3-demo",
     "build-react-demo": "npm run build -w i18n-auto-webpack-react-demo",
     "update-react-demo-collection": "npm run build -w i18n-auto-webpack-react-demo",
+    "regression": "npm test && npm run build && npm run build-vue3-demo && npm run build-react-demo && npm run verify",
     "lint": "npm run lint -w i18n-auto-webpack-demo",
     "test": "npm test -w i18n-collect",
     "verify": "node scripts/verify-hybrid-localization.js",
