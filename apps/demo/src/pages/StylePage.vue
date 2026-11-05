@@ -16,18 +16,16 @@ export default {
 }
 </script>
 
-<style lang="less">
-@badge-color: #2c3e50;
+<style lang="stylus">
+badge-color = #2c3e50
 
-.badge {
-  color: @badge-color;
+.badge
+  color badge-color
 
-  &::after {
-    content: "（Less 新）";
-    margin-left: 4px;
-  }
+  &::after
+    content "（Stylus 新）"
+    margin-left 4px
 
   // 注释不收集
-  --label: "变量不收集";
-}
+  --label "变量不收集"
 </style>

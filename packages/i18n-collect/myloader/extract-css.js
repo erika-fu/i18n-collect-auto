@@ -4,6 +4,7 @@ const { parseCssStyle } = require('./style-parser-css')
 const { parseLessStyle } = require('./style-parser-less')
 const { parseSassStyle } = require('./style-parser-sass')
 const { parseScssStyle } = require('./style-parser-scss')
+const { parseStylusStyle } = require('./style-parser-stylus')
 
 const UNSUPPORTED_STYLE = 'unsupported-style-preprocessor'
 const UNARY_TAGS = new Set([
@@ -173,6 +174,10 @@ function parserFor(resource, located, config) {
   if (requested === 'less' && effective === 'less') return parseLessStyle
   if (requested === 'scss' && effective === 'scss') return parseScssStyle
   if (requested === 'sass' && effective === 'sass') return parseSassStyle
+  if (
+    (requested === 'styl' || requested === 'stylus') &&
+    (effective === 'styl' || effective === 'stylus')
+  ) return parseStylusStyle
   return parsesAsStandardCss(resource, located, config) ? parseCssStyle : null
 }
 
@@ -198,7 +203,8 @@ function styleError(error, source, origin, css) {
   if (error && (
     error.name === 'LessSyntaxError' ||
     error.name === 'ScssSyntaxError' ||
-    error.name === 'SassSyntaxError'
+    error.name === 'SassSyntaxError' ||
+    error.name === 'StylusSyntaxError'
   )) {
     throw failAt(source, origin + error.offset, error.message)
   }

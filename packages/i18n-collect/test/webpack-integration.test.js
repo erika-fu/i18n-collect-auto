@@ -1059,8 +1059,11 @@ function styleProject(root, entry) {
       rules: [
         { test: /\.js$/, loader: collector },
         {
-          test: /\.(?:css|less|scss|sass)$/,
-          use: [pass, { loader: collector, options: { styleExtensions: ['.css', '.less', '.scss', '.sass'] } }]
+          test: /\.(?:css|less|scss|sass|styl|stylus)$/,
+          use: [pass, {
+            loader: collector,
+            options: { styleExtensions: ['.css', '.less', '.scss', '.sass', '.styl', '.stylus'] }
+          }]
         },
         { test: /\.vue$/, resourceQuery: /type=style/, use: [pass, collector] }
       ]
@@ -1136,6 +1139,66 @@ test('collects standalone Less without evaluating computed constructs', { timeou
   assert.strictEqual(entry.locations[0].path, 'src/theme.less')
   assert.strictEqual(entry.locations[0].kind, 'css-generated-content')
   assert.ok(snapshotIdentities(stats).includes('src/theme.less::style[index=0;lang=less]'))
+})
+
+test('collects standalone styl and stylus resources with their actual identities', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-stylus-standalone-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const styl = path.join(root, 'src/theme.styl')
+  const stylus = path.join(root, 'src/legacy.stylus')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(styl, [
+    'label = "变量"',
+    '.badge',
+    '  content label "短别名文案"',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(stylus, [
+    'generated()',
+    '  content "混入"',
+    '.badge',
+    '  content "长别名文案"',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(entry, 'require("./theme.styl")\nrequire("./legacy.stylus")\n')
+
+  const stats = await compile(styleProject(root, entry))
+
+  assert.strictEqual(stats.hasErrors(), false, messages(stats))
+  assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), [
+    '短别名文案',
+    '长别名文案'
+  ])
+  assert.deepStrictEqual(snapshotIdentities(stats).filter(identity => /styl/.test(identity)).sort(), [
+    'src/legacy.stylus::style[index=0;lang=stylus]',
+    'src/theme.styl::style[index=0;lang=styl]'
+  ])
+})
+
+test('collects Vue styl and stylus blocks as independent source snapshots', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-stylus-vue-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const shortVue = path.join(root, 'src/Short.vue')
+  const longVue = path.join(root, 'src/Long.vue')
+  const entry = path.join(root, 'src/main.js')
+  fs.writeFileSync(shortVue, '<style lang="styl">\n.a\n  content "短块文案"\n</style>\n')
+  fs.writeFileSync(longVue, '<style lang="stylus">\n.b\n  content "长块文案"\n</style>\n')
+  fs.writeFileSync(entry, [
+    'require("./Short.vue?vue&type=style&index=0&lang=styl")',
+    'require("./Long.vue?vue&type=style&index=0&lang=stylus")',
+    ''
+  ].join('\n'))
+
+  const stats = await compile(styleProject(root, entry))
+
+  assert.strictEqual(stats.hasErrors(), false, messages(stats))
+  assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), ['短块文案', '长块文案'])
+  assert.ok(snapshotIdentities(stats).includes('src/Short.vue::style[index=0;lang=styl]'))
+  assert.ok(snapshotIdentities(stats).includes('src/Long.vue::style[index=0;lang=stylus]'))
+  assert.ok(readOutput(root).map.entries.every(item => (
+    item.locations[0].kind === 'css-generated-content' &&
+    /\.vue$/.test(item.locations[0].path)
+  )))
 })
 
 test('collects standalone CSS and each Vue style block, then drops only the deleted block', { timeout: 20000 }, async () => {
@@ -1249,17 +1312,17 @@ test('a style index change evicts the previous identity', { timeout: 20000 }, as
   }
 })
 
-test('the Vue 2 demo Less page collects its generated content', { timeout: 20000 }, async () => {
+test('the Vue 2 demo Stylus page collects its generated content', { timeout: 20000 }, async () => {
   const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/src/pages/StylePage.vue'), 'utf8')
-  assert.match(fixture, /lang="less"/)
-  assert.match(fixture, /（Less 新）/)
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-less-'))
+  assert.match(fixture, /lang="stylus"/)
+  assert.match(fixture, /（Stylus 新）/)
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-stylus-'))
   installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const vue = path.join(root, 'src/StylePage.vue')
   const entry = path.join(root, 'src/main.js')
   fs.writeFileSync(vue, fixture)
-  fs.writeFileSync(entry, 'require("./StylePage.vue?vue&type=style&index=0&lang=less")\nrequire("./StylePage.vue?vue&type=template&lang=html")\n')
+  fs.writeFileSync(entry, 'require("./StylePage.vue?vue&type=style&index=0&lang=stylus")\nrequire("./StylePage.vue?vue&type=template&lang=html")\n')
   const pass = path.join(root, 'pass-loader.js')
   fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
   const collector = require.resolve('../myloader')
@@ -1277,10 +1340,10 @@ test('the Vue 2 demo Less page collects its generated content', { timeout: 20000
   assert.strictEqual(stats.hasErrors(), false, messages(stats))
   assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), [
     '收件箱',
-    '（Less 新）'
+    '（Stylus 新）'
   ])
   assert.strictEqual(warningText(stats), '')
-  const generated = readOutput(root).map.entries.find(item => item.value === '（Less 新）')
+  const generated = readOutput(root).map.entries.find(item => item.value === '（Stylus 新）')
   assert.strictEqual(generated.locations[0].kind, 'css-generated-content')
   assert.strictEqual(generated.locations[0].path, 'src/StylePage.vue')
 })
@@ -1436,6 +1499,40 @@ test('a Less syntax error preserves the previous formal collection outputs', { t
     assert.match(text, /lang less/)
     assert.match(text, /line 2/)
     assert.match(text, /column 11/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), catalog)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), metadata)
+    assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a Stylus syntax error preserves the previous formal collection outputs', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-stylus-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const stylus = path.join(root, 'src/theme.styl')
+  fs.writeFileSync(stylus, '.a\n  content "保留"\n')
+  const handle = start(styleProject(root, stylus))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const catalog = fs.readFileSync(path.join(root, 'lang/catalog/zh.json'))
+    const metadata = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+    const committed = getSession(handle.compiler).committed.runtimeDictionary()
+
+    fs.writeFileSync(stylus, '.a\n  content "未闭合\n')
+    const second = await handle.run()
+
+    assert.strictEqual(second.hasErrors(), true)
+    const text = messages(second)
+    assert.match(text, /src\/theme\.styl/)
+    assert.match(text, /lang styl/)
+    assert.match(text, /line 2/)
+    assert.match(text, /column 10/)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), catalog)
