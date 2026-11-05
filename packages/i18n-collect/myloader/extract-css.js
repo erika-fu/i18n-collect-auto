@@ -1,6 +1,6 @@
-const postcss = require('postcss')
-const { directivesBefore, keyConflict, scanDirectives } = require('./directives')
-const { containsHan, offsetToPosition } = require('./resource')
+const { collectStyle } = require('./collect-style')
+const { offsetToPosition } = require('./resource')
+const { parseCssStyle } = require('./style-parser-css')
 
 const UNSUPPORTED_STYLE = 'unsupported-style-preprocessor'
 const UNARY_TAGS = new Set([
@@ -188,122 +188,6 @@ function cssError(error, source, origin, css) {
   throw failAt(source, origin + offset, error.reason || error.message)
 }
 
-function declarationValue(css, decl) {
-  const start = decl.source.start.offset
-  const end = decl.source.end.offset + 1
-  const text = css.slice(start, Math.max(start, end))
-  let index = 0
-  let depth = 0
-  while (index < text.length) {
-    if (text[index] === '/' && text[index + 1] === '*') {
-      const close = text.indexOf('*/', index + 2)
-      index = close === -1 ? text.length : close + 2
-      continue
-    }
-    const char = text[index]
-    if (char === '(') depth += 1
-    else if (char === ')') depth = Math.max(0, depth - 1)
-    else if (char === ':' && depth === 0) {
-      return { offset: start + index + 1, text: text.slice(index + 1) }
-    }
-    index += 1
-  }
-  return { offset: end, text: '' }
-}
-
-function isNoneOrNormal(value) {
-  const compact = value.replace(/\/\*[\s\S]*?\*\//g, '').trim()
-  return /^(none|normal)$/i.test(compact)
-}
-
-function isNewline(source, index) {
-  const char = source[index]
-  return char === '\n' || char === '\r' || char === '\f'
-}
-
-function skipNewline(source, index) {
-  if (source[index] === '\r' && source[index + 1] === '\n') return index + 2
-  return index + 1
-}
-
-function decodeCodePoint(code) {
-  if (!Number.isFinite(code) || code === 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
-    return '\uFFFD'
-  }
-  return String.fromCodePoint(code)
-}
-
-function consumeEscape(source, backslash) {
-  const next = backslash + 1
-  if (next >= source.length) return { value: '\uFFFD', next }
-  if (isNewline(source, next)) return { value: '', next: skipNewline(source, next) }
-  const hex = /^[0-9a-fA-F]{1,6}/.exec(source.slice(next))
-  if (hex) {
-    let cursor = next + hex[0].length
-    if (cursor < source.length && isNewline(source, cursor)) cursor = skipNewline(source, cursor)
-    else if (source[cursor] === ' ' || source[cursor] === '\t') cursor += 1
-    return { value: decodeCodePoint(parseInt(hex[0], 16)), next: cursor }
-  }
-  return { value: source[next], next: next + 1 }
-}
-
-function readString(source, quoteIndex) {
-  const quote = source[quoteIndex]
-  let index = quoteIndex + 1
-  let value = ''
-  const start = index
-  while (index < source.length) {
-    const char = source[index]
-    if (char === quote) return { value, start, end: index, next: index + 1 }
-    if (char === '\\') {
-      const escaped = consumeEscape(source, index)
-      value += escaped.value
-      index = escaped.next
-      continue
-    }
-    value += char
-    index += 1
-  }
-  return { value, start, end: source.length, next: source.length }
-}
-
-function nodeComments(root) {
-  const comments = []
-  root.walkComments(comment => {
-    if (!comment.source || !comment.source.start || !comment.source.end) return
-    comments.push({ start: comment.source.start.offset, end: comment.source.end.offset + 1, text: comment.text })
-  })
-  return comments
-}
-
-function scanStrings(value) {
-  const strings = []
-  const comments = []
-  let index = 0
-  while (index < value.length) {
-    if (value[index] === '/' && value[index + 1] === '*') {
-      const close = value.indexOf('*/', index + 2)
-      if (close === -1) {
-        index = value.length
-        continue
-      }
-      comments.push({ start: index, end: close + 2, text: value.slice(index + 2, close) })
-      index = close + 2
-      continue
-    }
-    const char = value[index]
-    if (char === '"' || char === "'") {
-      const parsed = readString(value, index)
-      parsed.quote = index
-      strings.push(parsed)
-      index = parsed.next
-      continue
-    }
-    index += 1
-  }
-  return { strings, comments }
-}
-
 function extractCss({ source, resource, config }) {
   if (typeof source !== 'string') throw new TypeError('CSS extractor requires source text')
   if (!resource || typeof resource.projectPath !== 'string' || !resource.projectPath) {
@@ -318,48 +202,14 @@ function extractCss({ source, resource, config }) {
   }
   if (located.src != null) return { entries: [], warnings: [] }
   const css = source.slice(located.start, located.end)
-  let root
+  let style
   try {
-    root = postcss.parse(css)
+    style = parseCssStyle(css, located.start)
   } catch (error) {
     throw cssError(error, source, located.start, css)
   }
   const projectPath = projectPathOf(resource)
-  const entries = []
-  const failInCss = (offset, message) => {
-    throw failAt(source, located.start + offset, message)
-  }
-  const declarationDirectives = scanDirectives(nodeComments(root), failInCss)
-  root.walkDecls(decl => {
-    if (String(decl.prop).toLowerCase() !== 'content') return
-    if (!decl.source || !decl.source.start || !decl.source.end) return
-    const value = declarationValue(css, decl)
-    const failInValue = (offset, message) => failInCss(value.offset + offset, message)
-    const scanned = scanStrings(value.text)
-    const valueDirectives = scanDirectives(scanned.comments, failInValue)
-    if (isNoneOrNormal(value.text)) return
-    const declaration = directivesBefore(css, declarationDirectives, decl.source.start.offset, failInCss)
-    const collectable = scanned.strings.filter(string => string.value.trim() && containsHan(string.value))
-    collectable.forEach((string, index) => {
-      const own = directivesBefore(value.text, valueDirectives, string.quote, failInValue)
-      const inherited = index === 0 ? declaration : { exclude: false, key: null }
-      if (own.exclude || inherited.exclude) return
-      if (own.key && inherited.key && own.key !== inherited.key) {
-        failInValue(string.quote, keyConflict(inherited.key, own.key))
-      }
-      const key = own.key || inherited.key
-      const start = located.start + value.offset + string.start
-      const end = located.start + value.offset + string.end
-      const loc = {
-        path: projectPath,
-        kind: 'css-generated-content',
-        start: offsetToPosition(source, start),
-        end: offsetToPosition(source, end)
-      }
-      entries.push(key ? { value: string.value, key, locations: [loc] } : { value: string.value, locations: [loc] })
-    })
-  })
-  return { entries, warnings: [] }
+  return collectStyle({ source, projectPath, style })
 }
 
 module.exports = { extractCss, UNSUPPORTED_STYLE }
