@@ -1,6 +1,7 @@
 const { collectStyle } = require('./collect-style')
 const { offsetToPosition } = require('./resource')
 const { parseCssStyle } = require('./style-parser-css')
+const { parseScssStyle } = require('./style-parser-scss')
 
 const UNSUPPORTED_STYLE = 'unsupported-style-preprocessor'
 const UNARY_TAGS = new Set([
@@ -164,6 +165,13 @@ function parsesAsStandardCss(resource, located, config) {
   return !configuredExtensions(config).has(extension)
 }
 
+function parserFor(resource, located, config) {
+  const requested = languageOf(resource.lang, 'css')
+  const effective = languageOf(located.lang, requested)
+  if (requested === 'scss' && effective === 'scss') return parseScssStyle
+  return parsesAsStandardCss(resource, located, config) ? parseCssStyle : null
+}
+
 function unsupportedWarning(resource, lang) {
   const identity = resource.identity ||
     `${projectPathOf(resource)}::style[index=${resource.styleIndex == null ? 0 : resource.styleIndex};lang=${lang}]`
@@ -182,7 +190,10 @@ function offsetFromPostcss(css, line, column) {
   return offset + Math.max(0, column - 1)
 }
 
-function cssError(error, source, origin, css) {
+function styleError(error, source, origin, css) {
+  if (error && error.name === 'ScssSyntaxError') {
+    throw failAt(source, origin + error.offset, error.message)
+  }
   if (!error || error.name !== 'CssSyntaxError') throw error
   const offset = offsetFromPostcss(css, error.line || 1, error.column || 1)
   throw failAt(source, origin + offset, error.reason || error.message)
@@ -194,7 +205,8 @@ function extractCss({ source, resource, config }) {
     throw new TypeError('CSS extractor requires a project path')
   }
   const located = locate(source, resource)
-  if (!parsesAsStandardCss(resource, located, config)) {
+  const parseStyle = parserFor(resource, located, config)
+  if (!parseStyle) {
     const requested = languageOf(resource.lang, 'css')
     const effective = languageOf(located.lang, requested)
     const lang = requested !== 'css' ? requested : effective
@@ -204,9 +216,9 @@ function extractCss({ source, resource, config }) {
   const css = source.slice(located.start, located.end)
   let style
   try {
-    style = parseCssStyle(css, located.start)
+    style = parseStyle(css, located.start)
   } catch (error) {
-    throw cssError(error, source, located.start, css)
+    throw styleError(error, source, located.start, css)
   }
   const projectPath = projectPathOf(resource)
   return collectStyle({ source, projectPath, style })

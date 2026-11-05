@@ -435,12 +435,11 @@ test('a CSS syntax error names the project path, style index, lang, and source l
   assert.match(vue.thrown.message, /column 14/)
 })
 
-test('an unsupported style submits an empty snapshot and warns once per identity', () => {
+test('a Vue SCSS style submits its direct generated-content strings', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-scss-'))
   fs.mkdirSync(path.join(root, 'src'))
   const vuePath = path.join(root, 'src/App.vue')
   fs.writeFileSync(vuePath, '<style lang="scss">\n.a { content: "必填"; }\n</style>\n')
-  const warnings = []
   const compiler = {}
   compiler.root = compiler
   const compilation = { compiler, warnings: [] }
@@ -453,8 +452,7 @@ test('an unsupported style submits an empty snapshot and warns once per identity
     resourceQuery: '?vue&type=style&index=0&lang=scss&id=abc',
     track: {
       _compiler: compiler,
-      _compilation: compilation,
-      emitWarning(error) { warnings.push(error) }
+      _compilation: compilation
     }
   })
   const first = run()
@@ -465,9 +463,6 @@ test('an unsupported style submits an empty snapshot and warns once per identity
   assert.deepStrictEqual(first.nextMap, { version: 3 })
   assert.strictEqual(first.nextMeta.css, true)
   assert.strictEqual(first.metadata.snapshot.identity, 'src/App.vue::style[index=0;lang=scss]')
-  assert.deepStrictEqual(first.metadata.snapshot.entries, [])
-  assert.strictEqual(warnings.length, 1)
-  assert.match(warnings[0].message, /scss/)
-  assert.match(warnings[0].message, /src\/App\.vue::style\[index=0;lang=scss\]/)
-  assert.deepStrictEqual(second.metadata.snapshot.entries, [])
+  assert.deepStrictEqual(first.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
+  assert.deepStrictEqual(second.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
 })

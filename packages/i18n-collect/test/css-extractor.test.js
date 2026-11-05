@@ -141,7 +141,7 @@ test('finds a root style block after void elements in the template', () => {
   assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '必填')
 })
 
-test('warns for an unsupported style even when the block points at another file', () => {
+test('ignores an external SCSS style block because the referenced resource is collected separately', () => {
   const source = '<style lang="scss" src="./theme.scss">\n.a { content: "必填"; }\n</style>\n'
   const result = extract(source, {
     projectPath: 'src/App.vue',
@@ -150,8 +150,7 @@ test('warns for an unsupported style even when the block points at another file'
     identity: 'src/App.vue::style[index=0;lang=scss]'
   })
   assert.deepStrictEqual(result.entries, [])
-  assert.strictEqual(result.warnings[0].code, 'unsupported-style-preprocessor')
-  assert.match(result.warnings[0].message, /scss/)
+  assert.deepStrictEqual(result.warnings, [])
 })
 
 test('uses original Vue style coordinates for each style index', () => {
@@ -206,14 +205,14 @@ test('uses original Vue style coordinates for each style index', () => {
   )
 })
 
-test('warns once in the result for an unsupported style language and does not parse it', () => {
+test('warns once for unsupported style languages and parses configured standalone SCSS', () => {
   const source = [
     '<style lang="scss">',
     '$color: red;',
     '.a { content: "必填"; }',
     '</style>'
   ].join('\n')
-  for (const lang of ['scss', 'sass', 'less', 'stylus']) {
+  for (const lang of ['sass', 'less', 'stylus']) {
     const result = extract(source, {
       projectPath: 'src/App.vue',
       styleIndex: 0,
@@ -230,8 +229,8 @@ test('warns once in the result for an unsupported style language and does not pa
     lang: 'scss',
     identity: 'src/theme.scss::style[index=0;lang=scss]'
   }, { styleExtensions: ['.css', '.scss'] })
-  assert.deepStrictEqual(standalone.entries, [])
-  assert.strictEqual(standalone.warnings[0].code, 'unsupported-style-preprocessor')
+  assert.deepStrictEqual(values(standalone), ['必填'])
+  assert.deepStrictEqual(standalone.warnings, [])
 })
 
 test('an exclusion directive before a content declaration excludes only its next string', () => {

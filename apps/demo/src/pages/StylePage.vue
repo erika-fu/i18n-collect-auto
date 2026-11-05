@@ -16,14 +16,18 @@ export default {
 }
 </script>
 
-<style>
-.badge::after {
-  content: "（新）";
-  margin-left: 4px;
-}
+<style lang="scss">
+$badge-color: #2c3e50;
+
 .badge {
-  color: #2c3e50; /* 注释不收集 */
+  color: $badge-color;
+
+  &::after {
+    content: "（SCSS 新）";
+    margin-left: 4px;
+  }
+
+  /* 注释不收集 */
   --label: "变量不收集";
-  content: none;
 }
 </style>
