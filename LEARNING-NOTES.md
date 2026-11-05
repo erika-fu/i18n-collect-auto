@@ -2309,3 +2309,1636 @@ visitor 决定“遇到这种语法要做什么”；
 过滤规则决定“这次发现是否应进入收集结果”；
 entry 是交给后续领域流程的统一结果。
 ```
+
+## 25. HTML 与 Vue Template 中文文案收集
+
+本文基于以下核心文件及相关实现，总结项目如何收集 HTML 和 Vue template 中的中文文案：
+
+- `packages/i18n-collect/myloader/index.js`
+- `packages/i18n-collect/myloader/extract-html.js`
+- `packages/i18n-collect/myloader/template-parser.js`
+- `packages/i18n-collect/myloader/template-parser-parse5.js`
+- `packages/i18n-collect/myloader/template-parser-vue2.js`
+- `packages/i18n-collect/myloader/template-parser-vue3.js`
+- `packages/i18n-collect/myloader/vue-compiler-resolver.js`
+- `packages/i18n-collect/myloader/directives.js`
+- `packages/i18n-collect/myloader/context-filter.js`
+- `packages/i18n-collect/mycommon/localized-call.js`
+- `docs/adr/0002-native-vue-template-parser-adapters.md`
+
+---
+
+### 一、总体结论
+
+HTML 文案收集采用的是一个**解析与策略分离的两阶段架构**：
+
+```text
+原始 HTML / Vue SFC
+        │
+        ▼
+对应语言的模板解析器
+parse5 / Vue 2 compiler / Vue 3 compiler
+        │
+        ▼
+统一 Template IR
+constructs / comments / regions / warnings
+        │
+        ▼
+extractHtml()
+统一执行文案收集策略
+        │
+        ▼
+CollectedEntry[]
+        │
+        ▼
+Loader snapshot → session → catalog/store
+```
+
+最重要的设计原则是：
+
+> 模板解析器负责理解语法、恢复精确源码位置；`extractHtml()` 负责决定什么算文案、什么应该忽略，以及怎样生成统一收集条目。
+
+因此：
+
+- 不从 Vue 编译后的 render 函数中收集；
+- 不让 `extractHtml()` 直接依赖 Vue 2、Vue 3 或 parse5 的 AST；
+- Vue 2、Vue 3、独立 HTML 最终走相同的收集规则；
+- 所有位置都指向原始 `.vue` 或 `.html` 文件，而不是转换后的虚拟模块；
+- 解析器差异止步于 Template IR，后面的收集策略不感知解析器类型。
+
+---
+
+### 二、两层不同的统一 IR
+
+讨论“统一 IR”时，需要区分两个层次。
+
+#### 2.1 Template IR：模板解析层的统一结构
+
+`parseTemplate()` 返回给 `extractHtml()` 的内部结构是：
+
+```js
+{
+  constructs: [],
+  comments: [],
+  regions: [],
+  warnings: []
+}
+```
+
+它专门统一：
+
+- parse5 AST；
+- Vue 2 template AST；
+- Vue 3 template AST。
+
+概念结构如下：
+
+```js
+{
+  constructs: [
+    {
+      id,
+      kind: 'element' | 'text' | 'expression',
+      name,
+      parentId,
+      start,
+      end
+    }
+  ],
+
+  comments: [
+    {
+      start,
+      end,
+      text
+    }
+  ],
+
+  regions: [
+    {
+      type: 'text' | 'attribute' | 'expression',
+      value,
+      start,
+      end,
+      sourceOffsets,
+      owners
+    }
+  ],
+
+  warnings: []
+}
+```
+
+这里不会暴露 Vue 2、Vue 3 或 parse5 的节点类型。
+
+#### 2.2 CollectedEntry：整个收集系统共享的结果结构
+
+`extractHtml()` 最后输出的条目属于更高一层的统一收集结构：
+
+```js
+{
+  value: '保存',
+  key: 'page.save',
+  representation: 'localized-call',
+  paramsKind: 'static',
+  paramNames: ['count'],
+  locations: [
+    {
+      path: 'src/App.vue',
+      kind: 'html-text',
+      start: { line: 3, column: 5 },
+      end: { line: 3, column: 7 }
+    }
+  ]
+}
+```
+
+这一层会被 HTML、JavaScript、CSS 等 extractor 共同使用，供后续流程完成：
+
+- 去重；
+- 自动 key 分配；
+- catalog 生成；
+- occurrence 生命周期管理；
+- 完整性校验；
+- 源码替换。
+
+因此完整关系是：
+
+```text
+语言 AST
+  ↓
+模板专用 Template IR
+  ↓
+extractHtml 收集策略
+  ↓
+跨语言共享的 CollectedEntry IR
+```
+
+`entries` 确实是一种统一 IR，但它是**收集结果 IR**；Template IR 是它前面的另一层稳定边界。
+
+---
+
+### 三、完整调用链
+
+#### 3.1 Loader 总调用图
+
+```text
+webpack 调用 i18n-collect/myloader
+        │
+        ├─ loader.pitch()
+        │      └─ runCollect()
+        │
+        └─ loader()
+               └─ 如果 pitch 尚未收集，再调用 runCollect()
+                       │
+                       ▼
+               loadConfig()
+                       │
+                       ▼
+               describeResource()
+               判断资源属于：
+               script / template / html / style
+                       │
+                       ▼
+               isResourceIncluded()
+                       │
+                       ▼
+               collectedFor()
+                       │
+                       ├─ Vue script → extractVueScript()
+                       ├─ 普通 script → extractScript()
+                       ├─ template/html → extractHtml()
+                       └─ style → extractCss()
+                               │
+                               ▼
+                      snapshotFor(resource, entries)
+                               │
+                               ▼
+                      record()
+                               │
+                               ├─ module.buildInfo metadata
+                               └─ CollectionSession.submit()
+```
+
+#### 3.2 HTML/Vue template 分支
+
+当资源满足以下条件之一：
+
+```js
+resource.block === 'template'
+resource.block === 'html'
+```
+
+Loader 调用：
+
+```js
+extractHtml({
+  source: fs.readFileSync(resource.absolutePath, 'utf8'),
+  resource,
+  config
+})
+```
+
+这里不是直接使用前一个 Loader 传入的 `sourceText`，而是重新读取当前文件的原始内容。
+
+这样设计是因为 vue-loader 可能已经：
+
+- 提取了 template block；
+- 去掉了缩进；
+- 添加了 padding；
+- 改变了换行；
+- 无法提供足够精确的原始列位置。
+
+重新读取当前 `.vue` 文件，可以让最终位置准确指向原始 SFC。
+
+这里仍然遵守一个重要边界：收集器只读取当前正在处理的资源，不扫描项目目录，也不读取其他业务文件。
+
+---
+
+### 四、模板解析器如何选择
+
+`extractHtml()` 首先调用：
+
+```js
+const template = parseTemplate({
+  source,
+  resource,
+  standalone,
+  config
+})
+```
+
+`parseTemplate()` 的分派规则是：
+
+```text
+template lang 不是 html
+    → 返回空 Template IR
+
+standalone HTML
+    → parse5 adapter
+
+Vue 2 template
+    → vue-template-compiler adapter
+
+Vue 3 template
+    → @vue/compiler-sfc + @vue/compiler-dom adapter
+```
+
+调用图如下：
+
+```text
+parseTemplate()
+  ├─ requestedLang() !== html → 空结果
+  ├─ standalone === true      → parse5Adapter.parse()
+  └─ Vue template
+       ├─ resolveVueCompilers()
+       ├─ Vue 2 → vue2Adapter.parse()
+       └─ Vue 3 → vue3Adapter.parse()
+```
+
+#### 4.1 为什么不用 vue-loader 判断 Vue 版本
+
+解析器不是根据 vue-loader 版本选择，而是：
+
+1. 从当前 template 资源所在目录开始向上查找；
+2. 找到最近的 `vue/package.json`；
+3. 根据 Vue 主版本选择 compiler；
+4. Vue 2 要求 `vue-template-compiler` 与 Vue 版本完全一致；
+5. Vue 3 使用项目自己的 `@vue/compiler-sfc` 和 `@vue/compiler-dom`。
+
+这样可以支持：
+
+- 同一个 monorepo 同时存在 Vue 2 和 Vue 3；
+- 使用与应用自身一致的模板语法；
+- 避免收集器捆绑的 compiler 与项目 Vue 版本不匹配。
+
+Vue template 最终确实可能被编译成 render 函数，但收集器的关键运行时机是：
+
+```text
+原始 template
+  ↓
+i18n-collect 读取和收集
+  ↓
+Vue compiler 生成 render 函数
+```
+
+收集器不分析 render 函数，而是读取原始 template，并直接调用项目对应版本的 Vue compiler 获取 template AST。
+
+---
+
+### 五、Template IR 各字段的作用
+
+#### 5.1 `regions`：可能产生文案的源码片段
+
+标准化后的 region 只有三类：
+
+```text
+text
+attribute
+expression
+```
+
+例如：
+
+```html
+<p title="提示">你好 {{ userName }}</p>
+```
+
+大致产生：
+
+```js
+[
+  {
+    type: 'attribute',
+    name: 'title',
+    value: '提示'
+  },
+  {
+    type: 'text',
+    value: '你好 '
+  },
+  {
+    type: 'expression',
+    value: 'userName',
+    expressionKind: 'template-expression'
+  }
+]
+```
+
+`extractHtml()` 只消费这些标准化 region，不关心它们原来来自哪种 AST。
+
+#### 5.2 `constructs`：注释指令的语义宿主
+
+construct 表示一个可以绑定注释指令的模板构造，例如：
+
+- 元素；
+- 非空文本节点；
+- 插值表达式。
+
+例如：
+
+```html
+<!-- i18n-key: page.title -->
+<section title="标题">正文</section>
+```
+
+注释先绑定到 `section` 这个 construct，再通过 `owners` 找到该 construct 内最早产生的收集条目。
+
+这里最早的条目是 `title="标题"`，所以 key 会给属性文案，不会给后面的正文。
+
+#### 5.3 `owners`：region 属于哪些祖先构造
+
+每个 region 都保存：
+
+```js
+owners: [祖先 construct id, 当前 construct id]
+```
+
+这使 `extractHtml()` 不需要重新理解 AST，也能知道：
+
+- 某个属性属于哪个元素；
+- 某段文本位于哪个父元素；
+- 某个注释指令应该影响哪条 entry；
+- 指令应该只作用于下一处文案，而不是整个子树。
+
+#### 5.4 `sourceOffsets`：把解析后的字符映射回原始源码
+
+例如：
+
+```html
+<p>保存&nbsp;成功</p>
+```
+
+语义值应该是：
+
+```text
+保存 成功
+```
+
+但源码位置必须覆盖：
+
+```text
+保存&nbsp;成功
+```
+
+因此 region 同时保存：
+
+```js
+{
+  value: '保存 成功',
+  sourceOffsets: [
+    // 解码后每个字符对应原始源码中的 offset
+  ]
+}
+```
+
+同样的映射还用于处理：
+
+- `&#20320;&#22909;` 到 `你好`；
+- CRLF 到 `\n`；
+- Unicode 代理对；
+- Vue 插值内的字符串位置；
+- SFC template 相对于完整 `.vue` 文件的偏移。
+
+这样最终 catalog 使用解码后的真实文案，而替换和诊断仍能精确指向原始源码。
+
+---
+
+### 六、三个模板解析适配器分别做什么
+
+#### 6.1 独立 HTML：parse5 adapter
+
+独立 HTML，例如 `public/index.html`，使用 parse5：
+
+```text
+parse5.parseFragment()
+    │
+    ├─ 建立 constructs
+    ├─ 收集 HTML comments
+    ├─ 建立 text regions
+    ├─ 建立 attribute regions
+    ├─ 解码 HTML entity
+    ├─ 跳过 EJS 表达式区间
+    └─ 返回 Template IR
+```
+
+#### EJS 的处理
+
+例如：
+
+```html
+<title><%= htmlWebpackPlugin.options.title %> 中文标题</title>
+```
+
+parse5 adapter 会把 `<% ... %>` 区间切掉，只为普通 HTML 部分生成 region：
+
+```text
+EJS 表达式：不执行、不分析
+中文标题：正常生成 text region
+```
+
+属性中也一样：
+
+```html
+<meta content="<%= prefix %>中文说明">
+```
+
+只收集 EJS 之外的静态部分。
+
+原因是收集器不知道 EJS 表达式：
+
+- 会返回什么；
+- 会不会产生中文；
+- 使用的是哪一种模板引擎语义。
+
+因此只做静态源码收集，不执行模板。
+
+#### 6.2 Vue 2 adapter
+
+Vue 2 使用项目自己的 `vue-template-compiler`。
+
+它首先定位 SFC 中真正的 template block，然后为了让 compiler 可以处理多个顶层节点，在片段外包一层虚拟根节点：
+
+```html
+<i18n-collect-root>
+  原始 template 内容
+</i18n-collect-root>
+```
+
+之后：
+
+```text
+vue-template-compiler.compile()
+    │
+    ├─ 获取带 start/end 的 Vue 2 AST
+    ├─ 收集注释
+    ├─ 标准化元素/文本/表达式
+    ├─ 恢复属性源码范围
+    └─ 转换成 Template IR
+```
+
+#### Vue 2 条件分支和 scoped slot
+
+Vue 2 AST 的节点不一定只存在于普通 `children` 中，所以适配器额外合并：
+
+- `node.children`；
+- `node.ifConditions` 中的其他条件分支；
+- `node.scopedSlots`。
+
+因此：
+
+```html
+<p v-if="first">第一分支</p>
+<p v-else-if="second">第二分支</p>
+<p v-else>第三分支</p>
+```
+
+三个分支都能被遍历和收集，不会只看到第一个分支。
+
+#### 6.3 Vue 3 adapter
+
+Vue 3 分两步：
+
+```text
+@vue/compiler-sfc
+    → 定位 SFC template block
+
+@vue/compiler-dom
+    → 解析 template 内容
+```
+
+Vue 3 adapter 遍历 compiler AST：
+
+```text
+Element       → element construct + attribute regions
+Text          → text construct + text region
+Interpolation → expression construct + expression region
+Comment       → comment
+其他容器节点   → 继续递归 children
+```
+
+Vue 2 和 Vue 3 最终输出相同形状的 Template IR，因此 `extractHtml()` 不需要区分 Vue 版本。
+
+---
+
+### 七、`extractHtml()` 的核心收集流程
+
+总体流程：
+
+```text
+extractHtml()
+   │
+   ├─ 判断是 Vue template 还是 standalone HTML
+   ├─ 确定最终 location kind
+   ├─ 读取属性白名单
+   ├─ parseTemplate() 生成 Template IR
+   ├─ 遍历 regions
+   │    ├─ text
+   │    ├─ expression
+   │    └─ attribute
+   ├─ 应用 HTML 注释指令
+   ├─ 去掉 suppress/dropped 条目
+   └─ 映射成最终 CollectedEntry[]
+```
+
+#### 7.1 Vue template 与独立 HTML 的 kind 不同
+
+```js
+const standalone = resource.block === 'html'
+
+const textKind = standalone
+  ? 'static-html-text'
+  : 'html-text'
+
+const attributeKind = standalone
+  ? 'static-html-attribute'
+  : 'html-attribute'
+```
+
+最终分类如下：
+
+| 来源 | kind |
+| --- | --- |
+| Vue template 静态文本 | `html-text` |
+| Vue template 静态属性 | `html-attribute` |
+| Vue 动态属性里的静态字符串 | `html-attribute` |
+| Vue 插值表达式里的静态字符串 | `template-expression` |
+| 独立 HTML 静态文本 | `static-html-text` |
+| 独立 HTML 静态属性 | `static-html-attribute` |
+
+这些 kind 不只是描述来源，也供后续替换策略判断：
+
+- Vue template 有明确运行时语义，可以由 Vue adapter 替换；
+- 独立 HTML 没有统一模板运行时，所以只收集、校验，不自动假设如何替换。
+
+这并不表示 HTML 不能国际化，而是当前工具没有替项目决定应该使用：
+
+- SSR；
+- SSG；
+- EJS/Nunjucks；
+- 构建期 token；
+- 多语言 HTML 输出。
+
+---
+
+### 八、各种文案类别具体怎样收集
+
+#### 8.1 普通静态文本
+
+输入：
+
+```html
+<p>保存成功</p>
+```
+
+parser 产生：
+
+```js
+{
+  type: 'text',
+  value: '保存成功'
+}
+```
+
+`extractHtml()` 判断包含 Han 字符后直接收集：
+
+```js
+push(
+  region.value,
+  textKind,
+  region.start,
+  region.end,
+  region.owners
+)
+```
+
+输出：
+
+```js
+{
+  value: '保存成功',
+  locations: [
+    {
+      kind: 'html-text'
+    }
+  ]
+}
+```
+
+中文判断使用 Unicode Han Script：
+
+```js
+/\p{Script=Han}/u
+```
+
+只要片段包含至少一个汉字，就保留整个片段，包括：
+
+- 空格；
+- 标点；
+- 数字；
+- 英文；
+- emoji。
+
+例如：
+
+```html
+<p> 保存 2 个文件 😄 </p>
+```
+
+收集值仍是：
+
+```text
+ 保存 2 个文件 😄 
+```
+
+不会自动 `.trim()`。
+
+但是解析器会去掉纯排版性的首尾换行缩进。标签内容内部真正存在的换行和缩进仍会保留。
+
+#### 8.2 嵌套元素中的文本
+
+输入：
+
+```html
+<p>你好 <em>世界</em> 啊</p>
+```
+
+不会合并成一句 `你好 世界 啊`，而是按 AST 文本节点分别收集：
+
+```js
+[
+  '你好 ',
+  '世界',
+  ' 啊'
+]
+```
+
+这样设计是因为它们对应三个独立源码范围，也可能属于不同的 DOM 结构。
+
+不过需要注意：
+
+> 能够收集静态片段，不等于这些片段适合独立翻译。
+
+结构化句子可能需要在更高层改造成显式完整消息，否则不同语言很难调整词序。
+
+#### 8.3 HTML entity
+
+输入：
+
+```html
+<p>保存&nbsp;成功</p>
+<p>&#20320;&#22909;</p>
+```
+
+输出值：
+
+```js
+[
+  '保存\u00a0成功',
+  '你好'
+]
+```
+
+但位置分别覆盖原始源码：
+
+```text
+保存&nbsp;成功
+&#20320;&#22909;
+```
+
+#### 8.4 静态属性
+
+默认白名单为：
+
+```js
+[
+  'title',
+  'placeholder',
+  'alt',
+  'aria-label',
+  'value'
+]
+```
+
+例如：
+
+```html
+<input
+  title="保存成功"
+  placeholder="请输入"
+  alt="示例图片"
+  aria-label="关闭"
+  value="提交"
+  class="不收集"
+  data-id="不收集"
+>
+```
+
+收集：
+
+```js
+[
+  '保存成功',
+  '请输入',
+  '示例图片',
+  '关闭',
+  '提交'
+]
+```
+
+不收集：
+
+```text
+class
+data-id
+```
+
+原因是不能把所有属性里的中文都视为用户可见文案。例如：
+
+- `class="中文主题"` 可能只是技术标识；
+- `data-id="中文编号"` 可能是业务数据；
+- 自定义属性的语义无法通用判断。
+
+因此采用显式白名单，而不是“所有属性包含中文就收集”。
+
+#### 8.5 Vue 动态绑定属性
+
+只处理白名单中的绑定属性：
+
+```html
+<input
+  :placeholder="'请' + missing + '输入'"
+  :title.sync="`前缀${name}后缀`"
+  v-bind:alt.prop="'图片'"
+  :value.camel="'字段'"
+>
+```
+
+支持的绑定形式：
+
+```text
+:title
+v-bind:title
+:title.prop
+:title.sync
+:title.camel
+```
+
+允许的 modifier 只有：
+
+```text
+prop
+sync
+camel
+```
+
+表达式不会被执行，而是交给 Babel：
+
+```text
+属性源码字符串
+    ↓
+Babel parseExpression()
+    ↓
+Babel traverse()
+    ↓
+提取静态 StringLiteral / TemplateLiteral 静态段
+```
+
+上例收集：
+
+```js
+[
+  '请',
+  '输入',
+  '前缀',
+  '后缀',
+  '图片',
+  '字段'
+]
+```
+
+不会把：
+
+```js
+'请' + missing + '输入'
+```
+
+求值成 `请输入`，因为 `missing` 是运行时变量。
+
+#### 不支持的动态属性
+
+```html
+<div :[dynamicName]="'中文'">
+<div :title.unknown="'中文'">
+<div :class="'中文'">
+```
+
+这些都不会收集：
+
+- 动态属性名无法确定最终语义；
+- 未知 modifier 不接受；
+- `class` 不在展示属性白名单。
+
+#### 独立 HTML 不分析动态绑定
+
+即使独立 HTML 中出现：
+
+```html
+<div :title="'中文'">
+```
+
+也不会把它当 Vue 表达式分析。
+
+原因是普通 HTML 中的 `:title` 不一定属于 Vue，收集器不能擅自给它套用 Vue 表达式语义。
+
+#### 8.6 Vue 插值表达式
+
+输入：
+
+```html
+<p>你好 {{ empty + '拼接后的中文' }}</p>
+```
+
+先被模板 adapter 分成两个 region：
+
+```text
+text region:       "你好 "
+expression region: "empty + '拼接后的中文'"
+```
+
+然后输出：
+
+```js
+[
+  {
+    value: '你好 ',
+    kind: 'html-text'
+  },
+  {
+    value: '拼接后的中文',
+    kind: 'template-expression'
+  }
+]
+```
+
+插值本身由 Vue compiler 确定边界，因此表达式中出现 `}}` 字符串也不会被简单字符串扫描错误截断：
+
+```html
+<p>{{ ({ label: '包含}}的中文' }) }}</p>
+```
+
+仍能正确识别 `'包含}}的中文'`。
+
+#### 8.7 模板字符串
+
+输入：
+
+```html
+<p>{{ `这是${name}的名字呀` }}</p>
+```
+
+Babel 将它解析为一个 `TemplateLiteral`，其中有两个静态 quasi：
+
+```text
+这是
+的名字呀
+```
+
+输出：
+
+```js
+[
+  {
+    value: '这是',
+    kind: 'template-expression'
+  },
+  {
+    value: '的名字呀',
+    kind: 'template-expression'
+  }
+]
+```
+
+同样，这只是发现静态片段，不代表两个片段应该分别翻译。更可靠的国际化形式通常是完整消息加参数：
+
+```js
+t('person.name', { name })
+```
+
+#### 8.8 已存在的本地化调用
+
+表达式中的以下调用会被识别：
+
+```js
+t('home.title')
+$t('home.title')
+this.$t('home.title')
+```
+
+例如：
+
+```html
+<p>{{ $t('items.deleted', { count }) }}</p>
+```
+
+不会把 `'items.deleted'` 当普通文案收集，而是生成：
+
+```js
+{
+  value: '',
+  key: 'items.deleted',
+  representation: 'localized-call',
+  paramsKind: 'static',
+  paramNames: ['count'],
+  locations: [
+    {
+      kind: 'template-expression'
+      // 范围指向 'items.deleted'
+    }
+  ]
+}
+```
+
+参数分类：
+
+```text
+没有第二个参数
+    → paramsKind: none
+
+对象字面量 { count, name }
+    → paramsKind: static
+    → paramNames: ['count', 'name']
+
+变量、函数调用、展开属性等
+    → paramsKind: dynamic
+    → paramNames: []
+```
+
+例如：
+
+```html
+<p :title="t('items.deleted', params)"></p>
+```
+
+得到：
+
+```js
+{
+  paramsKind: 'dynamic',
+  paramNames: []
+}
+```
+
+这样收集器不仅知道“这里已经本地化”，还知道运行时参数的大致结构。
+
+#### 8.9 Context filter
+
+模板表达式中的静态字符串也会经过可选的上下文过滤：
+
+```js
+contextFilters: [
+  'logging',
+  'tests',
+  'analytics'
+]
+```
+
+例如启用 `logging` 后：
+
+```html
+<p>{{ console.log('调试信息') }}</p>
+```
+
+其中 `'调试信息'` 可以被过滤。
+
+需要注意：
+
+- context filter 作用于 Babel 表达式候选；
+- 不会凭猜测过滤普通 HTML 静态文本；
+- 默认 `contextFilters: []`，即全部保留。
+
+---
+
+### 九、`v-if`、`v-for`、`@click` 如何处理
+
+更准确的描述是：
+
+> 这些指令会被模板解析器识别，也通常会进入标准化的 attribute region；只是 `extractHtml()` 的属性分类策略会将它们排除，不进一步解析其中的 JavaScript。
+
+#### 9.1 `v-if`
+
+```html
+<p v-if="visible">欢迎</p>
+```
+
+流程：
+
+```text
+Vue compiler
+  ├─ 理解 v-if 控制流
+  ├─ 生成 v-if 属性/指令信息
+  └─ 保留子节点“欢迎”
+
+Template IR
+  ├─ attribute region: v-if="visible"
+  └─ text region: "欢迎"
+
+extractHtml
+  ├─ classifyAttribute("v-if") → 不在白名单，跳过
+  └─ text 包含汉字 → 收集“欢迎”
+```
+
+结果：
+
+```js
+['欢迎']
+```
+
+不收集 `visible`。
+
+#### 9.2 `v-for`
+
+```html
+<li v-for="item in items">{{ item.name }}</li>
+```
+
+处理结果：
+
+- `item in items` 不分析；
+- `item.name` 没有静态中文，不产生 entry；
+- 如果子节点中有静态文字，仍正常收集。
+
+例如：
+
+```html
+<li v-for="item in items">
+  商品：{{ item.name }}
+</li>
+```
+
+收集：
+
+```js
+['商品：']
+```
+
+#### 9.3 `@click`
+
+```html
+<button @click="save()">保存</button>
+```
+
+收集：
+
+```js
+['保存']
+```
+
+不分析 `save()`。
+
+即使写成：
+
+```html
+<button @click="notify('保存成功')">保存</button>
+```
+
+当前实现也只收集按钮正文：
+
+```js
+['保存']
+```
+
+不会收集事件表达式中的 `保存成功`。
+
+原因不是 Babel 无法解析，而是 `@click` 没有通过 `classifyAttribute()` 的展示属性白名单，因此根本不会进入 `collectExpression()`。
+
+这体现了一个重要的语义边界：
+
+> 只分析明确具有用户展示语义的模板属性，不把事件处理、控制流和任意业务逻辑中的字符串都视为界面文案。
+
+这类消息更适合放到 script 中：
+
+```js
+function save() {
+  notify('保存成功')
+}
+```
+
+然后由 script extractor 收集。
+
+#### 9.4 `:title` 是例外
+
+```html
+<button :title="t('save.tip')">保存</button>
+```
+
+因为 `title` 在展示属性白名单中，所以：
+
+```text
+attribute region
+  ↓
+classifyAttribute(':title')
+  ↓
+dynamic + allowlisted
+  ↓
+collectExpression()
+  ↓
+Babel traverse()
+  ↓
+识别 t('save.tip')
+```
+
+结果中同时存在：
+
+```js
+[
+  {
+    value: '',
+    key: 'save.tip',
+    representation: 'localized-call',
+    kind: 'html-attribute'
+  },
+  {
+    value: '保存',
+    kind: 'html-text'
+  }
+]
+```
+
+#### 9.5 指令处理总结
+
+| 写法 | Vue compiler 是否理解 | 是否分析指令表达式 | 子节点是否继续扫描 |
+| --- | ---: | ---: | ---: |
+| `v-if="visible"` | 是 | 否 | 是 |
+| `v-for="item in items"` | 是 | 否 | 是 |
+| `@click="save()"` | 是 | 否 | 是 |
+| `@click="notify('成功')"` | 是 | 否，不收集“成功” | 是 |
+| `:class="'中文'"` | 是 | 否，非白名单 | 是 |
+| `:title="'提示'"` | 是 | 是 | 是 |
+| `{{ '提示' }}` | 是 | 是 | 不适用 |
+| `{{ t('page.title') }}` | 是 | 是，记录 localized call | 不适用 |
+
+---
+
+### 十、注释指令如何工作
+
+支持两类注释：
+
+```text
+no-i18n-auto
+i18n-key: page.title
+```
+
+#### 10.1 HTML 层注释
+
+例如：
+
+```html
+<!-- no-i18n-auto -->
+<section title="排除标题">保留正文</section>
+```
+
+注释绑定到下一个 construct，也就是 `section`。
+
+然后通过 `owners` 找出这个 construct 中最早产生的 entry：
+
+```text
+title="排除标题"
+```
+
+只删除这一条，后面的 `保留正文` 仍会收集。
+
+也就是说：
+
+> 写在元素前面的 `no-i18n-auto` 不是“忽略整个元素子树”，而是“忽略这个构造中的下一处可收集片段”。
+
+#### 10.2 显式 key
+
+```html
+<!-- i18n-key: page.title -->
+<h1 title="标题提示">页面标题</h1>
+```
+
+由于属性按源码顺序早于正文，key 默认给最早的 entry：
+
+```js
+{
+  value: '标题提示',
+  key: 'page.title',
+  kind: 'html-attribute'
+}
+```
+
+正文仍然没有显式 key。
+
+#### 10.3 表达式内注释
+
+```html
+<p>
+  {{ /* no-i18n-auto */ '排除' + '保留' }}
+</p>
+```
+
+表达式先由 Babel 解析，注释指令根据 AST 中字符串节点的位置绑定到下一处候选。
+
+结果：
+
+```js
+['保留']
+```
+
+#### 10.4 key 冲突
+
+```html
+<p>
+  {{ /* i18n-key: home.title */ t('home.other') }}
+</p>
+```
+
+注释 key 与现有 localized-call key 不一致，会直接报错：
+
+```text
+i18n-key "home.title" conflicts with localized-call key "home.other"
+```
+
+相同 key 是允许的：
+
+```html
+{{ /* i18n-key: home.title */ t('home.title') }}
+```
+
+这样可以防止源码注释和运行时调用在 catalog 中静默指向两个不同消息。
+
+---
+
+### 十一、独立 HTML 与 Vue template 的区别
+
+两者共享 `extractHtml()` 的文案策略，但解析器和后续能力不同。
+
+| 方面 | Vue template | 独立 HTML |
+| --- | --- | --- |
+| 解析器 | Vue 2/3 compiler | parse5 |
+| 静态文本 | 收集 | 收集 |
+| 静态白名单属性 | 收集 | 收集 |
+| `{{ expression }}` | 分析 | 不按 Vue 表达式处理 |
+| `:title` | 分析 | 跳过动态属性 |
+| EJS `<%= ... %>` | 不适用 | 跳过表达式，只收集静态部分 |
+| 最终 kind | `html-*` / `template-expression` | `static-html-*` |
+| 是否有统一运行时替换语义 | 有 Vue 语义 | 没有 |
+| 当前是否可自动替换 | 取决于 Vue adapter | 不支持通用自动替换 |
+
+独立 HTML 不是不能国际化，也不是必须使用 `$t()`；只是当前工具只负责发现、记录和校验，没有定义应该生成：
+
+- EJS 表达式；
+- SSR token；
+- SSG 多语言文件；
+- HTMLWebpackPlugin 模板参数；
+- 其他项目特定形式。
+
+同理，CSS 也可以通过构建期产物、locale class、`:lang()` 或 CSS 变量完成国际化，不一定使用 `$t()`。当前工具不自动替换 HTML/CSS 的根本原因，是没有一个通用且可靠的输出策略，而不是它们无法国际化。
+
+---
+
+### 十二、设计思想及为什么这样设计
+
+#### 12.1 用真正的语言解析器理解语法
+
+Vue template 不使用 parse5 加自定义字符串扫描，而是：
+
+- Vue 2 用 Vue 2 compiler；
+- Vue 3 用 Vue 3 compiler；
+- 独立 HTML 才用 parse5；
+- template 内的 JavaScript 表达式用 Babel。
+
+优点：
+
+- 插值边界可靠；
+- `v-if` 分支可靠；
+- scoped slot 可靠；
+- 属性位置可靠；
+- 不需要自己重新实现 Vue 语法；
+- Vue 2 和 Vue 3 的差异被隔离在 adapter 内。
+
+#### 12.2 Parser adapter 只负责事实，collector 负责政策
+
+Parser adapter 只回答：
+
+```text
+这里有一个文本 region
+这里有一个属性 region
+这里有一个表达式 region
+这里对应原始源码的这些 offset
+它属于这些 construct
+```
+
+它不决定：
+
+- 哪些属性可收集；
+- 是否包含中文；
+- 是否属于 logging；
+- 是否是 `$t()`；
+- `no-i18n-auto` 怎样生效；
+- 最终 kind 是什么。
+
+这些都由 `extractHtml()` 统一处理。
+
+这样可以避免三个 adapter 各自复制一套收集政策。
+
+#### 12.3 保留原始源码位置是核心约束
+
+工具不仅要生成翻译目录，还要支持：
+
+- 精确诊断；
+- occurrence 生命周期；
+- 自动 key 稳定复用；
+- 后续源码替换；
+- 冲突定位。
+
+因此“知道文案是什么”还不够，必须知道：
+
+```text
+文案来自哪个文件
+从哪一行哪一列开始
+到哪一行哪一列结束
+原始拼写是什么
+```
+
+这就是为什么 Template IR 需要 `sourceOffsets`，而不是只保存解析后的字符串。
+
+#### 12.4 不执行运行时表达式
+
+下面这些都不会被执行：
+
+```html
+{{ getMessage() }}
+:title="computeTitle()"
+<%= buildTitle() %>
+```
+
+原因包括：
+
+- 构建时执行任意业务代码不安全；
+- 运行结果依赖状态；
+- 结果不稳定；
+- 可能有副作用；
+- 不同模板引擎语义不同。
+
+收集器只提取能够从源码静态确定的片段。
+
+#### 12.5 属性使用白名单而不是黑名单
+
+黑名单需要提前知道所有“不应该收集”的属性，几乎不可维护。
+
+白名单则明确表达：
+
+```text
+这些属性具有稳定的用户展示语义
+```
+
+项目仍然可以通过 `attributeAllowlist` 自定义扩展。
+
+#### 12.6 收集与替换分离
+
+收集范围可以大于自动替换范围：
+
+```text
+收集：发现项目中的所有潜在源语言残留
+替换：只处理具有明确运行时语义的来源
+```
+
+因此独立 HTML、CSS 仍值得收集，因为它们可以用于：
+
+- 完整性检查；
+- catalog 统计；
+- 人工迁移；
+- 构建期多语言生成；
+- 防止项目仍残留中文。
+
+但工具不会凭空替项目选择具体输出策略。
+
+---
+
+### 十三、完整示例
+
+输入：
+
+```html
+<template>
+  <!-- i18n-key: page.form -->
+  <section title="表单区域" v-if="visible">
+    <input
+      placeholder="请输入姓名"
+      :aria-label="`编辑${name}的信息`"
+      @click="notify('点击输入框')"
+    >
+
+    <p>你好，{{ user.name }}</p>
+    <p>{{ '保存成功' }}</p>
+    <p>{{ $t('items.count', { count }) }}</p>
+  </section>
+</template>
+```
+
+处理过程：
+
+```text
+Vue compiler
+  │
+  ├─ 理解 v-if、:aria-label、@click 和插值
+  ├─ 建立 template AST
+  └─ 转为 Template IR
+         │
+         ├─ attribute: title="表单区域"
+         ├─ attribute: v-if="visible"
+         ├─ attribute: placeholder="请输入姓名"
+         ├─ attribute: :aria-label="`编辑${name}的信息`"
+         ├─ attribute: @click="notify('点击输入框')"
+         ├─ text: "你好，"
+         ├─ expression: user.name
+         ├─ expression: '保存成功'
+         └─ expression: $t('items.count', { count })
+                 │
+                 ▼
+extractHtml()
+  │
+  ├─ title → 白名单，收集
+  ├─ v-if → 非展示属性，跳过
+  ├─ placeholder → 白名单，收集
+  ├─ :aria-label → 白名单动态绑定，Babel 分析
+  ├─ @click → 非展示属性，不分析
+  ├─ text → 收集
+  ├─ user.name → 无静态中文
+  ├─ '保存成功' → 收集
+  └─ $t(...) → 记录 localized-call
+```
+
+最终大致得到：
+
+```js
+[
+  {
+    value: '表单区域',
+    key: 'page.form',
+    locations: [{ kind: 'html-attribute' }]
+  },
+  {
+    value: '请输入姓名',
+    locations: [{ kind: 'html-attribute' }]
+  },
+  {
+    value: '编辑',
+    locations: [{ kind: 'html-attribute' }]
+  },
+  {
+    value: '的信息',
+    locations: [{ kind: 'html-attribute' }]
+  },
+  {
+    value: '你好，',
+    locations: [{ kind: 'html-text' }]
+  },
+  {
+    value: '保存成功',
+    locations: [{ kind: 'template-expression' }]
+  },
+  {
+    value: '',
+    key: 'items.count',
+    representation: 'localized-call',
+    paramsKind: 'static',
+    paramNames: ['count'],
+    locations: [{ kind: 'template-expression' }]
+  }
+]
+```
+
+不会收集：
+
+```text
+visible
+user.name
+点击输入框
+```
+
+其中：
+
+- `visible` 是控制流；
+- `user.name` 是运行时变量，没有静态中文；
+- `点击输入框` 位于 `@click` 事件表达式中，该属性不属于允许分析的展示属性。
+
+---
+
+### 十四、边界和实现细节
+
+#### 14.1 非 HTML template 不收集
+
+例如：
+
+```html
+<template lang="pug">
+```
+
+当前不会调用 Pug 预处理器，而是返回空 Template IR。
+
+这是明确的能力边界，不是解析失败。
+
+#### 14.2 不分析 render 函数
+
+即使 Vue 最终会将 template 编译为 render 函数，收集输入仍然是原始 template。
+
+因为 render 函数会丢失或改变：
+
+- 原始 DOM 结构；
+- 原始注释；
+- 原始属性写法；
+- HTML entity 拼写；
+- 可靠的源码位置；
+- 文案所属模板构造。
+
+#### 14.3 HTML warning 当前在 Loader 分派处被丢弃
+
+`extractHtml()` 会返回：
+
+```js
+{
+  entries,
+  warnings: template.warnings
+}
+```
+
+但是当前 `collectedFor()` 对 HTML/template 分支重新包装为：
+
+```js
+{
+  entries: extractHtml(...).entries,
+  warnings: []
+}
+```
+
+因此 parse5/Vue adapter 产生的非致命 warning，在直接调用 `extractHtml()` 时可见，但经过当前 Loader 主链时不会发布。CSS 分支则会保留 extractor 返回的 warnings。
+
+如果设计目标是让 template warning 进入 webpack compilation，这里应该直接返回完整的 `extractHtml()` 结果。就现有代码而言，必须把“Template IR 支持 warnings”和“Loader 当前会发布这些 warnings”区分开。
+
+---
+
+### 十五、最终总结
+
+这套 HTML 中文收集机制不是“用一个正则扫描 HTML”，而是：
+
+> 使用项目对应的 HTML/Vue 解析器准确理解模板语法，将不同 AST 统一成带原始位置映射的 Template IR，再由 `extractHtml()` 统一应用中文判断、属性白名单、Babel 表达式分析、本地化调用识别、上下文过滤和注释指令，最后输出跨语言共享的收集条目 IR。
+
+核心职责可以压缩为：
+
+```text
+parse5 / Vue compiler
+    负责“源码是什么结构”
+
+Template IR
+    负责“屏蔽解析器差异并保留源码位置”
+
+extractHtml
+    负责“哪些结构属于应收集文案”
+
+CollectedEntry
+    负责“向 catalog、校验和替换流程提供稳定输入”
+```
