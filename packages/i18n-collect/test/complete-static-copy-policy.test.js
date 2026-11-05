@@ -3,6 +3,8 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
+const { installVue2 } = require('./vue2-fixture')
+const { installVue3 } = require('./vue3-fixture')
 const { identityFiles } = require('../mycommon/config')
 const {
   comparePolicyBaseline,
@@ -156,6 +158,77 @@ test('reports structured message fragmentation around links, emphasis, controls,
   assert.strictEqual(sample.reason, 'structured-fragmentation')
   assert.ok(sample.start)
   assert.ok(sample.end)
+})
+
+test('keeps Vue 2 and Vue 3 template policy diagnostics equivalent through Template IR', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-template-policy-'))
+  const vue2Root = path.join(root, 'vue2')
+  const vue3Root = path.join(root, 'vue3')
+  installVue2(vue2Root)
+  installVue3(vue3Root)
+  const source = [
+    '<template>',
+    '  <section>',
+    '    <p :title="`当前用户${name}`">{{ `欢迎${name}回来` }}</p>',
+    '    <p>请阅读我们的<a href="/terms">服务&nbsp;条款</a>和<strong>隐私政策</strong></p>',
+    '  </section>',
+    '</template>',
+    ''
+  ].join('\r\n')
+
+  function diagnostics(projectRoot) {
+    const projectPath = 'src/Policy.vue'
+    return scanCompleteStaticCopyPolicy([{
+      path: projectPath,
+      absolutePath: path.join(projectRoot, projectPath),
+      source
+    }]).map(item => ({
+      reason: item.reason,
+      kind: item.kind,
+      start: item.start,
+      end: item.end,
+      text: item.text
+    }))
+  }
+
+  const vue2 = diagnostics(vue2Root)
+  const vue3 = diagnostics(vue3Root)
+  assert.deepStrictEqual(vue3, vue2)
+  assert.ok(vue2.some(item => item.reason === 'interpolation' && item.text === '当前用户'))
+  assert.ok(vue2.some(item => item.reason === 'interpolation' && item.text === '欢迎'))
+  assert.ok(vue2.some(item => item.reason === 'structured-fragmentation' && item.text === '服务\u00a0条款'))
+  assert.ok(vue2.some(item => item.reason === 'structured-fragmentation' && item.text === '隐私政策'))
+  assert.ok(vue2.every(item => item.start.line > 0 && item.end.line > 0))
+})
+
+test('keeps standalone HTML structured-fragmentation behavior parse5-backed', () => {
+  const source = '<p>请阅读<a href="/terms">服务&nbsp;条款</a></p>\r\n'
+  const violations = scanCompleteStaticCopyPolicy([{
+    path: 'public/index.html',
+    source
+  }])
+  assert.deepStrictEqual(violations.map(item => ({
+    reason: item.reason,
+    kind: item.kind,
+    start: item.start,
+    end: item.end,
+    text: item.text
+  })), [
+    {
+      reason: 'structured-fragmentation',
+      kind: 'static-html-text',
+      start: { line: 1, column: 3 },
+      end: { line: 1, column: 6 },
+      text: '请阅读'
+    },
+    {
+      reason: 'structured-fragmentation',
+      kind: 'static-html-text',
+      start: { line: 1, column: 23 },
+      end: { line: 1, column: 33 },
+      text: '服务\u00a0条款'
+    }
+  ])
 })
 
 test('readPolicyBaseline loads a versioned committed baseline and rejects bad shapes', () => {

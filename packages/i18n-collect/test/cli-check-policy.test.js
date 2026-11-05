@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
+const { installVue2 } = require('./vue2-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 
@@ -24,6 +25,7 @@ function writeProject(root, { source, baseline, files = {} } = {}) {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, contents)
   }
+  if (Object.keys(files).some(name => name.endsWith('.vue'))) installVue2(root)
   if (baseline) {
     fs.writeFileSync(
       path.join(root, 'lang/catalog/complete-static-copy-baseline.json'),

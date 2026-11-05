@@ -205,7 +205,8 @@ function parse({ source, resource, compilerSfc, compilerDom }) {
     return node.type === 2 && !/^\s*$/.test(node.content)
   }
 
-  function visit(node) {
+  function visit(node, parentId = null) {
+    let childParentId = parentId
     if (node.type === 3) {
       comments.push({
         start: span.start + node.loc.start.offset,
@@ -213,14 +214,19 @@ function parse({ source, resource, compilerSfc, compilerDom }) {
         text: node.content
       })
     } else if (isConstruct(node)) {
-      ids.set(node, constructs.length)
+      const id = constructs.length
+      ids.set(node, id)
       constructs.push({
-        id: constructs.length,
+        id,
+        kind: node.type === 1 ? 'element' : node.type === 5 ? 'expression' : 'text',
+        name: node.type === 1 ? node.tag : null,
+        parentId,
         start: span.start + node.loc.start.offset,
         end: span.start + node.loc.end.offset
       })
+      childParentId = id
     }
-    for (const child of node.children || []) visit(child)
+    for (const child of node.children || []) visit(child, childParentId)
   }
   visit(root)
 

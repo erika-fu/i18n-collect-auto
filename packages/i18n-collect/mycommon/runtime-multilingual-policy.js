@@ -7,6 +7,12 @@ const { DEFAULTS, normalizeFilterPattern } = require('./config')
 const { isStaticLocalizationKeyArgument } = require('./localized-call')
 const { scopeMatches } = require('./scope-pattern')
 const { containsHan, offsetToPosition } = require('../myloader/resource')
+const {
+  bindingAttribute,
+  emptyTemplate,
+  parseVueTemplate,
+  sourceOffset
+} = require('./template-policy-regions')
 
 const BOUNDARIES_VERSION = 1
 const REASON_RUNTIME_MULTILINGUAL_LITERAL = 'runtime-multilingual-literal'
@@ -379,7 +385,16 @@ function interpolationSpans(raw) {
   return spans
 }
 
-function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violations, seen, boundaryId) {
+function scanExpressionSource(
+  fullSource,
+  projectPath,
+  baseOffset,
+  slice,
+  violations,
+  seen,
+  boundaryId,
+  region
+) {
   const trimmed = slice.trim()
   if (!trimmed) return
   const lead = slice.indexOf(trimmed)
@@ -394,6 +409,11 @@ function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violat
   } catch (error) {
     return
   }
+  const absoluteOffset = offset => (
+    region
+      ? sourceOffset(region, lead - 1 + offset)
+      : baseOffset + lead - 1 + offset
+  )
   traverse(ast, {
     StringLiteral(nodePath) {
       if (isStaticLocalizationKeyArgument(nodePath)) return
@@ -404,8 +424,8 @@ function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violat
         seen,
         fullSource,
         projectPath,
-        baseOffset + lead - 1 + node.start,
-        baseOffset + lead - 1 + node.end,
+        absoluteOffset(node.start),
+        absoluteOffset(node.end),
         node.value,
         'template-expression',
         boundaryId
@@ -419,8 +439,8 @@ function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violat
         seen,
         fullSource,
         projectPath,
-        baseOffset + lead - 1 + node.start,
-        baseOffset + lead - 1 + node.end,
+        absoluteOffset(node.start),
+        absoluteOffset(node.end),
         node.value.cooked || '',
         'template-literal',
         boundaryId
@@ -537,11 +557,78 @@ function scanVueSource(fullSource, projectPath, violations, seen, boundaryId, al
       allowlist
     )
   }
-  for (const block of findBlock(fullSource, 'template')) {
-    scanMarkup(fullSource, projectPath, block.start, block.end, violations, seen, boundaryId, 'html-text', allowlist)
-  }
   for (const block of findBlock(fullSource, 'style')) {
     scanCssContent(fullSource, projectPath, block.start, block.end, violations, seen, boundaryId)
+  }
+}
+
+function scanVueTemplate(
+  file,
+  projectPath,
+  violations,
+  seen,
+  boundaryId,
+  allowlist,
+  options
+) {
+  const template = findBlock(file.source, 'template').length > 0
+    ? parseVueTemplate(file.source, file, options)
+    : emptyTemplate()
+  for (const region of template.regions) {
+    if (region.type === 'text') {
+      recordLiteral(
+        violations,
+        seen,
+        file.source,
+        projectPath,
+        region.start,
+        region.end,
+        region.value,
+        'html-text',
+        boundaryId
+      )
+      continue
+    }
+    if (region.type === 'expression') {
+      scanExpressionSource(
+        file.source,
+        projectPath,
+        region.start,
+        region.value,
+        violations,
+        seen,
+        boundaryId,
+        region
+      )
+      continue
+    }
+    const dynamic = bindingAttribute(region.name)
+    const attributeName = dynamic ? dynamic.base : region.name
+    if (!allowlist.has(attributeName)) continue
+    if (dynamic) {
+      scanExpressionSource(
+        file.source,
+        projectPath,
+        region.start,
+        region.value,
+        violations,
+        seen,
+        boundaryId,
+        region
+      )
+    } else {
+      recordLiteral(
+        violations,
+        seen,
+        file.source,
+        projectPath,
+        region.start,
+        region.end,
+        region.value,
+        'html-attribute',
+        boundaryId
+      )
+    }
   }
 }
 
@@ -590,7 +677,10 @@ function scanRuntimeMultilingualPolicy(files, boundaries, options = {}) {
     const boundary = matchingRuntimeMultilingualBoundary(projectPath, boundaries)
     if (!boundary) continue
     const ext = extensionOf(projectPath)
-    if (ext === '.vue') scanVueSource(file.source, projectPath, violations, seen, boundary.id, allowlist)
+    if (ext === '.vue') {
+      scanVueSource(file.source, projectPath, violations, seen, boundary.id, allowlist)
+      scanVueTemplate(file, projectPath, violations, seen, boundary.id, allowlist, options)
+    }
     else if (SCRIPT_EXTENSIONS.has(ext) || ext === '') {
       scanScriptSource(file.source, projectPath, 0, file.source, violations, seen, boundary.id, allowlist)
     } else if (ext === '.html' || ext === '.htm') {

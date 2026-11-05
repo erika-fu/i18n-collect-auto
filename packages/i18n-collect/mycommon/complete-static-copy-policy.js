@@ -3,6 +3,16 @@ const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
 const parse5 = require('parse5')
 const { containsHan, offsetToPosition } = require('../myloader/resource')
+const {
+  STRUCTURED_MESSAGE_HOSTS,
+  bindingAttribute,
+  emptyTemplate,
+  isStructuredTag,
+  parseVueTemplate,
+  sourceOffset,
+  structuredTextRegions,
+  transparentWrapper
+} = require('./template-policy-regions')
 
 const BASELINE_VERSION = 1
 
@@ -11,63 +21,6 @@ const REASON_INTERPOLATION = 'interpolation'
 const REASON_CONDITIONAL = 'conditional'
 const REASON_FORMATTING = 'formatting'
 const REASON_STRUCTURED_FRAGMENTATION = 'structured-fragmentation'
-
-const STRUCTURED_INLINE_TAGS = new Set([
-  'a',
-  'em',
-  'strong',
-  'b',
-  'i',
-  'mark',
-  'u',
-  's',
-  'del',
-  'ins',
-  'button',
-  'input',
-  'select',
-  'textarea',
-  'code',
-  'kbd',
-  'abbr',
-  'slot'
-])
-
-const TRANSPARENT_WRAPPER_TAGS = new Set(['span', 'font'])
-
-// Only prose-like hosts are checked. Block containers such as section/div often
-// hold unrelated controls beside independent copy and must not be treated as one message.
-const STRUCTURED_MESSAGE_HOSTS = new Set([
-  'p',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'li',
-  'td',
-  'th',
-  'dt',
-  'dd',
-  'caption',
-  'summary',
-  'legend',
-  'figcaption'
-])
-
-const STANDARD_HTML_ELEMENTS = new Set([
-  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi', 'bdo', 'blockquote',
-  'body', 'br', 'button', 'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist',
-  'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption',
-  'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr',
-  'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map',
-  'mark', 'menu', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output',
-  'p', 'param', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search',
-  'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup',
-  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr',
-  'track', 'u', 'ul', 'var', 'video', 'wbr'
-])
 
 const FORMAT_METHODS = new Set([
   'concat',
@@ -115,14 +68,16 @@ function pushViolation(violations, seen, item) {
   violations.push(item)
 }
 
-function recordNode(violations, seen, fullSource, projectPath, node, baseOffset, reason, kind) {
+function recordNode(violations, seen, fullSource, projectPath, node, baseOffset, reason, kind, mapOffset) {
   if (!node || node.start == null || node.end == null) return
   let text = ''
   if (node.type === 'StringLiteral') text = node.value
   else if (node.type === 'TemplateElement') text = node.value.cooked || ''
   else return
   if (!containsHan(text)) return
-  const loc = locationOf(fullSource, projectPath, baseOffset + node.start, baseOffset + node.end, kind)
+  const start = mapOffset ? mapOffset(node.start) : baseOffset + node.start
+  const end = mapOffset ? mapOffset(node.end) : baseOffset + node.end
+  const loc = locationOf(fullSource, projectPath, start, end, kind)
   pushViolation(violations, seen, {
     reason,
     path: loc.path,
@@ -147,15 +102,25 @@ function walkConcatOperands(node, visit) {
   visit(node)
 }
 
-function markHanLeaves(violations, seen, fullSource, projectPath, node, baseOffset, reason, kind) {
+function markHanLeaves(violations, seen, fullSource, projectPath, node, baseOffset, reason, kind, mapOffset) {
   if (!node) return
   if (node.type === 'StringLiteral') {
-    recordNode(violations, seen, fullSource, projectPath, node, baseOffset, reason, kind)
+    recordNode(violations, seen, fullSource, projectPath, node, baseOffset, reason, kind, mapOffset)
     return
   }
   if (node.type === 'TemplateLiteral') {
     for (const quasi of node.quasis) {
-      recordNode(violations, seen, fullSource, projectPath, quasi, baseOffset, reason, 'template-literal')
+      recordNode(
+        violations,
+        seen,
+        fullSource,
+        projectPath,
+        quasi,
+        baseOffset,
+        reason,
+        'template-literal',
+        mapOffset
+      )
     }
   }
 }
@@ -168,33 +133,10 @@ function parseModule(source) {
   })
 }
 
-function isHtmlStructuredTag(tagName) {
-  if (!tagName) return false
-  const lower = String(tagName).toLowerCase()
-  if (STRUCTURED_INLINE_TAGS.has(lower)) return true
-  if (lower.includes('-')) return true
-  return !STANDARD_HTML_ELEMENTS.has(lower)
-}
-
-function isHtmlTransparentWrapper(tagName) {
-  return TRANSPARENT_WRAPPER_TAGS.has(String(tagName || '').toLowerCase())
-}
-
-function isJsxStructuredName(name) {
-  if (!name) return false
-  if (/^[A-Z]/.test(name)) return true
-  if (name.includes('-')) return true
-  return STRUCTURED_INLINE_TAGS.has(name.toLowerCase())
-}
-
-function isJsxTransparentWrapper(name) {
-  return TRANSPARENT_WRAPPER_TAGS.has(String(name || '').toLowerCase())
-}
-
 function flattenHtmlChildren(childNodes) {
   const flat = []
   for (const child of childNodes || []) {
-    if (child.tagName && isHtmlTransparentWrapper(child.tagName)) {
+    if (child.tagName && transparentWrapper(child.tagName)) {
       flat.push(...flattenHtmlChildren(child.childNodes))
       continue
     }
@@ -206,7 +148,7 @@ function flattenHtmlChildren(childNodes) {
 function flattenJsxChildren(children) {
   const flat = []
   for (const child of children || []) {
-    if (child.type === 'JSXElement' && isJsxTransparentWrapper(jsxElementName(child))) {
+    if (child.type === 'JSXElement' && transparentWrapper(jsxElementName(child))) {
       flat.push(...flattenJsxChildren(child.children))
       continue
     }
@@ -254,7 +196,7 @@ function scanHtmlStructuredElement(element, fullSource, projectPath, baseOffset,
         continue
       }
       if (child.nodeName === '#comment' || child.nodeName === '#document-fragment') continue
-      if (child.tagName && isHtmlStructuredTag(child.tagName)) structuredKids.push(child)
+      if (child.tagName && isStructuredTag(child.tagName)) structuredKids.push(child)
     }
     if (textKids.length > 0 && structuredKids.length > 0) {
       for (const textNode of textKids) {
@@ -355,7 +297,7 @@ function scanJsxStructuredElement(node, fullSource, projectPath, baseOffset, vio
       }
       if (child.type !== 'JSXElement') continue
       const name = jsxElementName(child)
-      if (isJsxStructuredName(name)) structuredKids.push(child)
+      if (isStructuredTag(name)) structuredKids.push(child)
     }
     if (textKids.length > 0 && structuredKids.length > 0) {
       for (const textNode of textKids) {
@@ -388,7 +330,7 @@ function scanJsxStructuredElement(node, fullSource, projectPath, baseOffset, vio
   }
 }
 
-function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, expressionKind) {
+function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, expressionKind, mapOffset) {
   const scriptKind = expressionKind || 'script-string'
   traverse(ast, {
     JSXElement(nodePath) {
@@ -406,7 +348,8 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           operand,
           baseOffset,
           REASON_CONCATENATION,
-          scriptKind
+          scriptKind,
+          mapOffset
         )
       })
     },
@@ -421,7 +364,8 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           quasi,
           baseOffset,
           REASON_INTERPOLATION,
-          'template-literal'
+          'template-literal',
+          mapOffset
         )
       }
     },
@@ -438,7 +382,8 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
               operand,
               baseOffset,
               REASON_CONDITIONAL,
-              scriptKind
+              scriptKind,
+              mapOffset
             )
           })
           continue
@@ -451,7 +396,8 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           branch,
           baseOffset,
           REASON_CONDITIONAL,
-          branch && branch.type === 'TemplateLiteral' ? 'template-literal' : scriptKind
+          branch && branch.type === 'TemplateLiteral' ? 'template-literal' : scriptKind,
+          mapOffset
         )
       }
     },
@@ -473,7 +419,8 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           callee.object,
           baseOffset,
           REASON_FORMATTING,
-          scriptKind
+          scriptKind,
+          mapOffset
         )
       }
       for (const arg of nodePath.node.arguments) {
@@ -485,7 +432,8 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           arg,
           baseOffset,
           REASON_FORMATTING,
-          scriptKind
+          scriptKind,
+          mapOffset
         )
       }
     }
@@ -509,6 +457,19 @@ function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violat
   })
   // Leading '(' shifts every node start by 1 relative to the trimmed expression.
   scanAst(ast, fullSource, projectPath, baseOffset + lead - 1, violations, seen, 'template-expression')
+}
+
+function scanExpressionRegion(fullSource, projectPath, region, violations, seen) {
+  const trimmed = region.value.trim()
+  if (!trimmed) return
+  const lead = region.value.indexOf(trimmed)
+  const ast = parser.parse(`(${trimmed})`, {
+    sourceType: 'module',
+    plugins: ['jsx', 'typescript'],
+    errorRecovery: true
+  })
+  const mapOffset = offset => sourceOffset(region, lead - 1 + offset)
+  scanAst(ast, fullSource, projectPath, 0, violations, seen, 'template-expression', mapOffset)
 }
 
 function scanTag(source, index) {
@@ -705,16 +666,36 @@ function scanTemplateMarkup(fullSource, projectPath, templateStart, templateEnd,
   )
 }
 
-function scanVueSource(fullSource, projectPath, violations, seen) {
+function scanVueSource(file, projectPath, violations, seen, options) {
+  const fullSource = file.source
   for (const block of findBlock(fullSource, 'script')) {
     scanScriptSource(fullSource, projectPath, block.start, fullSource.slice(block.start, block.end), violations, seen)
   }
-  for (const block of findBlock(fullSource, 'template')) {
-    scanTemplateMarkup(fullSource, projectPath, block.start, block.end, violations, seen)
+  const template = findBlock(fullSource, 'template').length > 0
+    ? parseVueTemplate(fullSource, file, options)
+    : emptyTemplate()
+  for (const region of template.regions) {
+    if (region.type === 'expression') {
+      scanExpressionRegion(fullSource, projectPath, region, violations, seen)
+    } else if (region.type === 'attribute' && bindingAttribute(region.name)) {
+      scanExpressionRegion(fullSource, projectPath, region, violations, seen)
+    }
+  }
+  for (const region of structuredTextRegions(template)) {
+    recordStructuredText(
+      violations,
+      seen,
+      fullSource,
+      projectPath,
+      region.start,
+      region.end,
+      region.value,
+      'html-text'
+    )
   }
 }
 
-function scanCompleteStaticCopyPolicy(files) {
+function scanCompleteStaticCopyPolicy(files, options = {}) {
   if (!Array.isArray(files)) throw new TypeError('scanCompleteStaticCopyPolicy requires a files array')
   const violations = []
   const seen = new Set()
@@ -724,7 +705,7 @@ function scanCompleteStaticCopyPolicy(files) {
     }
     const projectPath = file.path.split('\\').join('/')
     const ext = extensionOf(projectPath)
-    if (ext === '.vue') scanVueSource(file.source, projectPath, violations, seen)
+    if (ext === '.vue') scanVueSource(file, projectPath, violations, seen, options)
     else if (SCRIPT_EXTENSIONS.has(ext) || ext === '') {
       scanScriptSource(file.source, projectPath, 0, file.source, violations, seen)
     } else if (ext === '.html' || ext === '.htm') {

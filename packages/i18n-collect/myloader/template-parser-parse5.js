@@ -431,26 +431,33 @@ function parse({ source, resource, standalone }) {
   const constructs = []
   const comments = []
   const constructIds = new WeakMap()
-  eachNode(root, node => {
+  function addConstructs(node, parentId = null) {
     const location = node.sourceCodeLocation
-    if (!location) return
-    if (node.nodeName === '#comment') {
+    let childParentId = parentId
+    if (location && node.nodeName === '#comment') {
       comments.push({
         start: span.start + location.startOffset,
         end: span.start + location.endOffset,
         text: node.data
       })
-      return
+    } else if (location && isConstruct(node)) {
+      const id = constructs.length
+      const construct = {
+        id,
+        kind: node.tagName ? 'element' : 'text',
+        name: node.tagName || null,
+        parentId,
+        start: span.start + location.startOffset,
+        end: span.start + location.endOffset
+      }
+      constructIds.set(node, id)
+      constructs.push(construct)
+      childParentId = id
     }
-    if (!isConstruct(node)) return
-    const construct = {
-      id: constructs.length,
-      start: span.start + location.startOffset,
-      end: span.start + location.endOffset
-    }
-    constructIds.set(node, construct.id)
-    constructs.push(construct)
-  })
+    for (const child of node.childNodes || []) addConstructs(child, childParentId)
+    if (node.content) addConstructs(node.content, childParentId)
+  }
+  addConstructs(root)
 
   const regions = []
   const ownerStack = []

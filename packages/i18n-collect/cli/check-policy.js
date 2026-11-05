@@ -189,13 +189,19 @@ function checkPolicy(args) {
     const boundariesPath = path.join(config.root, identities.runtimeMultilingualBoundaries)
     const sources = listSourceFiles(config.root, config).map(file => ({
       path: file.projectPath,
+      absolutePath: file.absolute,
       source: fs.readFileSync(file.absolute, 'utf8')
     }))
-    const violations = scanCompleteStaticCopyPolicy(sources)
+    const policyOptions = {
+      root: config.root,
+      vueVersion: config.vueVersion
+    }
+    const violations = scanCompleteStaticCopyPolicy(sources, policyOptions)
     const baseline = readPolicyBaseline(baselinePath)
     const comparison = comparePolicyBaseline(violations, baseline)
     const boundaries = readRuntimeMultilingualBoundaries(boundariesPath, config.root)
     const multilingualViolations = scanRuntimeMultilingualPolicy(sources, boundaries, {
+      ...policyOptions,
       attributeAllowlist: config.attributeAllowlist
     })
     const completeStaticFailing = [

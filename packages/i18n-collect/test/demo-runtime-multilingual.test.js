@@ -5,6 +5,7 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const { demoLocaleMessages, resolveDemoMessage } = require('../../../apps/demo/src/lang/resolve')
+const { installVue2 } = require('./vue2-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 
@@ -110,6 +111,7 @@ test('a direct literal inside a declared demo boundary fails validation', () => 
       boundaries: [{ id: 'demo-multilingual', include: ['src/pages/multilingual'] }]
     }, null, 2)}\n`
   )
+  installVue2(root)
   const result = run(['check-policy'], root)
   assert.strictEqual(result.status, 2, result.stderr)
   assert.match(result.stderr, /runtime-multilingual-literal/)

@@ -15,7 +15,7 @@
 
 本文使用根目录 `CONTEXT.md` 中定义的领域词汇。
 
-混合本地化作者策略（完整静态文案可自动收集；插值/拼接/条件/格式化与结构化拆片须显式消息；运行时切语言须边界内显式调用）由 ADR-0001、`docs/collection.md` 与 `check-policy` / `verify` 拥有。本文描述的 fragment 提取说明**收集如何看见**静态片段，不表示这些片段可独立翻译，也不表示仅靠收集就能在运行时切换语言。
+混合本地化作者策略（完整静态文案可自动收集；插值/拼接/条件/格式化与结构化拆片须显式消息；运行时切语言须边界内显式调用）由 ADR-0001、`docs/collection.md` 与 `check-policy` / `verify` 拥有。Vue template 的收集、完整静态文案检查和运行时多语言边界检查共享 Template IR；独立 HTML 仍通过共享 HTML adapter 使用 parse5。本文描述的 fragment 提取说明**收集如何看见**静态片段，不表示这些片段可独立翻译，也不表示仅靠收集就能在运行时切换语言。
 
 ---
 
@@ -607,13 +607,13 @@ Source range 仍指向原始源码拼写，例如 `保存&nbsp;成功`。哈希�
 
 ## 13.5 HTML 解析错误
 
-`parse5` 会恢复部分错误，且 Vue 合法语法可能产生非标准 HTML 诊断。因此不能把每个 `onParseError` 都视为 fatal。
+独立 HTML 的 `parse5` 会恢复部分错误，因此不能把每个 `onParseError` 都视为 fatal。Vue template 不经过这条恢复路径，而由所属 Vue 版本的原生 compiler adapter 产生诊断。
 
 实现时应：
 
-- 明确一组经过 fixture 验证的 Vue 兼容恢复诊断；
-- 仅忽略这组已知诊断；
-- 其他会使位置或节点语义不可信的诊断导致 Collection failure；
+- 独立 HTML 只忽略经过 fixture 验证、且不影响位置或节点语义的恢复诊断；
+- Vue compiler 的语法诊断在原生 adapter 中映射回原始 SFC 位置；
+- 会使位置或节点语义不可信的诊断导致 Collection failure；
 - Vue 动态属性或插值中的 Babel 表达式错误始终失败；
 - 错误包含路径、block 和原始位置。
 

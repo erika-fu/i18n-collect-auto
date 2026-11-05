@@ -4,6 +4,8 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const { identityFiles } = require('../mycommon/config')
+const { installVue2 } = require('./vue2-fixture')
+const { installVue3 } = require('./vue3-fixture')
 const {
   isInsideRuntimeMultilingualBoundary,
   matchingRuntimeMultilingualBoundary,
@@ -255,6 +257,74 @@ test('scanRuntimeMultilingualPolicy honors a configured attribute allowlist', ()
   const narrowed = scanRuntimeMultilingualPolicy(files, boundaries, { attributeAllowlist: ['data-label'] })
   assert.ok(narrowed.some(item => item.text === '标签中文'))
   assert.ok(!narrowed.some(item => item.text === '标题中文'))
+})
+
+test('keeps Vue 2 and Vue 3 boundary diagnostics equivalent through Template IR', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-template-boundary-'))
+  const vue2Root = path.join(root, 'vue2')
+  const vue3Root = path.join(root, 'vue3')
+  installVue2(vue2Root)
+  installVue3(vue3Root)
+  const source = [
+    '<template>',
+    '  <section>',
+    '    <p title="保存&nbsp;成功">{{ $t(\'policy.saved\') }}</p>',
+    '    <p :aria-label="$t(\'policy.label\')">{{ `还有${count}项` }}</p>',
+    '  </section>',
+    '</template>',
+    ''
+  ].join('\r\n')
+  const boundaries = [{ id: 'policy', include: ['src'], exclude: [] }]
+
+  function diagnostics(projectRoot) {
+    const projectPath = 'src/Policy.vue'
+    return scanRuntimeMultilingualPolicy([{
+      path: projectPath,
+      absolutePath: path.join(projectRoot, projectPath),
+      source
+    }], boundaries).map(item => ({
+      reason: item.reason,
+      kind: item.kind,
+      start: item.start,
+      end: item.end,
+      text: item.text,
+      boundaryId: item.boundaryId
+    }))
+  }
+
+  const vue2 = diagnostics(vue2Root)
+  const vue3 = diagnostics(vue3Root)
+  assert.deepStrictEqual(vue3, vue2)
+  assert.deepStrictEqual(vue2.map(item => item.text), ['保存\u00a0成功', '还有', '项'])
+  assert.ok(vue2.every(item => item.boundaryId === 'policy'))
+})
+
+test('keeps standalone HTML boundary behavior parse5-backed', () => {
+  const boundaries = [{ id: 'entry', include: ['public/index.html'], exclude: [] }]
+  const source = '<p title="保存&nbsp;成功">正文中文</p>\r\n'
+  const violations = scanRuntimeMultilingualPolicy(
+    [{ path: 'public/index.html', source }],
+    boundaries
+  )
+  assert.deepStrictEqual(violations.map(item => ({
+    kind: item.kind,
+    start: item.start,
+    end: item.end,
+    text: item.text
+  })), [
+    {
+      kind: 'static-html-attribute',
+      start: { line: 1, column: 10 },
+      end: { line: 1, column: 20 },
+      text: '保存\u00a0成功'
+    },
+    {
+      kind: 'static-html-text',
+      start: { line: 1, column: 22 },
+      end: { line: 1, column: 26 },
+      text: '正文中文'
+    }
+  ])
 })
 
 test('outside a boundary complete static Chinese remains eligible for automatic collection semantics', () => {

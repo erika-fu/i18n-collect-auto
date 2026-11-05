@@ -346,8 +346,9 @@ function parse({ source, resource, templateCompiler }) {
     return typeof node.text === 'string' && !/^\s*$/.test(node.text)
   }
 
-  function visit(node) {
+  function visit(node, parentId = null) {
     if (!node) return
+    let childParentId = parentId
     if (node.isComment) {
       comments.push({
         start: base + node.start,
@@ -355,14 +356,19 @@ function parse({ source, resource, templateCompiler }) {
         text: node.text
       })
     } else if (isConstruct(node)) {
-      ids.set(node, constructs.length)
+      const id = constructs.length
+      ids.set(node, id)
       constructs.push({
-        id: constructs.length,
+        id,
+        kind: node.type === 1 ? 'element' : node.type === 2 ? 'expression' : 'text',
+        name: node.type === 1 ? node.tag : null,
+        parentId,
         start: base + node.start,
         end: base + node.end
       })
+      childParentId = id
     }
-    for (const child of children(node)) visit(child)
+    for (const child of children(node)) visit(child, childParentId)
   }
   visit(root)
 

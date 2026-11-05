@@ -18,10 +18,10 @@ or localized-call metadata.
 `extractHtml({ source, resource, config })` remains the public collection boundary.
 It consumes an internal Template IR through the `parseTemplate` adapter seam.
 
-The Template IR contains parser-neutral constructs, comments, text and attribute
-regions, expression regions, construct ownership, original half-open source ranges,
-decoded-to-source offset mappings, and warnings. It does not contain parse5, Vue 2,
-or Vue 3 node types.
+The Template IR contains parser-neutral constructs with element names and parent
+relationships, comments, text and attribute regions, expression regions, construct
+ownership, original half-open source ranges, decoded-to-source offset mappings, and
+warnings. It does not contain parse5, Vue 2, or Vue 3 node types.
 
 Standalone HTML uses the parse5 adapter. Vue 2 templates use the owning project's
 `vue-template-compiler`; Vue 3 templates use the owning project's
@@ -46,9 +46,10 @@ Collection policy stays in the collector. Attribute allowlists, semantic kinds,
 directives, context filters, localized-call recognition, and final entry shaping are
 not responsibilities of parser adapters.
 
-Complete-static-copy policy, runtime-multilingual policy, and source replacement
-remain on their existing parsing paths. Moving those consumers to Template IR is
-deferred until their separate migration work.
+Complete-static-copy and runtime-multilingual policy checks consume the same Template
+IR for Vue templates. Their script and style checks remain separate because Template
+IR only models template content. Source replacement remains on its existing parsing
+path until its separate migration work.
 
 ## Alternatives considered
 
@@ -70,10 +71,12 @@ deferred until their separate migration work.
 
 - Parser changes are isolated from collection policy and public package interfaces.
 - Vue 2 and Vue 3 equivalent templates can be compared through the same normalized
-  regions and final collection entries.
+  regions, policy diagnostics, and final collection entries.
 - The IR carries source-offset mappings because decoded entities and CRLF input must
   still report ranges in the original source.
 - parse5 remains a direct dependency for standalone HTML.
+- Standalone HTML policy checks remain parse5-backed through the HTML adapter and
+  keep their existing behavior.
 - Applications must install the compiler packages appropriate for their Vue major;
   missing or incompatible packages fail with resource and owning-project context.
 - Existing Vue 2 and standalone HTML values, semantic kinds, ranges, ordering,

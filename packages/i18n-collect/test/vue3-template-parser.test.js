@@ -210,6 +210,9 @@ test('keeps Vue 2 and Vue 3 normalized regions and collection entries equivalent
   const compilerDom = require(path.join(vue3.root, 'node_modules/@vue/compiler-dom'))
   const normalized = parsed => ({
     constructs: parsed.constructs.map(construct => ({
+      kind: construct.kind,
+      name: construct.name,
+      parentId: construct.parentId,
       start: construct.start,
       end: construct.end
     })),
