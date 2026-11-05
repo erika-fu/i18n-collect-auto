@@ -130,7 +130,7 @@
           }
         }
       ],
-      "status": "active"
+      "status": "orphaned"
     },
     "auto.01M6D71KFV2R3HD4PWQ1P4AFQ2": {
       "source": "关闭面板",
@@ -1975,6 +1975,49 @@
             "end": {
               "line": 4,
               "column": 24
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6NGAKBAG4GFJR3AXXJ6TQFV": {
+      "source": "（Sass 新）",
+      "fingerprint": "4fc834b9e7a293df",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/StylePage.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 26,
+            "column": 14
+          },
+          "end": {
+            "line": 26,
+            "column": 22
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "59d3cca735d9b369",
+          "semanticHost": "src/pages/StylePage.vue::style[index=0;lang=sass]",
+          "childRole": "css-generated-content",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/StylePage.vue",
+            "kind": "css-generated-content",
+            "start": {
+              "line": 26,
+              "column": 14
+            },
+            "end": {
+              "line": 26,
+              "column": 22
             }
           }
         }

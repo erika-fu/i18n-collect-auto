@@ -1,0 +1,29 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.16.0
+2 info using node@v24.18.0
+3 silly config load:file:C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\Lenovo\i18n-collect-auto\.npmrc
+5 silly config load:file:C:\Users\Lenovo\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm pack sass@1.104.1 sass-loader@10.1.1
+8 verbose argv "pack" "sass@1.104.1" "sass-loader@10.1.1" "--offline" "--pack-destination" ".scratch" "--logs-dir" ".npm-logs"
+9 verbose logfile logs-max:10 dir:C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_18_21_077Z-
+10 verbose logfile C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_18_21_077Z-debug-0.log
+11 silly logfile done cleaning log files
+12 verbose stack Error: request to https://packages.aliyun.com/6465db85b60a10415c31fed8/npm/npm-registry/sass failed: cache mode is 'only-if-cached' but no cached response is available.
+12 verbose stack     at cacheFetch (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\make-fetch-happen\lib\cache\index.js:12:13)
+12 verbose stack     at async fetch (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\make-fetch-happen\lib\fetch.js:98:7)
+12 verbose stack     at async RegistryFetcher.packument (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\pacote\lib\registry.js:90:19)
+12 verbose stack     at async RegistryFetcher.manifest (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\pacote\lib\registry.js:128:23)
+12 verbose stack     at async Pack.exec (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\lib\commands\pack.js:38:24)
+12 verbose stack     at async Npm.exec (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\lib\npm.js:193:9)
+12 verbose stack     at async module.exports (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\lib\cli\entry.js:67:5)
+13 error code ENOTCACHED
+14 error request to https://packages.aliyun.com/6465db85b60a10415c31fed8/npm/npm-registry/sass failed: cache mode is 'only-if-cached' but no cached response is available.
+15 verbose cwd C:\Users\Lenovo\i18n-collect-auto
+16 verbose os Windows_NT 10.0.26300
+17 verbose node v24.18.0
+18 verbose npm  v11.16.0
+19 verbose exit 1
+20 verbose code 1
+21 error A complete log of this run can be found in: C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_18_21_077Z-debug-0.log

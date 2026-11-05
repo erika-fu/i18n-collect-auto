@@ -1,0 +1,60 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.16.0
+2 info using node@v24.18.0
+3 silly config load:file:C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\Lenovo\i18n-collect-auto\.npmrc
+5 silly config load:file:C:\Users\Lenovo\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm install .scratch/sass-1.104.1.tgz .scratch/sass-loader-16.0.8.tgz
+8 verbose argv "install" "--no-save" "--no-package-lock" "--offline" "--ignore-scripts" "--logs-dir" ".npm-logs" ".scratch/sass-1.104.1.tgz" ".scratch/sass-loader-16.0.8.tgz"
+9 verbose logfile logs-max:10 dir:C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_19_45_783Z-
+10 verbose logfile C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_19_45_783Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: apps/vue3-demo
+14 verbose stack Error: EPERM: operation not permitted, mkdtemp 'C:\Users\Lenovo\AppData\Local\npm-cache\_cacache\tmp\XXXXXX'
+14 verbose stack     at async mkdtemp (node:internal/fs/promises:1197:10)
+14 verbose stack     at async withTempDir (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\fs\lib\with-temp-dir.js:16:18)
+14 verbose stack     at async C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:536:22
+14 verbose stack     at async Promise.all (index 0)
+14 verbose stack     at async #add (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:525:5)
+14 verbose stack     at async #applyUserRequestsToNode (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:496:7)
+14 verbose stack     at async #applyUserRequests (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:427:7)
+14 verbose stack     at async Arborist.buildIdealTree (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:177:7)
+14 verbose stack     at async Promise.all (index 1)
+14 verbose stack     at async Arborist.reify (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\reify.js:112:5)
+15 error code EPERM
+16 error syscall mkdtemp
+17 error path C:\Users\Lenovo\AppData\Local\npm-cache\_cacache\tmp\XXXXXX
+18 error errno -4048
+19 error Error: EPERM: operation not permitted, mkdtemp 'C:\Users\Lenovo\AppData\Local\npm-cache\_cacache\tmp\XXXXXX'
+19 error     at async mkdtemp (node:internal/fs/promises:1197:10)
+19 error     at async withTempDir (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\fs\lib\with-temp-dir.js:16:18)
+19 error     at async C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:536:22
+19 error     at async Promise.all (index 0)
+19 error     at async #add (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:525:5)
+19 error     at async #applyUserRequestsToNode (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:496:7)
+19 error     at async #applyUserRequests (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:427:7)
+19 error     at async Arborist.buildIdealTree (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:177:7)
+19 error     at async Promise.all (index 1)
+19 error     at async Arborist.reify (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\reify.js:112:5) {
+19 error   errno: -4048,
+19 error   code: 'EPERM',
+19 error   syscall: 'mkdtemp',
+19 error   path: 'C:\\Users\\Lenovo\\AppData\\Local\\npm-cache\\_cacache\\tmp\\XXXXXX'
+19 error }
+20 error
+20 error The operation was rejected by your operating system.
+20 error It's possible that the file was already in use (by a text editor or antivirus), or that you lack permissions to access it.
+20 error
+20 error If you believe this might be a permissions issue, please double-check the permissions of the file and its containing directories, or try running the command again as root/Administrator.
+21 silly unfinished npm timer reify 1793870385972
+22 silly unfinished npm timer reify:loadTrees 1793870385972
+23 silly unfinished npm timer idealTree:userRequests 1793870386024
+24 verbose cwd C:\Users\Lenovo\i18n-collect-auto
+25 verbose os Windows_NT 10.0.26300
+26 verbose node v24.18.0
+27 verbose npm  v11.16.0
+28 verbose exit -4048
+29 verbose code -4048
+30 error A complete log of this run can be found in: C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_19_45_783Z-debug-0.log

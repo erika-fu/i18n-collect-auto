@@ -1059,8 +1059,8 @@ function styleProject(root, entry) {
       rules: [
         { test: /\.js$/, loader: collector },
         {
-          test: /\.s?css$/,
-          use: [pass, { loader: collector, options: { styleExtensions: ['.css', '.scss'] } }]
+          test: /\.(?:css|scss|sass)$/,
+          use: [pass, { loader: collector, options: { styleExtensions: ['.css', '.scss', '.sass'] } }]
         },
         { test: /\.vue$/, resourceQuery: /type=style/, use: [pass, collector] }
       ]
@@ -1089,6 +1089,30 @@ test('collects standalone SCSS without evaluating computed constructs', { timeou
   assert.strictEqual(entry.locations[0].path, 'src/theme.scss')
   assert.strictEqual(entry.locations[0].kind, 'css-generated-content')
   assert.ok(snapshotIdentities(stats).includes('src/theme.scss::style[index=0;lang=scss]'))
+})
+
+test('collects standalone Sass without evaluating computed constructs', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-sass-standalone-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const sass = path.join(root, 'src/theme.sass')
+  fs.writeFileSync(sass, [
+    '$label: "变量"',
+    '=generated',
+    '  content: "混入"',
+    '.badge',
+    '  &::before',
+    '    content: $label "独立 Sass"',
+    ''
+  ].join('\n'))
+
+  const stats = await compile(styleProject(root, sass))
+
+  assert.strictEqual(stats.hasErrors(), false, messages(stats))
+  assert.deepStrictEqual(Object.values(readOutput(root).dictionary), ['独立 Sass'])
+  const entry = readOutput(root).map.entries[0]
+  assert.strictEqual(entry.locations[0].path, 'src/theme.sass')
+  assert.strictEqual(entry.locations[0].kind, 'css-generated-content')
+  assert.ok(snapshotIdentities(stats).includes('src/theme.sass::style[index=0;lang=sass]'))
 })
 
 test('collects standalone CSS and each Vue style block, then drops only the deleted block', { timeout: 20000 }, async () => {
@@ -1202,17 +1226,17 @@ test('a style index change evicts the previous identity', { timeout: 20000 }, as
   }
 })
 
-test('the demo SCSS fixture collects its Vue generated content', { timeout: 20000 }, async () => {
-  const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/fixtures/UnsupportedStyle.vue'), 'utf8')
-  assert.match(fixture, /lang="scss"/)
-  assert.match(fixture, /预处理文案/)
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-scss-'))
+test('the Vue 2 demo Sass page collects its generated content', { timeout: 20000 }, async () => {
+  const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/src/pages/StylePage.vue'), 'utf8')
+  assert.match(fixture, /lang="sass"/)
+  assert.match(fixture, /（Sass 新）/)
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-sass-'))
   installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
-  const vue = path.join(root, 'src/UnsupportedStyle.vue')
+  const vue = path.join(root, 'src/StylePage.vue')
   const entry = path.join(root, 'src/main.js')
   fs.writeFileSync(vue, fixture)
-  fs.writeFileSync(entry, 'require("./UnsupportedStyle.vue?vue&type=style&index=0&lang=scss")\nrequire("./UnsupportedStyle.vue?vue&type=template&lang=html")\n')
+  fs.writeFileSync(entry, 'require("./StylePage.vue?vue&type=style&index=0&lang=sass")\nrequire("./StylePage.vue?vue&type=template&lang=html")\n')
   const pass = path.join(root, 'pass-loader.js')
   fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
   const collector = require.resolve('../myloader')
@@ -1229,13 +1253,13 @@ test('the demo SCSS fixture collects its Vue generated content', { timeout: 2000
   })
   assert.strictEqual(stats.hasErrors(), false, messages(stats))
   assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), [
-    '预处理器示例',
-    '预处理文案'
+    '收件箱',
+    '（Sass 新）'
   ])
   assert.strictEqual(warningText(stats), '')
-  const generated = readOutput(root).map.entries.find(item => item.value === '预处理文案')
+  const generated = readOutput(root).map.entries.find(item => item.value === '（Sass 新）')
   assert.strictEqual(generated.locations[0].kind, 'css-generated-content')
-  assert.strictEqual(generated.locations[0].path, 'src/UnsupportedStyle.vue')
+  assert.strictEqual(generated.locations[0].path, 'src/StylePage.vue')
 })
 
 test('changing a Vue style from CSS to SCSS replaces its snapshot identity', { timeout: 20000 }, async () => {
@@ -1319,6 +1343,40 @@ test('an SCSS syntax error preserves the previous formal collection outputs', { 
     const text = messages(second)
     assert.match(text, /src\/theme\.scss/)
     assert.match(text, /lang scss/)
+    assert.match(text, /line 2/)
+    assert.match(text, /column 11/)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), catalog)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), metadata)
+    assert.deepStrictEqual(getSession(handle.compiler).committed.runtimeDictionary(), committed)
+  } finally {
+    await handle.close()
+  }
+})
+
+test('a Sass syntax error preserves the previous formal collection outputs', { timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-sass-fail-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const sass = path.join(root, 'src/theme.sass')
+  fs.writeFileSync(sass, '.a\n  content: "保留"\n')
+  const handle = start(styleProject(root, sass))
+  try {
+    const first = await handle.run()
+    assert.strictEqual(first.hasErrors(), false, messages(first))
+    const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
+    const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const catalog = fs.readFileSync(path.join(root, 'lang/catalog/zh.json'))
+    const metadata = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+    const committed = getSession(handle.compiler).committed.runtimeDictionary()
+
+    fs.writeFileSync(sass, '.a\n  content: "未闭合\n')
+    const second = await handle.run()
+
+    assert.strictEqual(second.hasErrors(), true)
+    const text = messages(second)
+    assert.match(text, /src\/theme\.sass/)
+    assert.match(text, /lang sass/)
     assert.match(text, /line 2/)
     assert.match(text, /column 11/)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)

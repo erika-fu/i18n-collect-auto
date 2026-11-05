@@ -1,7 +1,6 @@
 {
   "auto.01M6D71KFV03PK11J86A275RFG": "姓名",
   "auto.01M6D71KFV0B2B1D2SFHR1XQ05": "模板字符串",
-  "auto.01M6D71KFV1ANJX0CYQ844AY8P": "（新）",
   "auto.01M6D71KFV2R3HD4PWQ1P4AFQ2": "关闭面板",
   "auto.01M6D71KFV2TC6755JSNMT06HN": "脚本字符串",
   "auto.01M6D71KFV2WFZ8MT8ABFYKQ5S": "小明",
@@ -43,6 +42,7 @@
   "auto.01M6D71KFVZ3RPEV4W3VP07M5Y": "示例图片",
   "auto.01M6D71KFVZG2BDSKC2KVEE76G": "脚本字符串",
   "auto.01M6D71KFVZGKB8EV9263GWSCP": "收件箱",
+  "auto.01M6NGAKBAG4GFJR3AXXJ6TQFV": "（Sass 新）",
   "demo.items.deleted": "已删除 {count} 项",
   "demo.multilingual.body": "你好，{name}。此页仅通过显式本地化渲染。",
   "demo.multilingual.title": "运行时多语言边界",

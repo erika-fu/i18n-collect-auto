@@ -268,6 +268,24 @@
       ]
     },
     {
+      "key": "54eacce0dcfb56755193d990468a3c63",
+      "value": "（Sass 新）",
+      "locations": [
+        {
+          "path": "src/pages/StylePage.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 26,
+            "column": 14
+          },
+          "end": {
+            "line": 26,
+            "column": 22
+          }
+        }
+      ]
+    },
+    {
       "key": "60d0458ac6ebef0fff1331af196b3c82",
       "value": "姓名",
       "locations": [
@@ -683,24 +701,6 @@
           "end": {
             "line": 15,
             "column": 28
-          }
-        }
-      ]
-    },
-    {
-      "key": "da8e96e7fb846977868150b1b3efd023",
-      "value": "（新）",
-      "locations": [
-        {
-          "path": "src/pages/StylePage.vue",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 21,
-            "column": 12
-          },
-          "end": {
-            "line": 21,
-            "column": 15
           }
         }
       ]

@@ -1,0 +1,43 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.16.0
+2 info using node@v24.18.0
+3 silly config load:file:C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\Lenovo\i18n-collect-auto\.npmrc
+5 silly config load:file:C:\Users\Lenovo\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm install
+8 verbose argv "install" "--offline" "--ignore-scripts" "--logs-dir" ".npm-logs"
+9 verbose logfile logs-max:10 dir:C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_18_08_947Z-
+10 verbose logfile C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_18_08_947Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: apps/vue3-demo
+14 silly idealTree buildDeps
+15 silly fetch manifest sass@^1.77.8
+16 silly packumentCache full:https://packages.aliyun.com/6465db85b60a10415c31fed8/npm/npm-registry/sass cache-miss
+17 silly fetch manifest sass-loader@^10.5.2
+18 silly packumentCache full:https://packages.aliyun.com/6465db85b60a10415c31fed8/npm/npm-registry/sass-loader cache-miss
+19 silly placeDep apps/demo sass@ OK for: i18n-auto-webpack-demo@0.1.0 want: ^1.77.8
+20 silly placeDep apps/demo sass-loader@ OK for: i18n-auto-webpack-demo@0.1.0 want: ^10.5.2
+21 verbose stack Error: request to https://packages.aliyun.com/6465db85b60a10415c31fed8/npm/npm-registry/sass failed: cache mode is 'only-if-cached' but no cached response is available.
+21 verbose stack     at cacheFetch (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\make-fetch-happen\lib\cache\index.js:12:13)
+21 verbose stack     at async fetch (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\make-fetch-happen\lib\fetch.js:98:7)
+21 verbose stack     at async RegistryFetcher.packument (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\pacote\lib\registry.js:90:19)
+21 verbose stack     at async RegistryFetcher.manifest (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\pacote\lib\registry.js:128:23)
+21 verbose stack     at async #fetchManifest (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:1299:20)
+21 verbose stack     at async #nodeFromEdge (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:1134:19)
+21 verbose stack     at async #buildDepStep (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:978:15)
+21 verbose stack     at async Arborist.buildIdealTree (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\build-ideal-tree.js:178:7)
+21 verbose stack     at async Promise.all (index 1)
+21 verbose stack     at async Arborist.reify (C:\Users\Lenovo\AppData\Local\nvm\v24.18.0\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\reify.js:112:5)
+22 error code ENOTCACHED
+23 error request to https://packages.aliyun.com/6465db85b60a10415c31fed8/npm/npm-registry/sass failed: cache mode is 'only-if-cached' but no cached response is available.
+24 silly unfinished npm timer reify 1793870289147
+25 silly unfinished npm timer reify:loadTrees 1793870289147
+26 verbose cwd C:\Users\Lenovo\i18n-collect-auto
+27 verbose os Windows_NT 10.0.26300
+28 verbose node v24.18.0
+29 verbose npm  v11.16.0
+30 verbose exit 1
+31 verbose code 1
+32 error A complete log of this run can be found in: C:\Users\Lenovo\i18n-collect-auto\.npm-logs\2026-11-05T09_18_08_947Z-debug-0.log

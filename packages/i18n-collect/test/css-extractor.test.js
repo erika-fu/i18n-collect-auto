@@ -212,7 +212,7 @@ test('warns once for unsupported style languages and parses configured standalon
     '.a { content: "必填"; }',
     '</style>'
   ].join('\n')
-  for (const lang of ['sass', 'less', 'stylus']) {
+  for (const lang of ['less', 'stylus']) {
     const result = extract(source, {
       projectPath: 'src/App.vue',
       styleIndex: 0,

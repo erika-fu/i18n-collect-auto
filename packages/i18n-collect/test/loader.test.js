@@ -466,3 +466,30 @@ test('a Vue SCSS style submits its direct generated-content strings', () => {
   assert.deepStrictEqual(first.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
   assert.deepStrictEqual(second.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
 })
+
+test('a Vue Sass style submits its direct generated-content strings', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-sass-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vuePath = path.join(root, 'src/App.vue')
+  fs.writeFileSync(vuePath, '<style lang="sass">\n.a\n  content: "必填"\n</style>\n')
+  const compiler = {}
+  compiler.root = compiler
+  const compilation = { compiler, warnings: [] }
+  const result = runLoader({
+    root,
+    source: 'padded sass',
+    sourceMap: { version: 3 },
+    meta: { css: true },
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=style&index=0&lang=sass&id=abc',
+    track: {
+      _compiler: compiler,
+      _compilation: compilation
+    }
+  })
+  assert.strictEqual(result.error, null)
+  assert.strictEqual(result.thrown, undefined)
+  assert.strictEqual(result.nextSource, 'padded sass')
+  assert.deepStrictEqual(result.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
+  assert.strictEqual(result.metadata.snapshot.identity, 'src/App.vue::style[index=0;lang=sass]')
+})
