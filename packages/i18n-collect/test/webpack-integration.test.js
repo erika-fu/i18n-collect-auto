@@ -1312,17 +1312,31 @@ test('a style index change evicts the previous identity', { timeout: 20000 }, as
   }
 })
 
-test('the Vue 2 demo Stylus page collects its generated content', { timeout: 20000 }, async () => {
+test('the Vue 2 demo collects generated content from every supported style language', { timeout: 20000 }, async () => {
   const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/src/pages/StylePage.vue'), 'utf8')
-  assert.match(fixture, /lang="stylus"/)
-  assert.match(fixture, /（Stylus 新）/)
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-stylus-'))
+  const expected = [
+    ['scss', '（SCSS 新）'],
+    ['sass', '（Sass 新）'],
+    ['less', '（Less 新）'],
+    ['stylus', '（Stylus 新）']
+  ]
+  for (const [lang, value] of expected) {
+    assert.match(fixture, new RegExp(`lang="${lang}"`))
+    assert.match(fixture, new RegExp(value))
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-style-languages-'))
   installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
   const vue = path.join(root, 'src/StylePage.vue')
   const entry = path.join(root, 'src/main.js')
   fs.writeFileSync(vue, fixture)
-  fs.writeFileSync(entry, 'require("./StylePage.vue?vue&type=style&index=0&lang=stylus")\nrequire("./StylePage.vue?vue&type=template&lang=html")\n')
+  fs.writeFileSync(entry, [
+    ...expected.map(([lang], index) => (
+      `require("./StylePage.vue?vue&type=style&index=${index}&lang=${lang}")`
+    )),
+    'require("./StylePage.vue?vue&type=template&lang=html")',
+    ''
+  ].join('\n'))
   const pass = path.join(root, 'pass-loader.js')
   fs.writeFileSync(pass, 'module.exports = function () { this.callback(null, "module.exports = {}\\n") }\n')
   const collector = require.resolve('../myloader')
@@ -1340,12 +1354,17 @@ test('the Vue 2 demo Stylus page collects its generated content', { timeout: 200
   assert.strictEqual(stats.hasErrors(), false, messages(stats))
   assert.deepStrictEqual(Object.values(readOutput(root).dictionary).sort(), [
     '收件箱',
+    '（Less 新）',
+    '（SCSS 新）',
+    '（Sass 新）',
     '（Stylus 新）'
-  ])
+  ].sort())
   assert.strictEqual(warningText(stats), '')
-  const generated = readOutput(root).map.entries.find(item => item.value === '（Stylus 新）')
-  assert.strictEqual(generated.locations[0].kind, 'css-generated-content')
-  assert.strictEqual(generated.locations[0].path, 'src/StylePage.vue')
+  for (const [, value] of expected) {
+    const generated = readOutput(root).map.entries.find(item => item.value === value)
+    assert.strictEqual(generated.locations[0].kind, 'css-generated-content')
+    assert.strictEqual(generated.locations[0].path, 'src/StylePage.vue')
+  }
 })
 
 test('changing a Vue style from CSS to SCSS replaces its snapshot identity', { timeout: 20000 }, async () => {

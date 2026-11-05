@@ -683,16 +683,18 @@ Source range 指向原始源码中的字符串内容，包括 escape 的原始�
 
 ## 14.4 样式预处理器
 
-第一版不解析 `.scss`、`.sass`、`.less` 或 `.styl`。
+CSS、SCSS、缩进语法 Sass、Less 和 Stylus 是 CSS 生成内容收集所支持的源码样式语言；`styl` 和 `stylus` 都选择 Stylus parser。每种语言通过 adapter 把原始作者源码转换成共享 Style IR，收集器不运行预处理器，也不求值变量、插值、mixin、函数或 import。只有源码中直接书写的静态字符串 token 符合收集条件。
 
-对于 Vue `style` 的非 CSS `lang` 或配置中显式出现但尚无 parser 的扩展：
+受支持语言的语法错误属于 Collection failure：webpack 保持失败，candidate round 作废，正式输出保留上一次成功版本。
+
+对于未知或有意不支持的 Vue `style` `lang`，或配置中显式出现但尚无 parser 的扩展：
 
 - 每个 Resource identity 每轮最多产生一个清晰 warning；
 - 提交空 snapshot；
 - 不用标准 CSS parser 尝试解析；
 - 不使构建失败。
 
-`styleExtensions` 的默认值收缩为 `['.css']`。未来每增加一种方言，都应增加明确 parser 和对应测试，而不是依靠偶然兼容。
+`styleExtensions` 的默认值保持 `['.css']`；独立的非 CSS 样式资源必须进入 Loader 并显式登记扩展名。未来每增加一种方言，都应增加明确 parser 和对应测试，而不是依靠偶然兼容。
 
 ---
 
@@ -847,7 +849,7 @@ Loader 里的解析错误和畸形键指令至少包含：
 - 哈希词典、source map、源语言目录和目录元数据保持上一次成功版本；
 - 不发布部分结果。
 
-不支持的样式方言属于 warning，不属于 parse failure。警告码是 `unsupported-style-preprocessor`，每个 Resource identity 每轮最多一次，文案说明该方言没有被解析。
+未知或有意不支持的样式方言属于 warning，不属于 parse failure。警告码是 `unsupported-style-preprocessor`，每个 Resource identity 每轮最多一次，文案说明该方言没有被解析。CSS、SCSS、缩进语法 Sass、Less 或 Stylus 的语法错误属于 parse failure，不能降级为空 snapshot。
 
 ## 18.2 输出兼容性
 
@@ -984,7 +986,7 @@ Loader 里的解析错误和畸形键指令至少包含：
 - 扩展 dispatcher 和 style identity。
 - 接入独立 `.css` 和 Vue `type=style`。
 - 增加 CSS string scanner、escape 解码和原始范围映射。
-- 为不支持的样式方言增加去重 warning。
+- 为未知或有意不支持的样式方言增加去重 warning。
 - 增加 CSS 纯函数和 webpack/Vue style 集成测试。
 
 ### 验收门槛
@@ -996,7 +998,8 @@ Loader 里的解析错误和畸形键指令至少包含：
 - CSS escape 的解码值和原始 range 都正确。
 - 多个 Vue style block 使用不同 identity。
 - 删除一个 style block 只淘汰对应 snapshot。
-- SCSS/Less/Sass/Stylus 产生一次 warning，不误解析且不失败。
+- SCSS、缩进语法 Sass、Less、Stylus 和 `styl` alias 从原始源码收集直接书写的生成内容字符串。
+- 受支持样式语言的语法错误使本轮失败并保留旧输出；未知或有意不支持的语言 warning、提交空 snapshot 且不失败。
 - 标准 CSS 解析失败使本轮失败并保留旧输出。
 
 ## Phase 4：集成加固和文档
@@ -1117,7 +1120,7 @@ HTML entity 和 CSS escape 会导致解码值长度与源码长度不同。Scann
 - Plugin 扫描业务文件；
 - 收集没有进入 Loader 链的资源；
 - 执行或复杂折叠 JavaScript/CSS 动态表达式；
-- Sass、Less、Stylus 解析；
+- 运行 Sass、Less、Stylus 预处理器或收集其变量、插值、mixin、函数及 import 的计算结果；
 - webpack 4 支持；
 - 通用 directive framework。已经落地的只有节点级 `no-i18n-auto` 和 `i18n-key`，规则见第 12.1 节；
 - Vite/Rollup 集成；

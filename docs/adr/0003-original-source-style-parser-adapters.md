@@ -57,10 +57,14 @@ to that file.
 ## Consequences
 
 - Standard CSS behavior remains the compatibility baseline for style collection.
+- SCSS, indented Sass, Less, and Stylus are supported source-style languages;
+  `styl` is an alias for Stylus.
 - New style languages require a source parser adapter that emits Style IR and marks
   directly authored static strings explicitly.
 - Parser ASTs and dependencies stay behind adapter boundaries.
 - Computed style output requires an explicit localization approach; it is not
   automatically collected.
-- Collection failures can report locations in author source and preserve the
-  existing fail-closed publication behavior.
+- A syntax error in a supported source-style language is a collection failure that
+  reports an author-source location and preserves the previous formal outputs.
+- Unknown or deliberately unsupported style languages retain the warning and empty
+  snapshot behavior; they are not parsed as standard CSS.

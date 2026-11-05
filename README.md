@@ -264,7 +264,7 @@ Translate writes:
 - `<catalogDir>/<locale>.json`: the target catalog, through the same format adapter as the source catalog. Keys retained in catalog metadata (active or orphaned) stay. Keys absent from metadata are pruned from the target catalog and review state.
 - `<catalogDir>/translation-state.json`: review state, `{ version: 1, locales }`. Each locale maps a localization key to `{ sourceFingerprint, review }`. `review` is `current` or `needs-review`. The recorded fingerprint stays at the source the translation was accepted against, so a later source change can be told apart from the current catalog metadata.
 
-The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is the unsupported preprocessor example and is not imported by the app. `apps/demo/fixtures/keyed-migration` is the keyed-catalog migration fixture and is not imported by the app.
+The demo pages show script strings, template literals, Vue interpolation, Vue text, allowlisted static and dynamic attributes, Vue CSS generated content, all supported source-style languages, and standalone CSS. `public/index.html` is the standalone HTML document. `apps/demo/fixtures/UnsupportedStyle.vue` is an unknown style-language example and is not imported by the app. `apps/demo/fixtures/keyed-migration` is the keyed-catalog migration fixture and is not imported by the app.
 
 ## Migration outputs
 
@@ -420,8 +420,9 @@ Each loader call submits a complete replacement snapshot for that identity, incl
 
 ## Limits
 
-- SCSS, Sass, Less, and Stylus are warning and skip only. There is no parser for them.
-- A parse error, a malformed `i18n-key` directive, a localization key conflict, an occurrence identity ambiguity, an invalid explicit message manifest, or an unknown/retired/mismatched localized-call reference fails the round and keeps the previous official output.
+- Standard CSS, SCSS, indented Sass, Less, and Stylus are supported source-style languages for CSS generated content; both `styl` and `stylus` select the Stylus parser. Collection reads directly authored strings from original source and does not evaluate variables, interpolation, mixins, functions, or imports. Standalone non-CSS resources must enter the loader and have their extension listed in `styleExtensions`.
+- A syntax error in any supported source-style language is a collection failure. Like other parse errors, malformed `i18n-key` directives, localization key conflicts, occurrence identity ambiguities, invalid explicit message manifests, and unknown/retired/mismatched localized-call references, it fails the round and keeps the previous formal outputs.
+- An unknown or deliberately unsupported style language produces one `unsupported-style-preprocessor` warning per resource identity, submits an empty snapshot, and does not fail the build. It is never parsed as standard CSS.
 - Collection never silently picks among multiple historical identity candidates by nearest line or a scored heuristic; confirmation or a new `auto.<ULID>` is required.
 - Ordinary automatic-key recovery reads catalog metadata occurrence identities. `replacements.json` is not that authority.
 - A key directive that does not associate with a collected fragment is ignored, like an unattached `no-i18n-auto`.

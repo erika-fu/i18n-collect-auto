@@ -76,7 +76,7 @@
 - 不扫描整个项目目录来“补收集”；
 - 不扫描最终 bundle；
 - 不支持 Webpack 4、Vite 或 Rollup；
-- 不解析 SCSS、Sass、Less、Stylus；
+- 不执行 Sass、Less、Stylus 等预处理器，不求值变量、插值、mixin、函数或 import；
 - 不内置翻译供应商 SDK，测试也不访问外部翻译服务。
 
 迁移阶段另外有这些边界：
@@ -841,23 +841,27 @@ npm run update-demo-collection
 
 ## 边界情况、失败语义与上线注意事项
 
-### 不支持的样式方言
+### 样式语言支持与失败语义
 
-SCSS、Sass、Less 和 Stylus 当前没有对应 parser。遇到 Vue 非 CSS `lang` 或配置中出现但尚未实现 parser 的样式扩展名时：
+CSS、SCSS、缩进语法 Sass、Less 和 Stylus 都支持从原始源码收集 CSS 生成内容；`styl` 与 `stylus` 都选择 Stylus parser。收集器只读取源码中直接书写的静态字符串，不执行预处理器，也不求值变量、插值、mixin、函数或 import。独立的非 CSS 样式资源还必须进入 Loader，并在 `styleExtensions` 中登记扩展名。
+
+任一受支持样式语言出现语法错误时，当前 collection round 失败，并保留上一次成功发布的哈希词典、来源映射、源语言目录和目录元数据，不会把错误当成空结果。
+
+遇到未知或有意不支持的 Vue `lang`，或配置中出现但尚未实现 parser 的样式扩展名时：
 
 - 每个 Resource identity 每轮最多产生一个清晰 warning；
 - 该资源提交空 snapshot；
 - 不会尝试用标准 CSS parser 侥幸解析；
 - 不会因为这一项直接使构建失败。
 
-这意味着“构建成功”不等于这些方言中的中文已经被收集。若业务依赖这类样式中的生成文案，应在接入评估中明确补充 parser 的需求。
+warning code 为 `unsupported-style-preprocessor`。这项 warning-plus-empty-snapshot 行为只适用于未知或有意不支持的样式语言，不适用于受支持语言的语法错误。
 
 ### 解析失败与正式输出保护
 
 下列情况会使当前 collection round 失败：
 
 - Babel 解析 JavaScript、TypeScript、Vue 插值或动态绑定表达式失败；
-- 标准 CSS 解析失败；
+- CSS、SCSS、Sass、Less 或 Stylus 解析失败；
 - 无法安全恢复的 HTML 解析诊断；
 - Loader metadata 校验失败；
 - 输出准备或整组写入失败；
