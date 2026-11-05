@@ -302,6 +302,8 @@ Remove the hash-dictionary fallback only when every localization call passes a l
 
 `i18n-collect replace` turns supported collected locations into runtime localization calls backed by the translation catalog. The default is a replacement preview. That dry-run does not write source files, catalogs, or replacement metadata. It does not install dependencies, and it does not rewrite application bootstrap.
 
+Vue template replacement uses the same compiler-backed Template IR as collection and policy checks, so occurrence validation and source ranges come from the owning project's Vue 2 or Vue 3 compiler. The replacement adapters are a separate layer: `vue2` and `vue3` select runtime call shapes and integration rules, while the shared parser layer determines template structure. Standalone HTML remains parse5-backed and outside replacement scope.
+
 ```
 npx i18n-collect replace --adapter js
 npx i18n-collect replace --adapter vue2 --json

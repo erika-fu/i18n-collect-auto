@@ -531,7 +531,9 @@ function replace(args) {
       adapter: parsed.adapter,
       items: withReportedAmbiguities(active.open, ambiguities),
       sources,
-      styleExtensions: new Set(config.styleExtensions.map(extension => String(extension).toLowerCase()))
+      styleExtensions: new Set(config.styleExtensions.map(extension => String(extension).toLowerCase())),
+      root: config.root,
+      vueVersion: config.vueVersion
     }), sources, recorded)
     planned.skipped = sortDetails([
       ...planned.skipped,

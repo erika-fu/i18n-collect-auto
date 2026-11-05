@@ -19,147 +19,8 @@ function requestedLang(resource) {
   return (params.get('lang') || 'html').toLowerCase()
 }
 
-function attributeValue(rawAttrs, name) {
-  const pattern = new RegExp(
-    `(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\\\`]+))`,
-    'i'
-  )
-  const match = pattern.exec(rawAttrs)
-  if (!match) return null
-  return match[1] ?? match[2] ?? match[3] ?? ''
-}
-
-function scanTag(source, index) {
-  if (source[index] !== '<') return null
-  const closing = source[index + 1] === '/'
-  let cursor = index + (closing ? 2 : 1)
-  if (!/[A-Za-z]/.test(source[cursor] || '')) return null
-  const nameStart = cursor
-  while (cursor < source.length && /[A-Za-z0-9:-]/.test(source[cursor])) cursor += 1
-  const name = source.slice(nameStart, cursor)
-  let selfClosing = false
-  let quote = null
-  while (cursor < source.length) {
-    const char = source[cursor]
-    if (quote) {
-      if (char === quote) quote = null
-      cursor += 1
-      continue
-    }
-    if (char === '"' || char === "'") {
-      quote = char
-      cursor += 1
-      continue
-    }
-    if (char === '/' && source[cursor + 1] === '>') selfClosing = true
-    if (char === '>') {
-      return {
-        name,
-        closing,
-        selfClosing: selfClosing && !closing,
-        attrs: source.slice(nameStart + name.length, selfClosing ? cursor - 1 : cursor),
-        tagStart: index,
-        tagEnd: cursor + 1
-      }
-    }
-    cursor += 1
-  }
-  return null
-}
-
-function skipToClose(source, from, name) {
-  const close = new RegExp(`</${name}\\s*>`, 'i')
-  const found = close.exec(source.slice(from))
-  if (!found) throw failAt(source, from, 'Vue template block could not be located')
-  return from + found.index + found[0].length
-}
-
-function scanTemplateInner(source, start) {
-  let depth = 1
-  let cursor = start
-  while (cursor < source.length) {
-    if (source.startsWith('<!--', cursor)) {
-      const end = source.indexOf('-->', cursor + 4)
-      cursor = end === -1 ? source.length : end + 3
-      continue
-    }
-    if (source[cursor] !== '<') {
-      cursor += 1
-      continue
-    }
-    const tag = scanTag(source, cursor)
-    if (!tag) {
-      cursor += 1
-      continue
-    }
-    if (tag.name.toLowerCase() === 'template') {
-      if (tag.closing) {
-        depth -= 1
-        if (depth === 0) return { end: tag.tagStart, next: tag.tagEnd }
-      } else if (!tag.selfClosing) {
-        depth += 1
-      }
-    }
-    cursor = tag.tagEnd
-  }
-  throw failAt(source, start, 'Vue template block could not be located')
-}
-
-function inlineTemplates(source) {
-  const blocks = []
-  let cursor = 0
-  while (cursor < source.length) {
-    if (source.startsWith('<!--', cursor)) {
-      const end = source.indexOf('-->', cursor + 4)
-      cursor = end === -1 ? source.length : end + 3
-      continue
-    }
-    if (source[cursor] !== '<') {
-      cursor += 1
-      continue
-    }
-    const tag = scanTag(source, cursor)
-    if (!tag || tag.closing) {
-      cursor = tag ? tag.tagEnd : cursor + 1
-      continue
-    }
-    const name = tag.name.toLowerCase()
-    if (name === 'script' || name === 'style') {
-      cursor = tag.selfClosing ? tag.tagEnd : skipToClose(source, tag.tagEnd, name)
-      continue
-    }
-    if (name !== 'template') {
-      cursor = tag.tagEnd
-      continue
-    }
-    const lang = (attributeValue(tag.attrs, 'lang') || 'html').toLowerCase()
-    const src = attributeValue(tag.attrs, 'src')
-    if (tag.selfClosing) {
-      blocks.push({ start: tag.tagEnd, end: tag.tagEnd, lang, src, open: tag.tagStart })
-      cursor = tag.tagEnd
-      continue
-    }
-    const inner = scanTemplateInner(source, tag.tagEnd)
-    blocks.push({ start: tag.tagEnd, end: inner.end, lang, src, open: tag.tagStart })
-    cursor = inner.next
-  }
-  return blocks
-}
-
 function templateSpan(source, resource) {
-  const lang = requestedLang(resource)
-  if (!resource.projectPath.toLowerCase().endsWith('.vue')) {
-    return { start: 0, end: source.length, lang }
-  }
-  const matches = inlineTemplates(source).filter(block => block.src == null && block.lang === lang)
-  if (matches.length !== 1) {
-    const offset = matches.length > 1 ? matches[1].open : 0
-    const message = matches.length > 1
-      ? 'Vue template block is ambiguous'
-      : 'Vue template block could not be located'
-    throw failAt(source, offset, message)
-  }
-  return { start: matches[0].start, end: matches[0].end, lang: matches[0].lang }
+  return { start: 0, end: source.length, lang: requestedLang(resource) }
 }
 
 function identityStarts(length) {
@@ -225,101 +86,6 @@ function visibleBounds(value) {
   return { start, end }
 }
 
-function scanString(source, index) {
-  const quote = source[index]
-  let cursor = index + 1
-  while (cursor < source.length) {
-    if (source[cursor] === '\\') {
-      cursor += 2
-      continue
-    }
-    if (source[cursor] === quote) return cursor + 1
-    cursor += 1
-  }
-  return -1
-}
-
-function scanTemplate(source, index) {
-  let cursor = index + 1
-  while (cursor < source.length) {
-    if (source[cursor] === '\\') {
-      cursor += 2
-      continue
-    }
-    if (source[cursor] === '`') return cursor + 1
-    if (source[cursor] === '$' && source[cursor + 1] === '{') {
-      cursor += 2
-      let depth = 1
-      while (cursor < source.length && depth > 0) {
-        if (source[cursor] === '"' || source[cursor] === "'") {
-          const next = scanString(source, cursor)
-          if (next < 0) return -1
-          cursor = next
-          continue
-        }
-        if (source[cursor] === '`') {
-          const next = scanTemplate(source, cursor)
-          if (next < 0) return -1
-          cursor = next
-          continue
-        }
-        if (source[cursor] === '{') depth += 1
-        else if (source[cursor] === '}') depth -= 1
-        if (depth > 0) cursor += 1
-      }
-      if (depth !== 0) return -1
-      cursor += 1
-      continue
-    }
-    cursor += 1
-  }
-  return -1
-}
-
-function scanExpressionEnd(source, start) {
-  let cursor = start
-  let depth = 0
-  while (cursor < source.length) {
-    const char = source[cursor]
-    if (char === '"' || char === "'") {
-      const next = scanString(source, cursor)
-      if (next < 0) return -1
-      cursor = next
-      continue
-    }
-    if (char === '`') {
-      const next = scanTemplate(source, cursor)
-      if (next < 0) return -1
-      cursor = next
-      continue
-    }
-    if (char === '/' && source[cursor + 1] === '/') {
-      const next = source.indexOf('\n', cursor)
-      cursor = next === -1 ? source.length : next + 1
-      continue
-    }
-    if (char === '/' && source[cursor + 1] === '*') {
-      const next = source.indexOf('*/', cursor + 2)
-      if (next < 0) return -1
-      cursor = next + 2
-      continue
-    }
-    if (char === '{') {
-      depth += 1
-      cursor += 1
-      continue
-    }
-    if (char === '}') {
-      if (depth === 0) return source[cursor + 1] === '}' ? cursor : -1
-      depth -= 1
-      cursor += 1
-      continue
-    }
-    cursor += 1
-  }
-  return -1
-}
-
 function ejsDelimiter(source, offset) {
   if (!Number.isInteger(offset) || offset < 0) return false
   if (source[offset] === '<' && source[offset + 1] === '%') return true
@@ -344,20 +110,6 @@ function ejsPieces(raw) {
     cursor = close + 2
   }
   return pieces
-}
-
-function interpolationSpans(raw) {
-  const spans = []
-  let cursor = 0
-  while (cursor < raw.length) {
-    const open = raw.indexOf('{{', cursor)
-    if (open === -1) break
-    const end = scanExpressionEnd(raw, open + 2)
-    if (end < 0) return { errorOffset: open }
-    spans.push({ start: open + 2, end })
-    cursor = end + 2
-  }
-  return { spans }
 }
 
 function attributeContent(fragment, location) {
@@ -405,7 +157,7 @@ function mappedRegion(type, value, decoded, base, bounds, owners, extra) {
   }
 }
 
-function parse({ source, resource, standalone }) {
+function parse({ source, resource }) {
   const span = templateSpan(source, resource)
   if (span.lang !== 'html') {
     return { constructs: [], comments: [], regions: [], warnings: [] }
@@ -417,7 +169,7 @@ function parse({ source, resource, standalone }) {
     sourceCodeLocationInfo: true,
     onParseError(error) {
       if (IGNORED_PARSE_ERRORS.has(error.code)) warnings.push({ code: error.code })
-      else if (standalone && error.code === 'invalid-first-character-of-tag-name' && ejsDelimiter(fragment, error.startOffset)) {
+      else if (error.code === 'invalid-first-character-of-tag-name' && ejsDelimiter(fragment, error.startOffset)) {
         warnings.push({ code: error.code })
       } else {
         fatal.push(error)
@@ -468,47 +220,24 @@ function parse({ source, resource, standalone }) {
     const raw = fragment.slice(location.startOffset, location.endOffset)
     const decoded = decodeHtmlText(raw)
     if (decoded.value !== node.value) {
-      if (standalone) {
-        regions.push({
-          type: 'text',
-          value: node.value,
-          start: span.start + location.startOffset,
-          end: span.start + location.endOffset,
-          sourceOffsets: [],
-          owners: ownerStack.slice(),
-          untrusted: true
-        })
-        return
-      }
-      throw failAt(source, span.start + location.startOffset, 'HTML text location is untrustworthy')
+      regions.push({
+        type: 'text',
+        value: node.value,
+        start: span.start + location.startOffset,
+        end: span.start + location.endOffset,
+        sourceOffsets: [],
+        owners: ownerStack.slice(),
+        untrusted: true
+      })
+      return
     }
     const pieces = []
-    if (standalone) {
-      for (const piece of ejsPieces(raw)) pieces.push({ type: 'text', ...piece })
-    } else {
-      const found = interpolationSpans(raw)
-      if (found.errorOffset != null) {
-        throw failAt(source, span.start + location.startOffset + found.errorOffset, 'Unclosed Vue interpolation')
-      }
-      let cursor = 0
-      for (const expression of found.spans) {
-        pieces.push({ type: 'text', start: cursor, end: expression.start - 2 })
-        pieces.push({ type: 'expression', start: expression.start, end: expression.end })
-        cursor = expression.end + 2
-      }
-      pieces.push({ type: 'text', start: cursor, end: raw.length })
-    }
+    for (const piece of ejsPieces(raw)) pieces.push({ type: 'text', ...piece })
     for (const piece of pieces) {
       if (piece.end <= piece.start) continue
       const pieceRaw = raw.slice(piece.start, piece.end)
       const pieceDecoded = decodeHtmlText(pieceRaw)
       const base = span.start + location.startOffset + piece.start
-      if (piece.type === 'expression') {
-        regions.push(mappedRegion('expression', null, pieceDecoded, base, null, ownerStack, {
-          expressionKind: 'template-expression'
-        }))
-        continue
-      }
       const bounds = visibleBounds(pieceDecoded.value)
       if (!bounds) continue
       regions.push(mappedRegion('text', null, pieceDecoded, base, bounds, ownerStack))
@@ -524,13 +253,13 @@ function parse({ source, resource, standalone }) {
       const content = attributeContent(fragment, location)
       if (!content) continue
       const decoded = decodeHtmlText(content.raw)
-      if (!standalone || !content.raw.includes('<%')) {
+      if (!content.raw.includes('<%')) {
         if (decoded.value !== attr.value) {
           throw failAt(source, span.start + content.start, 'HTML attribute location is untrustworthy')
         }
       }
       const base = span.start + content.start
-      if (standalone && content.raw.includes('<%')) {
+      if (content.raw.includes('<%')) {
         for (const piece of ejsPieces(content.raw)) {
           if (piece.end <= piece.start) continue
           const pieceDecoded = decodeHtmlText(content.raw.slice(piece.start, piece.end))

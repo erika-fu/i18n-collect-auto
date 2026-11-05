@@ -48,8 +48,10 @@ not responsibilities of parser adapters.
 
 Complete-static-copy and runtime-multilingual policy checks consume the same Template
 IR for Vue templates. Their script and style checks remain separate because Template
-IR only models template content. Source replacement remains on its existing parsing
-path until its separate migration work.
+IR only models template content. Source replacement also consumes Template IR to
+validate Vue template occurrence ranges and locate existing localization calls.
+The `vue2` and `vue3` replacement adapters remain separate because they select
+different runtime call shapes for script setup and Options API positions.
 
 ## Alternatives considered
 
@@ -70,6 +72,8 @@ path until its separate migration work.
 ## Consequences
 
 - Parser changes are isolated from collection policy and public package interfaces.
+- Collection, policy checks, and source replacement agree on Vue template source
+  ranges through one compiler-backed Template IR.
 - Vue 2 and Vue 3 equivalent templates can be compared through the same normalized
   regions, policy diagnostics, and final collection entries.
 - The IR carries source-offset mappings because decoded entities and CRLF input must

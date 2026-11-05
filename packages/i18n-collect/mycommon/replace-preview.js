@@ -1,6 +1,7 @@
 const path = require('path')
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
+const { parseTemplate } = require('../myloader/template-parser')
 
 const PARSE = { sourceType: 'unambiguous', plugins: ['jsx', 'typescript'] }
 const SCRIPT_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'])
@@ -54,57 +55,6 @@ function formatCall(name, key) {
   return `${name}('${literal}')`
 }
 
-function matchesText(slice, text) {
-  return slice === text || decodeHtml(slice) === text
-}
-
-function decodeHtml(value) {
-  return value
-    .replace(/&nbsp;/g, '\u00A0')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, digits) => String.fromCodePoint(Number(digits)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, digits) => String.fromCodePoint(parseInt(digits, 16)))
-    .replace(/&amp;/g, '&')
-}
-
-function looksLocalized(source, index) {
-  const before = source.slice(Math.max(0, index - 80), index)
-  const match = before.match(/(?:this\s*\.\s*\$t|\$t|(?:^|[^.\w])t)\s*\(\s*['"`]?\s*$/)
-  if (!match) return null
-  if (match[0].includes('this')) return 'this.$t'
-  if (match[0].includes('$t')) return '$t'
-  return 't'
-}
-
-function enclosingMustache(source, start, end) {
-  const open = source.lastIndexOf('{{', start)
-  if (open < 0) return null
-  const close = source.indexOf('}}', end)
-  if (close < 0) return null
-  if (source.slice(open + 2, start).includes('}}')) return null
-  return { origin: open + 2, text: source.slice(open + 2, close) }
-}
-
-function enclosingAttributeValue(source, start) {
-  let cursor = start
-  while (cursor >= 0 && source[cursor] !== '=' && source[cursor] !== '<' && source[cursor] !== '>') cursor -= 1
-  if (source[cursor] !== '=') return null
-  cursor += 1
-  while (cursor < source.length && /[ \t\n\r\f]/.test(source[cursor])) cursor += 1
-  const quote = source[cursor]
-  if (quote !== '"' && quote !== "'") return null
-  const valueStart = cursor + 1
-  let valueEnd = valueStart
-  while (valueEnd < source.length && source[valueEnd] !== quote) {
-    if (source[valueEnd] === '\\') valueEnd += 2
-    else valueEnd += 1
-  }
-  if (source[valueEnd] !== quote) return null
-  return { origin: valueStart, text: source.slice(valueStart, valueEnd) }
-}
-
 function localizationInExpression(host, start, end) {
   let expression
   try {
@@ -122,14 +72,20 @@ function localizationInExpression(host, start, end) {
     }
   }
   let name = null
+  function matches(node, excludeDelimiters) {
+    const offsets = host.sourceOffsets || []
+    const nodeStart = node.start + (excludeDelimiters ? 1 : 0)
+    const nodeEnd = node.end - (excludeDelimiters ? 1 : 0)
+    return offsets[nodeStart] === start && offsets[nodeEnd] === end
+  }
   traverse(ast, {
     StringLiteral(nodePath) {
-      if (host.origin + nodePath.node.start === start && host.origin + nodePath.node.end === end) {
+      if (matches(nodePath.node, false) || matches(nodePath.node, true)) {
         name = enclosingLocalizationCall(nodePath) || name
       }
     },
     TemplateElement(nodePath) {
-      if (host.origin + nodePath.node.start === start && host.origin + nodePath.node.end === end) {
+      if (matches(nodePath.node, false)) {
         name = enclosingLocalizationCall(nodePath) || name
       }
     }
@@ -137,13 +93,39 @@ function localizationInExpression(host, start, end) {
   return name
 }
 
-function localizationAt(source, start, end) {
-  const host = enclosingMustache(source, start, end) || enclosingAttributeValue(source, start)
-  if (host) {
-    const name = localizationInExpression(host, start, end)
-    if (name) return name
-  }
-  return looksLocalized(source, start)
+function localizationAt(region, start, end) {
+  return localizationInExpression({
+    text: region.value,
+    sourceOffsets: region.sourceOffsets
+  }, start, end)
+}
+
+function templateRegion(template, kind, start, end) {
+  const type = kind === 'html-text'
+    ? 'text'
+    : kind === 'html-attribute'
+      ? 'attribute'
+      : 'expression'
+  return template.regions.find(region => (
+    region.type === type &&
+    start >= region.start &&
+    end <= region.end &&
+    (type !== 'text' || (start === region.start && end === region.end))
+  )) || null
+}
+
+function regionMatches(region, start, end, text) {
+  const offsets = region.sourceOffsets || []
+  const from = offsets.indexOf(start)
+  const to = offsets.lastIndexOf(end)
+  if (from < 0 || to < from) return false
+  const value = region.value.slice(from, to)
+  const quoted = (
+    (value.startsWith("'") && value.endsWith("'")) ||
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith('`') && value.endsWith('`'))
+  )
+  return (quoted ? value.slice(1, -1) : value) === text
 }
 
 function hasEquals(source, index) {
@@ -171,11 +153,9 @@ function staticAttributeEdit(source, start, end, call) {
   return { start: nameStart, end: valueEnd, text: `:${name}="${call}"` }
 }
 
-function editFragment(source, start, end, text, call, kind, adapter) {
+function editFragment(source, start, end, call, kind, adapter) {
   const slice = source.slice(start, end)
   const quoted = (slice.startsWith("'") && slice.endsWith("'")) || (slice.startsWith('"') && slice.endsWith('"')) || (slice.startsWith('`') && slice.endsWith('`'))
-  const body = quoted ? slice.slice(1, -1) : slice
-  if (!matchesText(body, text)) return { skip: MISMATCH }
   if (quoted) return { start, end, text: call }
   const quote = source[start - 1]
   const closing = source[end]
@@ -461,7 +441,7 @@ function detailOf(base, extra) {
   return { ...base, ...extra }
 }
 
-function decideTemplate(source, item, adapter, base) {
+function decideTemplate(source, item, adapter, template, base) {
   if (adapter === 'js') {
     const reason = item.location.kind === 'html-text'
       ? 'Vue template text is not a js adapter position'
@@ -473,16 +453,20 @@ function decideTemplate(source, item, adapter, base) {
   const start = offsetAt(source, item.location.start)
   const end = offsetAt(source, item.location.end)
   if (start < 0 || end < start) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
-  const existing = localizationAt(source, start, end)
+  const region = templateRegion(template, item.location.kind, start, end)
+  if (!region) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
+  const existing = item.location.kind === 'html-text' ? null : localizationAt(region, start, end)
   if (existing && item.location.kind !== 'html-text') {
     return { action: 'keep', detail: detailOf(base, { call: formatCall(existing, item.key) }) }
   }
+  if (!regionMatches(region, start, end, item.source)) {
+    return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
+  }
   const call = formatCall('$t', item.key)
   if (item.location.kind === 'html-text') {
-    if (!matchesText(source.slice(start, end), item.source)) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
     return { action: 'replace', edit: { start, end, text: `{{ ${call} }}` }, detail: detailOf(base, { call }) }
   }
-  const edit = editFragment(source, start, end, item.source, call, item.location.kind, adapter)
+  const edit = editFragment(source, start, end, call, item.location.kind, adapter)
   if (edit.keep) return { action: 'keep', detail: detailOf(base, { call }) }
   if (edit.skip) return { action: 'skip', detail: detailOf(base, { reason: edit.skip }) }
   return { action: 'replace', edit, detail: detailOf(base, { call }) }
@@ -511,7 +495,7 @@ function decideScript(source, item, adapter, blocks, base) {
   return { action: 'replace', edit, detail: detailOf(base, { call }) }
 }
 
-function decide(source, item, adapter, klass, blocks) {
+function decide(source, item, adapter, klass, blocks, template) {
   const base = {
     path: item.location.path,
     key: item.key,
@@ -524,7 +508,7 @@ function decide(source, item, adapter, klass, blocks) {
   if (scoped) return { action: 'skip', detail: detailOf(base, { reason: scoped }) }
   if (source == null) return { action: 'skip', detail: detailOf(base, { reason: 'source file is missing' }) }
   if (item.location.kind === 'html-text' || item.location.kind === 'html-attribute' || item.location.kind === 'template-expression') {
-    return decideTemplate(source, item, adapter, base)
+    return decideTemplate(source, item, adapter, template, base)
   }
   if (item.location.kind === 'script-string' || item.location.kind === 'template-literal') {
     return decideScript(source, item, adapter, blocks, base)
@@ -593,11 +577,27 @@ function byPosition(left, right) {
   return left.kind < right.kind ? -1 : left.kind > right.kind ? 1 : 0
 }
 
-function previewFile(projectPath, source, items, adapter, styleExtensions) {
+function previewFile(projectPath, source, items, adapter, styleExtensions, options) {
   const klass = fileClass(projectPath, styleExtensions)
   const blocks = source == null ? [] : prepareScript(source, klass)
+  const hasTemplateItems = items.some(item => (
+    item.location.kind === 'html-text' ||
+    item.location.kind === 'html-attribute' ||
+    item.location.kind === 'template-expression'
+  ))
+  const template = source != null && klass === 'vue' && adapter !== 'js' && hasTemplateItems
+    ? parseTemplate({
+        source,
+        resource: {
+          absolutePath: path.resolve(options.root || process.cwd(), projectPath),
+          projectPath
+        },
+        standalone: false,
+        config: { vueVersion: options.vueVersion }
+      })
+    : { regions: [] }
   const decisions = items.map(item => {
-    const decision = decide(source, item, adapter, klass, blocks)
+    const decision = decide(source, item, adapter, klass, blocks, template)
     if (!item.reportedAmbiguity || decision.action !== 'replace') return decision
     const detail = { ...decision.detail, reason: 'occurrence identity is ambiguous' }
     delete detail.call
@@ -613,7 +613,7 @@ function previewFile(projectPath, source, items, adapter, styleExtensions) {
   }
 }
 
-function planPreview({ adapter, items, sources, styleExtensions }) {
+function planPreview({ adapter, items, sources, styleExtensions, root, vueVersion }) {
   const grouped = new Map()
   for (const item of items) {
     const list = grouped.get(item.location.path) || []
@@ -625,7 +625,14 @@ function planPreview({ adapter, items, sources, styleExtensions }) {
   const recognized = []
   const previews = []
   for (const projectPath of [...grouped.keys()].sort()) {
-    const result = previewFile(projectPath, sources.has(projectPath) ? sources.get(projectPath) : null, grouped.get(projectPath), adapter, styleExtensions)
+    const result = previewFile(
+      projectPath,
+      sources.has(projectPath) ? sources.get(projectPath) : null,
+      grouped.get(projectPath),
+      adapter,
+      styleExtensions,
+      { root, vueVersion }
+    )
     replacements.push(...result.replacements)
     skipped.push(...result.skipped)
     recognized.push(...result.recognized)

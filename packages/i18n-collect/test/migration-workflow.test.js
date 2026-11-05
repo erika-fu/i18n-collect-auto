@@ -7,6 +7,8 @@ const test = require('node:test')
 const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
+const { installVue2 } = require('./vue2-fixture')
+const { installVue3 } = require('./vue3-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -25,6 +27,8 @@ function run(args, cwd, extra = []) {
 function copyFixture(name) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `i18n-migration-${name}-`))
   fs.cpSync(path.join(fixtures, name), root, { recursive: true })
+  if (name === 'vue2') installVue2(root)
+  if (name === 'vue3') installVue3(root)
   return root
 }
 
@@ -58,8 +62,8 @@ function keyed(entries, keys) {
   })
 }
 
-function vueEntries(projectPath, source) {
-  const resource = { projectPath }
+function vueEntries(projectPath, source, absolutePath) {
+  const resource = { projectPath, absolutePath }
   const html = extractHtml({
     source,
     resource: { ...resource, block: 'template', lang: 'html', query: '?vue&type=template' },
@@ -375,4 +379,59 @@ test('the Vue 3 fixture previews, commits, and keeps the replacement', () => {
     "t('home.title')"
   ])
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE3_PREVIEW)
+})
+
+test('Vue replacement shares collection ranges for directives, entities, CRLF, and expression fragments', () => {
+  const source = [
+    '<template>',
+    '  <!-- no-i18n-auto -->',
+    '  <p>跳过</p>',
+    '  <p title="保存&nbsp;成功">{{ \'欢迎\' }}</p>',
+    '  <input :placeholder="\'请输入\' + suffix">',
+    '  <p>{{ `前缀${name}` }}</p>',
+    '</template>',
+    ''
+  ].join('\r\n')
+  const expected = [
+    '<template>',
+    '  <!-- no-i18n-auto -->',
+    '  <p>跳过</p>',
+    '  <p :title="$t(\'home.saved\')">{{ $t(\'home.welcome\') }}</p>',
+    '  <input :placeholder="$t(\'home.placeholder\') + suffix">',
+    '  <p>{{ `${$t(\'home.prefix\')}${name}` }}</p>',
+    '</template>',
+    ''
+  ].join('\r\n')
+
+  for (const [fixture, adapter] of [['vue2', 'vue2'], ['vue3', 'vue3']]) {
+    const root = copyFixture(fixture)
+    const file = path.join(root, 'src/Home.vue')
+    fs.writeFileSync(file, source)
+    const entries = vueEntries('src/Home.vue', source, file)
+    assert.deepStrictEqual(entries.map(entry => entry.value), [
+      '保存\u00A0成功',
+      '欢迎',
+      '请输入',
+      '前缀'
+    ])
+    const catalogEntries = keyed(entries, {
+      '保存\u00A0成功': 'home.saved',
+      欢迎: 'home.welcome',
+      请输入: 'home.placeholder',
+      前缀: 'home.prefix'
+    })
+    writeCatalog(root, catalogEntries)
+
+    const preview = run(['replace', '--adapter', adapter, '--json'], root)
+
+    assert.strictEqual(preview.status, 0, preview.stderr)
+    const report = JSON.parse(preview.stdout)
+    assert.deepStrictEqual(report.skipped, [])
+    assert.strictEqual(report.previews[0].content, expected)
+    for (const entry of catalogEntries) {
+      const replacement = report.replacements.find(item => item.key === entry.key)
+      assert.deepStrictEqual(replacement.start, entry.locations[0].start)
+      assert.deepStrictEqual(replacement.end, entry.locations[0].end)
+    }
+  }
 })

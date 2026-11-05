@@ -9,6 +9,8 @@ const { buildCatalog, catalogMetadata, REPRESENTATION_LOCALIZED_CALL } = require
 const { extractScript } = require('../myloader/extract-script')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
+const { installVue2 } = require('./vue2-fixture')
+const { installVue3 } = require('./vue3-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const ALLOW = ['title', 'placeholder', 'alt', 'aria-label', 'value']
@@ -411,6 +413,7 @@ test('replace skips React JSX, standalone HTML, CSS generated content, and Vue t
 
 function vue2Runtime(root) {
   write(root, 'package.json', json({ dependencies: { 'vue-i18n': '8.28.2' } }))
+  installVue2(root)
   write(root, 'src/main.js', 'import Vue from \'vue\'\nimport VueI18n from \'vue-i18n\'\nVue.use(VueI18n)\nnew VueI18n({})\n')
 }
 
@@ -605,6 +608,7 @@ test('replace fails when the Vue 2 runtime integration is missing', () => {
 
 function vue3Runtime(root) {
   write(root, 'package.json', json({ dependencies: { 'vue-i18n': '9.14.0' } }))
+  installVue3(root)
   write(root, 'src/main.js', 'import { createI18n } from \'vue-i18n\'\ncreateI18n({})\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
 }
@@ -679,6 +683,37 @@ test('replace previews a Vue 3 options API method with this.$t', () => {
     '</script>',
     ''
   ].join('\n'))
+})
+
+test('replace validates Vue template locations against Template IR regions', () => {
+  const root = tempProject()
+  vue3Runtime(root)
+  const source = [
+    '<template><p>Welcome</p></template>',
+    '<script>',
+    "const title = '标题'",
+    '</script>',
+    ''
+  ].join('\n')
+  write(root, 'src/Home.vue', source)
+  writeCatalog(root, [{
+    value: '标题',
+    key: 'home.title',
+    locations: [{
+      path: 'src/Home.vue',
+      kind: 'html-text',
+      start: { line: 3, column: 15 },
+      end: { line: 3, column: 17 }
+    }]
+  }])
+
+  const result = run(['replace', '--adapter', 'vue3', '--json'], root)
+
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.deepStrictEqual(report.replacements, [])
+  assert.deepStrictEqual(report.previews, [])
+  assert.strictEqual(report.skipped[0].reason, 'catalog location does not match the current source')
 })
 
 test('replace fails when script setup has no t binding and when createI18n is missing', () => {
