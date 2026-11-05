@@ -7,12 +7,13 @@
       <!-- no-i18n-auto -->
       <p>内部标记不收集</p>
       <p title="保存资料">{{ scriptCopy }}</p>
+      <p>{{ scriptTemplateCopy }}</p>
       <label>
         <span>{{ '插值字符串' }}</span>
         <input :placeholder="'输入' + fieldName + '名称'" aria-label="资料名称">
       </label>
       <p>{{ `欢迎${name}回来` }}</p>
-      <p v-text="'指令文案'"></p>
+      <p v-text="'普通指令不收集'"></p>
       <p>{{ $t('vue3.htmlNotice') }}</p>
     </section>
   </main>
@@ -25,7 +26,8 @@ export default {
     return {
       fieldName: 'profile',
       name: 'Alex',
-      scriptCopy: '脚本文案'
+      scriptCopy: '脚本文案',
+      scriptTemplateCopy: `脚本模板文案`
     }
   }
 }

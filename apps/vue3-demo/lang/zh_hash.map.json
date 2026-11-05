@@ -1,0 +1,259 @@
+{
+  "version": 1,
+  "parserVersion": "babel-7",
+  "configHash": "0b45581a318d9c09078e6de75d2a4cc5",
+  "entries": [
+    {
+      "key": "2cb4acf6bd44f31e528b5dca612827ba",
+      "value": "脚本模板文案",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "template-literal",
+          "start": {
+            "line": 30,
+            "column": 27
+          },
+          "end": {
+            "line": 30,
+            "column": 33
+          }
+        }
+      ]
+    },
+    {
+      "key": "32e1fdeb2ca4ea8f7899f78791affb63",
+      "value": "保存资料",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 9,
+            "column": 16
+          },
+          "end": {
+            "line": 9,
+            "column": 20
+          }
+        }
+      ]
+    },
+    {
+      "key": "46ebde63da5dfb7e80c64df012510762",
+      "value": "资料名称",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 13,
+            "column": 66
+          },
+          "end": {
+            "line": 13,
+            "column": 70
+          }
+        }
+      ]
+    },
+    {
+      "key": "47781b8a72bcbb7ecb1f955399a7e718",
+      "value": "欢迎",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 15,
+            "column": 13
+          },
+          "end": {
+            "line": 15,
+            "column": 15
+          }
+        }
+      ]
+    },
+    {
+      "key": "548f2a75be04b6cfdaef1e40157583d6",
+      "value": "Vue 三静态页面文案",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-text",
+          "start": {
+            "line": 9,
+            "column": 25
+          },
+          "end": {
+            "line": 9,
+            "column": 36
+          }
+        }
+      ]
+    },
+    {
+      "key": "5b9f19ea4d6225f0e6e9be10987c7140",
+      "value": "插值字符串",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 12,
+            "column": 17
+          },
+          "end": {
+            "line": 12,
+            "column": 24
+          }
+        }
+      ]
+    },
+    {
+      "key": "8a201ff303234187f934182438082b3e",
+      "value": "原生 Vue 三模板",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 6,
+            "column": 10
+          },
+          "end": {
+            "line": 6,
+            "column": 20
+          }
+        }
+      ]
+    },
+    {
+      "key": "8be96ff6143755d0bd448df139deaa70",
+      "value": "样式提示",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 38,
+            "column": 12
+          },
+          "end": {
+            "line": 38,
+            "column": 16
+          }
+        }
+      ]
+    },
+    {
+      "key": "95c9f3130483490aad68d1cc58e812d9",
+      "value": "回来",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 15,
+            "column": 22
+          },
+          "end": {
+            "line": 15,
+            "column": 24
+          }
+        }
+      ]
+    },
+    {
+      "key": "d7ec2d3fea4756bc1642e0f10c180cf5",
+      "value": "名称",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 13,
+            "column": 49
+          },
+          "end": {
+            "line": 13,
+            "column": 51
+          }
+        }
+      ]
+    },
+    {
+      "key": "e47d59b1bd2ea60194a4a9dc37ae1399",
+      "value": "输入",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "html-attribute",
+          "start": {
+            "line": 13,
+            "column": 30
+          },
+          "end": {
+            "line": 13,
+            "column": 32
+          }
+        }
+      ]
+    },
+    {
+      "key": "e72ed5cad00f017e2b6dd0076bb54687",
+      "value": "外部样式提示",
+      "locations": [
+        {
+          "path": "src/base.css",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 41,
+            "column": 12
+          },
+          "end": {
+            "line": 41,
+            "column": 18
+          }
+        }
+      ]
+    },
+    {
+      "key": "eb21da1e8d00913b0dfb21808ee1f2ef",
+      "value": "Vue 三静态属性",
+      "locations": [
+        {
+          "path": "public/index.html",
+          "kind": "static-html-attribute",
+          "start": {
+            "line": 9,
+            "column": 14
+          },
+          "end": {
+            "line": 9,
+            "column": 23
+          }
+        }
+      ]
+    },
+    {
+      "key": "f6c02612482f1e3cc40a6febcfd34ad3",
+      "value": "脚本文案",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 29,
+            "column": 18
+          },
+          "end": {
+            "line": 29,
+            "column": 24
+          }
+        }
+      ]
+    }
+  ]
+}

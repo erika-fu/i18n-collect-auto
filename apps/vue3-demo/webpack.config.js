@@ -1,9 +1,17 @@
 const path = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+
+// vue-loader is hoisted beside the Vue 2 demo in this workspace, so bind it
+// to this project's Vue 3 compiler before vue-loader captures the parse API.
+const vueLoaderCompiler = require('vue-loader/dist/compiler')
+vueLoaderCompiler.compiler = require('@vue/compiler-sfc')
+
 const { VueLoaderPlugin } = require('vue-loader')
 const MyI18nPlugin = require('i18n-collect/myplugin')
 
 const collector = require.resolve('i18n-collect/myloader')
+const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')
+const htmlTemplate = path.resolve(__dirname, 'public/index.html')
 
 module.exports = {
   context: __dirname,
@@ -59,7 +67,7 @@ module.exports = {
   plugins: [
     new VueLoaderPlugin(),
     new HtmlWebpackPlugin({
-      template: path.resolve(__dirname, 'public/index.html')
+      template: `!!${htmlLoader}?${JSON.stringify({ force: true })}!${collector}!${htmlTemplate}`
     }),
     new MyI18nPlugin()
   ]

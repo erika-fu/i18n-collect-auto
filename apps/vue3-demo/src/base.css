@@ -37,6 +37,12 @@ body {
   text-transform: uppercase;
 }
 
+.eyebrow::after {
+  content: "外部样式提示";
+  margin-left: 8px;
+  color: #1f7a5a;
+}
+
 h1 {
   margin: 0 0 24px;
   font-size: 28px;
