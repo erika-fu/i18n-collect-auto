@@ -27,9 +27,17 @@ test('identifies standalone script, HTML, and CSS resources', () => {
     describeResource({
       root: '/project',
       resourcePath: '/project/src/theme.sass',
-      styleExtensions: ['.css', '.scss', '.sass']
+      styleExtensions: ['.css', '.scss', '.sass', '.less']
     }).identity,
     'src/theme.sass::style[index=0;lang=sass]'
+  )
+  assert.strictEqual(
+    describeResource({
+      root: '/project',
+      resourcePath: '/project/src/theme.less',
+      styleExtensions: ['.css', '.scss', '.sass', '.less']
+    }).identity,
+    'src/theme.less::style[index=0;lang=less]'
   )
   assert.strictEqual(
     identify('/project/src/extra.css', '?vue&type=style&index=1&lang=css&id=abc'),
@@ -70,6 +78,7 @@ test('identifies Vue script, template, and style blocks', () => {
   assert.strictEqual(identify(file, '?vue&type=style&index=0&lang=css'), 'src/App.vue::style[index=0;lang=css]')
   assert.strictEqual(identify(file, '?vue&type=style&index=1&lang=scss'), 'src/App.vue::style[index=1;lang=scss]')
   assert.strictEqual(identify(file, '?vue&type=style&index=2&lang=sass'), 'src/App.vue::style[index=2;lang=sass]')
+  assert.strictEqual(identify(file, '?vue&type=style&index=3&lang=less'), 'src/App.vue::style[index=3;lang=less]')
   assert.notStrictEqual(
     identify(file, '?vue&type=style&index=0&lang=css'),
     identify(file, '?vue&type=style&index=1&lang=scss')

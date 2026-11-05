@@ -1,0 +1,320 @@
+const { scanStyleValue } = require('./style-source')
+
+const ERROR_NAME = 'LessSyntaxError'
+const CSS_CONTAINER_AT_RULES = new Set([
+  'container',
+  'document',
+  'font-feature-values',
+  'keyframes',
+  'layer',
+  'media',
+  'scope',
+  'starting-style',
+  'supports',
+  '-webkit-keyframes'
+])
+
+function syntaxError(source, offset, message) {
+  const error = new Error(message)
+  error.name = ERROR_NAME
+  error.offset = Math.max(0, Math.min(offset, source.length))
+  return error
+}
+
+function readComment(source, start, limit) {
+  if (source[start + 1] === '*') {
+    const close = source.indexOf('*/', start + 2)
+    if (close === -1 || close + 2 > limit) {
+      throw syntaxError(source, start, 'Unclosed comment')
+    }
+    return {
+      comment: { start, end: close + 2, text: source.slice(start + 2, close) },
+      next: close + 2
+    }
+  }
+  let end = start + 2
+  while (end < limit && source[end] !== '\n' && source[end] !== '\r') end += 1
+  return {
+    comment: { start, end, text: source.slice(start + 2, end) },
+    next: end
+  }
+}
+
+function skipString(source, start, limit) {
+  const quote = source[start]
+  let cursor = start + 1
+  let interpolated = false
+  while (cursor < limit) {
+    if (source[cursor] === '\\') {
+      cursor += source[cursor + 1] === '\r' && source[cursor + 2] === '\n' ? 3 : 2
+      continue
+    }
+    if ((source[cursor] === '@' || source[cursor] === '$') && source[cursor + 1] === '{') {
+      interpolated = true
+    }
+    if (source[cursor] === quote) return { next: cursor + 1, interpolated }
+    cursor += 1
+  }
+  throw syntaxError(source, start, 'Unclosed string')
+}
+
+function skipBacktick(source, start, limit) {
+  let cursor = start + 1
+  while (cursor < limit) {
+    if (source[cursor] === '\\') {
+      cursor += 2
+      continue
+    }
+    if (source[cursor] === '`') return cursor + 1
+    cursor += 1
+  }
+  throw syntaxError(source, start, 'Unclosed JavaScript expression')
+}
+
+function topLevelColon(source, start, end) {
+  let cursor = start
+  let round = 0
+  let square = 0
+  let interpolation = 0
+  while (cursor < end) {
+    const char = source[cursor]
+    if (char === '"' || char === "'") {
+      cursor = skipString(source, cursor, end).next
+      continue
+    }
+    if (char === '`') {
+      cursor = skipBacktick(source, cursor, end)
+      continue
+    }
+    if (char === '/' && (source[cursor + 1] === '*' || source[cursor + 1] === '/')) {
+      cursor = readComment(source, cursor, end).next
+      continue
+    }
+    if ((char === '@' || char === '$') && source[cursor + 1] === '{') {
+      interpolation += 1
+      cursor += 2
+      continue
+    }
+    if (char === '{' && interpolation > 0) interpolation += 1
+    else if (char === '}' && interpolation > 0) interpolation -= 1
+    else if (char === '(') round += 1
+    else if (char === ')') round -= 1
+    else if (char === '[') square += 1
+    else if (char === ']') square -= 1
+    else if (char === ':' && round === 0 && square === 0 && interpolation === 0) return cursor
+    cursor += 1
+  }
+  return -1
+}
+
+function directTokens(source, start, end) {
+  const scanned = scanStyleValue(source, start, end)
+  const comments = []
+  const computed = new Set()
+  let cursor = start
+  let round = 0
+  let interpolation = 0
+
+  while (cursor < end) {
+    const char = source[cursor]
+    if (char === '/' && (source[cursor + 1] === '*' || source[cursor + 1] === '/')) {
+      const parsed = readComment(source, cursor, end)
+      comments.push(parsed.comment)
+      cursor = parsed.next
+      continue
+    }
+    if (char === '`') {
+      const next = skipBacktick(source, cursor, end)
+      for (const token of scanned.tokens) {
+        if (token.quoteStart > cursor && token.quoteStart < next) computed.add(token.quoteStart)
+      }
+      cursor = next
+      continue
+    }
+    if ((char === '@' || char === '$') && source[cursor + 1] === '{') {
+      interpolation += 1
+      cursor += 2
+      continue
+    }
+    if (char === '{' && interpolation > 0) {
+      interpolation += 1
+      cursor += 1
+      continue
+    }
+    if (char === '}' && interpolation > 0) {
+      interpolation -= 1
+      cursor += 1
+      continue
+    }
+    if (char === '(') {
+      round += 1
+      cursor += 1
+      continue
+    }
+    if (char === ')' && round > 0) {
+      round -= 1
+      cursor += 1
+      continue
+    }
+    if (char === '"' || char === "'") {
+      const string = skipString(source, cursor, end)
+      if (round > 0 || interpolation > 0 || string.interpolated) computed.add(cursor)
+      cursor = string.next
+      continue
+    }
+    cursor += 1
+  }
+
+  return {
+    comments,
+    tokens: scanned.tokens
+      .filter(token => !comments.some(comment => (
+        token.quoteStart >= comment.start && token.quoteStart < comment.end
+      )))
+      .map(token => computed.has(token.quoteStart) ? { ...token, type: 'computed' } : token)
+  }
+}
+
+function declarationStart(source, start, end) {
+  let cursor = start
+  while (cursor < end) {
+    if (/\s/.test(source[cursor])) {
+      cursor += 1
+      continue
+    }
+    if (source[cursor] === '/' && (source[cursor + 1] === '*' || source[cursor + 1] === '/')) {
+      cursor = readComment(source, cursor, end).next
+      continue
+    }
+    break
+  }
+  return cursor
+}
+
+function atRuleName(header) {
+  const match = /^\s*@([\w-]+)/.exec(header)
+  return match ? match[1].toLowerCase() : null
+}
+
+function computedBlock(header) {
+  const trimmed = header.trim()
+  const atRule = atRuleName(trimmed)
+  if (atRule && !CSS_CONTAINER_AT_RULES.has(atRule)) return true
+  return /^(?:[.#][\w-]+\s*>\s*)*[.#][\w-]+\s*\(/.test(trimmed)
+}
+
+function parseLessStyle(source, origin = 0) {
+  const declarations = []
+  const comments = []
+
+  function parseContainer(start, limit, computed, expectsClose) {
+    let statementStart = start
+    let cursor = start
+    let round = 0
+    let square = 0
+    let interpolation = 0
+
+    const addDeclaration = end => {
+      const start = declarationStart(source, statementStart, end)
+      const colon = topLevelColon(source, start, end)
+      if (colon === -1 || computed) return
+      const property = source.slice(start, colon).trim()
+      if (!property || property.startsWith('@') || /[@$]\{/.test(property)) return
+      const value = directTokens(source, colon + 1, end)
+      declarations.push({
+        property,
+        start: origin + start,
+        value: {
+          start: origin + colon + 1,
+          end: origin + end,
+          comments: value.comments.map(comment => ({
+            ...comment,
+            start: origin + comment.start,
+            end: origin + comment.end
+          })),
+          tokens: value.tokens.map(token => ({
+            ...token,
+            quoteStart: origin + token.quoteStart,
+            start: origin + token.start,
+            end: origin + token.end
+          }))
+        }
+      })
+    }
+
+    while (cursor < limit) {
+      const char = source[cursor]
+      if (char === '"' || char === "'") {
+        cursor = skipString(source, cursor, limit).next
+        continue
+      }
+      if (char === '`') {
+        cursor = skipBacktick(source, cursor, limit)
+        continue
+      }
+      if (char === '/' && (source[cursor + 1] === '*' || source[cursor + 1] === '/')) {
+        const parsed = readComment(source, cursor, limit)
+        comments.push(parsed.comment)
+        cursor = parsed.next
+        continue
+      }
+      if ((char === '@' || char === '$') && source[cursor + 1] === '{') {
+        interpolation += 1
+        cursor += 2
+        continue
+      }
+      if (char === '{' && interpolation > 0) {
+        interpolation += 1
+        cursor += 1
+        continue
+      }
+      if (char === '}' && interpolation > 0) {
+        interpolation -= 1
+        cursor += 1
+        continue
+      }
+      if (char === '(') round += 1
+      else if (char === ')') {
+        round -= 1
+        if (round < 0) throw syntaxError(source, cursor, 'Unexpected closing parenthesis')
+      } else if (char === '[') square += 1
+      else if (char === ']') {
+        square -= 1
+        if (square < 0) throw syntaxError(source, cursor, 'Unexpected closing bracket')
+      } else if (round === 0 && square === 0 && interpolation === 0 && char === '{') {
+        const blockIsComputed = computed || computedBlock(source.slice(statementStart, cursor))
+        cursor = parseContainer(cursor + 1, limit, blockIsComputed, true)
+        statementStart = cursor
+        continue
+      } else if (round === 0 && square === 0 && interpolation === 0 && char === ';') {
+        addDeclaration(cursor)
+        statementStart = cursor + 1
+      } else if (round === 0 && square === 0 && interpolation === 0 && char === '}') {
+        if (!expectsClose) throw syntaxError(source, cursor, 'Unexpected closing brace')
+        addDeclaration(cursor)
+        return cursor + 1
+      }
+      cursor += 1
+    }
+
+    if (expectsClose) throw syntaxError(source, Math.max(start - 1, 0), 'Unclosed block')
+    if (round > 0) throw syntaxError(source, limit, 'Unclosed parenthesis')
+    if (square > 0) throw syntaxError(source, limit, 'Unclosed bracket')
+    if (interpolation > 0) throw syntaxError(source, limit, 'Unclosed interpolation')
+    addDeclaration(limit)
+    return limit
+  }
+
+  parseContainer(0, source.length, false, false)
+  return {
+    comments: comments.map(comment => ({
+      ...comment,
+      start: origin + comment.start,
+      end: origin + comment.end
+    })),
+    declarations,
+    warnings: []
+  }
+}
+
+module.exports = { parseLessStyle }

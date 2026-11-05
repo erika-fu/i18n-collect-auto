@@ -1,6 +1,7 @@
 const { collectStyle } = require('./collect-style')
 const { offsetToPosition } = require('./resource')
 const { parseCssStyle } = require('./style-parser-css')
+const { parseLessStyle } = require('./style-parser-less')
 const { parseSassStyle } = require('./style-parser-sass')
 const { parseScssStyle } = require('./style-parser-scss')
 
@@ -169,6 +170,7 @@ function parsesAsStandardCss(resource, located, config) {
 function parserFor(resource, located, config) {
   const requested = languageOf(resource.lang, 'css')
   const effective = languageOf(located.lang, requested)
+  if (requested === 'less' && effective === 'less') return parseLessStyle
   if (requested === 'scss' && effective === 'scss') return parseScssStyle
   if (requested === 'sass' && effective === 'sass') return parseSassStyle
   return parsesAsStandardCss(resource, located, config) ? parseCssStyle : null
@@ -193,7 +195,11 @@ function offsetFromPostcss(css, line, column) {
 }
 
 function styleError(error, source, origin, css) {
-  if (error && (error.name === 'ScssSyntaxError' || error.name === 'SassSyntaxError')) {
+  if (error && (
+    error.name === 'LessSyntaxError' ||
+    error.name === 'ScssSyntaxError' ||
+    error.name === 'SassSyntaxError'
+  )) {
     throw failAt(source, origin + error.offset, error.message)
   }
   if (!error || error.name !== 'CssSyntaxError') throw error

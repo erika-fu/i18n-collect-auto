@@ -205,14 +205,14 @@ test('uses original Vue style coordinates for each style index', () => {
   )
 })
 
-test('warns once for unsupported style languages and parses configured standalone SCSS', () => {
+test('warns once for unsupported style languages and parses configured standalone preprocessors', () => {
   const source = [
     '<style lang="scss">',
     '$color: red;',
     '.a { content: "必填"; }',
     '</style>'
   ].join('\n')
-  for (const lang of ['less', 'stylus']) {
+  for (const lang of ['stylus']) {
     const result = extract(source, {
       projectPath: 'src/App.vue',
       styleIndex: 0,
@@ -231,6 +231,13 @@ test('warns once for unsupported style languages and parses configured standalon
   }, { styleExtensions: ['.css', '.scss'] })
   assert.deepStrictEqual(values(standalone), ['必填'])
   assert.deepStrictEqual(standalone.warnings, [])
+  const less = extract('.a { content: "Less 必填"; }\n', {
+    projectPath: 'src/theme.less',
+    lang: 'less',
+    identity: 'src/theme.less::style[index=0;lang=less]'
+  }, { styleExtensions: ['.css', '.less'] })
+  assert.deepStrictEqual(values(less), ['Less 必填'])
+  assert.deepStrictEqual(less.warnings, [])
 })
 
 test('an exclusion directive before a content declaration excludes only its next string', () => {

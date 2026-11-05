@@ -493,3 +493,30 @@ test('a Vue Sass style submits its direct generated-content strings', () => {
   assert.deepStrictEqual(result.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
   assert.strictEqual(result.metadata.snapshot.identity, 'src/App.vue::style[index=0;lang=sass]')
 })
+
+test('a Vue Less style submits its direct generated-content strings', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-less-'))
+  fs.mkdirSync(path.join(root, 'src'))
+  const vuePath = path.join(root, 'src/App.vue')
+  fs.writeFileSync(vuePath, '<style lang="less">\n.a { content: "必填"; }\n</style>\n')
+  const compiler = {}
+  compiler.root = compiler
+  const compilation = { compiler, warnings: [] }
+  const result = runLoader({
+    root,
+    source: 'padded less',
+    sourceMap: { version: 3 },
+    meta: { css: true },
+    resourcePath: vuePath,
+    resourceQuery: '?vue&type=style&index=0&lang=less&id=abc',
+    track: {
+      _compiler: compiler,
+      _compilation: compilation
+    }
+  })
+  assert.strictEqual(result.error, null)
+  assert.strictEqual(result.thrown, undefined)
+  assert.strictEqual(result.nextSource, 'padded less')
+  assert.deepStrictEqual(result.metadata.snapshot.entries.map(entry => entry.value), ['必填'])
+  assert.strictEqual(result.metadata.snapshot.identity, 'src/App.vue::style[index=0;lang=less]')
+})
