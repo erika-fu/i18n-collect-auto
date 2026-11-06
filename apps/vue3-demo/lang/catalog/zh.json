@@ -12,6 +12,10 @@
   "auto.01M6MPKGE261F9PH8N8DQXXKK3": "脚本模板文案",
   "auto.01M6MPKGE2F9EB1ZX4HSXXMYJW": "Vue 三静态页面文案",
   "auto.01M6MPKGE2Q0M2D30KQJHTWZD1": "Vue 三静态属性",
+  "auto.01M6NQAX4T0P303YN2MDPD0BB6": "Vue 3 SCSS 样式",
+  "auto.01M6NQAX4T356M2KMR1YEMQ7DW": "Vue 3 Sass 样式",
+  "auto.01M6NQAX4TCSP1XWBKNGTY2ESD": "Vue 3 Stylus 样式",
+  "auto.01M6NQAX4TW0DV8J5QTSW2HJP0": "Vue 3 Less 样式",
   "vue3.heading": "原生 Vue 三模板",
   "vue3.htmlNotice": "已通过 Vue I18n 本地化"
 }

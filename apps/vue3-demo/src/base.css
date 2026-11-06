@@ -62,3 +62,18 @@ input {
   padding: 8px 10px;
   font: inherit;
 }
+
+.style-formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.style-format::after {
+  display: block;
+  color: #52605a;
+  font-size: 12px;
+}

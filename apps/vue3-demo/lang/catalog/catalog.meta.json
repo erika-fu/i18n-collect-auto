@@ -142,11 +142,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 29,
+            "line": 35,
             "column": 18
           },
           "end": {
-            "line": 29,
+            "line": 35,
             "column": 24
           }
         }
@@ -163,11 +163,11 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 29,
+              "line": 35,
               "column": 18
             },
             "end": {
-              "line": 29,
+              "line": 35,
               "column": 24
             }
           }
@@ -185,11 +185,11 @@
           "path": "src/App.vue",
           "kind": "css-generated-content",
           "start": {
-            "line": 38,
+            "line": 44,
             "column": 12
           },
           "end": {
-            "line": 38,
+            "line": 44,
             "column": 16
           }
         }
@@ -206,11 +206,11 @@
             "path": "src/App.vue",
             "kind": "css-generated-content",
             "start": {
-              "line": 38,
+              "line": 44,
               "column": 12
             },
             "end": {
-              "line": 38,
+              "line": 44,
               "column": 16
             }
           }
@@ -443,11 +443,11 @@
           "path": "src/App.vue",
           "kind": "template-literal",
           "start": {
-            "line": 30,
+            "line": 36,
             "column": 27
           },
           "end": {
-            "line": 30,
+            "line": 36,
             "column": 33
           }
         }
@@ -464,11 +464,11 @@
             "path": "src/App.vue",
             "kind": "template-literal",
             "start": {
-              "line": 30,
+              "line": 36,
               "column": 27
             },
             "end": {
-              "line": 30,
+              "line": 36,
               "column": 33
             }
           }
@@ -556,6 +556,178 @@
             "end": {
               "line": 9,
               "column": 23
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6NQAX4T0P303YN2MDPD0BB6": {
+      "source": "Vue 3 SCSS 样式",
+      "fingerprint": "9610bbfcbdac13a5",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 57,
+            "column": 14
+          },
+          "end": {
+            "line": 57,
+            "column": 27
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "335fe8761154e269",
+          "semanticHost": "src/App.vue::style[index=1;lang=scss]",
+          "childRole": "css-generated-content",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.vue",
+            "kind": "css-generated-content",
+            "start": {
+              "line": 57,
+              "column": 14
+            },
+            "end": {
+              "line": 57,
+              "column": 27
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6NQAX4T356M2KMR1YEMQ7DW": {
+      "source": "Vue 3 Sass 样式",
+      "fingerprint": "5aefb456f30fda70",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 67,
+            "column": 14
+          },
+          "end": {
+            "line": 67,
+            "column": 27
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "b60b56c14a2e15a0",
+          "semanticHost": "src/App.vue::style[index=2;lang=sass]",
+          "childRole": "css-generated-content",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.vue",
+            "kind": "css-generated-content",
+            "start": {
+              "line": 67,
+              "column": 14
+            },
+            "end": {
+              "line": 67,
+              "column": 27
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6NQAX4TCSP1XWBKNGTY2ESD": {
+      "source": "Vue 3 Stylus 样式",
+      "fingerprint": "0d69fd8f81d43245",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 85,
+            "column": 13
+          },
+          "end": {
+            "line": 85,
+            "column": 28
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "079ec591fed6faa6",
+          "semanticHost": "src/App.vue::style[index=4;lang=stylus]",
+          "childRole": "css-generated-content",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.vue",
+            "kind": "css-generated-content",
+            "start": {
+              "line": 85,
+              "column": 13
+            },
+            "end": {
+              "line": 85,
+              "column": 28
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M6NQAX4TW0DV8J5QTSW2HJP0": {
+      "source": "Vue 3 Less 样式",
+      "fingerprint": "b23ef77b44515492",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 75,
+            "column": 14
+          },
+          "end": {
+            "line": 75,
+            "column": 27
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "cd6f1109b742e8f8",
+          "semanticHost": "src/App.vue::style[index=3;lang=less]",
+          "childRole": "css-generated-content",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.vue",
+            "kind": "css-generated-content",
+            "start": {
+              "line": 75,
+              "column": 14
+            },
+            "end": {
+              "line": 75,
+              "column": 27
             }
           }
         }

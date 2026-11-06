@@ -15,6 +15,12 @@
       <p>{{ `欢迎${name}回来` }}</p>
       <p v-text="'普通指令不收集'"></p>
       <p>{{ $t('vue3.htmlNotice') }}</p>
+      <ul class="style-formats" aria-label="Style preprocessors">
+        <li class="style-format style-format--scss">SCSS</li>
+        <li class="style-format style-format--sass">Sass</li>
+        <li class="style-format style-format--less">Less</li>
+        <li class="style-format style-format--stylus">Stylus</li>
+      </ul>
     </section>
   </main>
 </template>
@@ -41,4 +47,40 @@ export default {
   color: #b42318;
   font-size: 12px;
 }
+</style>
+
+<style lang="scss">
+$ignored-scss-label: "SCSS 变量不收集";
+
+.style-format--scss {
+  &::after {
+    content: "Vue 3 SCSS 样式";
+  }
+}
+</style>
+
+<style lang="sass">
+$ignored-sass-label: "Sass 变量不收集"
+
+.style-format--sass
+  &::after
+    content: "Vue 3 Sass 样式"
+</style>
+
+<style lang="less">
+@ignored-less-label: "Less 变量不收集";
+
+.style-format--less {
+  &::after {
+    content: "Vue 3 Less 样式";
+  }
+}
+</style>
+
+<style lang="stylus">
+ignored-stylus-label = "Stylus 变量不收集"
+
+.style-format--stylus
+  &::after
+    content "Vue 3 Stylus 样式"
 </style>

@@ -39,6 +39,14 @@ function project(root, entry) {
   }
 }
 
+function filesystemCacheOptions(cacheDirectory, name) {
+  return {
+    cache: { type: 'filesystem', cacheDirectory, name },
+    // Hashing resolver ancestors can require opening sandbox-restricted Windows directories.
+    snapshot: { resolveBuildDependencies: { timestamp: true, hash: false } }
+  }
+}
+
 function readOutput(root, outputPath = 'lang/zh_hash.json', sourceMapFilename = 'lang/zh_hash.map.json') {
   return {
     dictionary: JSON.parse(fs.readFileSync(path.join(root, outputPath), 'utf8')),
@@ -712,7 +720,7 @@ test('filesystem cache matches an uncached build without a loader rerun', { time
   const cacheDirectory = path.join(root, '.cache')
   const cached = {
     ...jsProject(root, file),
-    cache: { type: 'filesystem', cacheDirectory, name: 'i18n-collect-test' }
+    ...filesystemCacheOptions(cacheDirectory, 'i18n-collect-test')
   }
   const first = await compile(cached)
   assert.strictEqual(first.hasErrors(), false, messages(first))
@@ -1649,6 +1657,11 @@ function contractSources() {
 
 function writeContract(root) {
   const sources = contractSources()
+  fs.symlinkSync(
+    path.resolve(__dirname, '../../../node_modules'),
+    path.join(root, 'node_modules'),
+    process.platform === 'win32' ? 'junction' : 'dir'
+  )
   fs.mkdirSync(path.join(root, 'src/win'), { recursive: true })
   fs.mkdirSync(path.join(root, 'public'))
   fs.writeFileSync(path.join(root, 'src/main.js'), sources.main)
@@ -1660,7 +1673,7 @@ function writeContract(root) {
   return sources
 }
 
-function contractConfig(root, cache) {
+function contractConfig(root, cacheOptions) {
   const collector = require.resolve('../myloader')
   const vueLoader = require.resolve('@vue/vue-loader-v15')
   const cssLoader = require.resolve('css-loader')
@@ -1668,7 +1681,8 @@ function contractConfig(root, cache) {
   return {
     ...project(root, path.join(root, 'src/main.js')),
     output: { path: path.join(root, 'dist'), filename: 'bundle.js', publicPath: '/' },
-    cache,
+    ...cacheOptions,
+    resolve: { alias: { vue$: require.resolve('vue/dist/vue.esm.js') } },
     plugins: [
       new VueLoaderPlugin(),
       new HtmlWebpackPlugin({
@@ -1813,7 +1827,7 @@ test('a real module graph publishes script, HTML, and CSS with stable coordinate
   const sources = writeContract(root)
   let first
   try {
-  first = await compile(contractConfig(root, false))
+  first = await compile(contractConfig(root, { cache: false }))
   assert.strictEqual(first.hasErrors(), false, messages(first))
   const outputFile = path.join(root, 'lang/zh_hash.json')
   const mapFile = path.join(root, 'lang/zh_hash.map.json')
@@ -1901,7 +1915,7 @@ test('a real module graph publishes script, HTML, and CSS with stable coordinate
     'src/win/note.js::script'
   ])
 
-  const second = await compile(contractConfig(root, false))
+  const second = await compile(contractConfig(root, { cache: false }))
   assert.strictEqual(second.hasErrors(), false, messages(second))
   assert.deepStrictEqual(fs.readFileSync(outputFile), firstBytes[0])
   assert.deepStrictEqual(fs.readFileSync(mapFile), firstBytes[1])
@@ -1912,12 +1926,13 @@ test('a real module graph publishes script, HTML, and CSS with stable coordinate
 })
 
 test('filesystem cache matches a clean build and does not cross sessions', { timeout: 40000 }, async () => {
-  const root = fs.mkdtempSync(path.join(__dirname, '.tmp-contract-cache-'))
-  const plainRoot = fs.mkdtempSync(path.join(__dirname, '.tmp-contract-plain-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-cache-'))
+  const plainRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-plain-'))
   try {
   writeContract(root)
   const cacheDirectory = path.join(root, '.cache')
-  const cached = contractConfig(root, { type: 'filesystem', cacheDirectory, name: 'i18n-contract' })
+  const cacheOptions = filesystemCacheOptions(cacheDirectory, 'i18n-contract')
+  const cached = contractConfig(root, cacheOptions)
   const first = await compile(cached)
   assert.strictEqual(first.hasErrors(), false, messages(first))
   const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
@@ -1946,7 +1961,7 @@ test('filesystem cache matches a clean build and does not cross sessions', { tim
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
 
   writeContract(plainRoot)
-  const plain = await compile(contractConfig(plainRoot, false))
+  const plain = await compile(contractConfig(plainRoot, { cache: false }))
   assert.strictEqual(plain.hasErrors(), false, messages(plain))
   assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.json')), dictionary)
   assert.deepStrictEqual(fs.readFileSync(path.join(plainRoot, 'lang/zh_hash.map.json')), sourceMap)
@@ -1956,7 +1971,7 @@ test('filesystem cache matches a clean build and does not cross sessions', { tim
   fs.writeFileSync(path.join(other, 'src/app.js'), 'module.exports = "世界"\n')
   const foreign = await compile({
     ...jsProject(other, path.join(other, 'src/app.js')),
-    cache: { type: 'filesystem', cacheDirectory, name: 'i18n-contract' }
+    ...cacheOptions
   })
   assert.strictEqual(foreign.hasErrors(), false, messages(foreign))
   assert.deepStrictEqual(Object.values(readOutput(other).dictionary), ['世界'])

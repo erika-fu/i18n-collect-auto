@@ -61,6 +61,45 @@ module.exports = {
           require.resolve('css-loader'),
           collector
         ]
+      },
+      {
+        test: /\.scss$/,
+        use: [
+          require.resolve('style-loader'),
+          require.resolve('css-loader'),
+          require.resolve('sass-loader')
+        ]
+      },
+      {
+        test: /\.sass$/,
+        use: [
+          require.resolve('style-loader'),
+          require.resolve('css-loader'),
+          {
+            loader: require.resolve('sass-loader'),
+            options: {
+              sassOptions: {
+                indentedSyntax: true
+              }
+            }
+          }
+        ]
+      },
+      {
+        test: /\.less$/,
+        use: [
+          require.resolve('style-loader'),
+          require.resolve('css-loader'),
+          require.resolve('less-loader')
+        ]
+      },
+      {
+        test: /\.styl(?:us)?$/,
+        use: [
+          require.resolve('style-loader'),
+          require.resolve('css-loader'),
+          require.resolve('stylus-loader')
+        ]
       }
     ]
   },

@@ -33,7 +33,14 @@ function sourceSlice(relativePath, location) {
   return line.slice(location.start.column, location.end.column)
 }
 
-test('the Vue 3 demo production build covers every supported source kind', { timeout: 60000 }, async () => {
+function snapshotIdentities(stats) {
+  return [...stats.compilation.modules]
+    .map(mod => mod.buildInfo && mod.buildInfo.i18nCollect && mod.buildInfo.i18nCollect.snapshot)
+    .filter(Boolean)
+    .map(snapshot => snapshot.identity)
+}
+
+test('the Vue 3 demo production build covers every supported source kind and style language', { timeout: 60000 }, async () => {
   const config = require('../../../apps/vue3-demo/webpack.config')
   const stats = await compile(config)
 
@@ -65,6 +72,10 @@ test('the Vue 3 demo production build covers every supported source kind', { tim
     { value: '欢迎', kind: 'template-expression', path: 'src/App.vue' },
     { value: '回来', kind: 'template-expression', path: 'src/App.vue' },
     { value: '样式提示', kind: 'css-generated-content', path: 'src/App.vue' },
+    { value: 'Vue 3 SCSS 样式', kind: 'css-generated-content', path: 'src/App.vue' },
+    { value: 'Vue 3 Sass 样式', kind: 'css-generated-content', path: 'src/App.vue' },
+    { value: 'Vue 3 Less 样式', kind: 'css-generated-content', path: 'src/App.vue' },
+    { value: 'Vue 3 Stylus 样式', kind: 'css-generated-content', path: 'src/App.vue' },
     { value: '外部样式提示', kind: 'css-generated-content', path: 'src/base.css' },
     { value: 'Vue 三静态页面文案', kind: 'static-html-text', path: 'public/index.html' },
     { value: 'Vue 三静态属性', kind: 'static-html-attribute', path: 'public/index.html' }
@@ -83,6 +94,23 @@ test('the Vue 3 demo production build covers every supported source kind', { tim
 
   assert.strictEqual(values.has('内部标记不收集'), false)
   assert.strictEqual(values.has('普通指令不收集'), false)
+  for (const value of [
+    'SCSS 变量不收集',
+    'Sass 变量不收集',
+    'Less 变量不收集',
+    'Stylus 变量不收集'
+  ]) {
+    assert.strictEqual(values.has(value), false, value)
+  }
+  assert.deepStrictEqual(snapshotIdentities(stats).filter(identity => (
+    identity.startsWith('src/App.vue::style')
+  )).sort(), [
+    'src/App.vue::style[index=0;lang=css]',
+    'src/App.vue::style[index=1;lang=scss]',
+    'src/App.vue::style[index=2;lang=sass]',
+    'src/App.vue::style[index=3;lang=less]',
+    'src/App.vue::style[index=4;lang=stylus]'
+  ])
   assert.strictEqual(catalog['vue3.heading'], '原生 Vue 三模板')
   assert.strictEqual(catalog['vue3.htmlNotice'], '已通过 Vue I18n 本地化')
   assert.strictEqual(metadata.entries['vue3.heading'].representation, 'source-text')

@@ -4,6 +4,24 @@
   "configHash": "0b45581a318d9c09078e6de75d2a4cc5",
   "entries": [
     {
+      "key": "13025cb4bb45c7471d4b09f8954179a2",
+      "value": "Vue 3 Stylus 样式",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 85,
+            "column": 13
+          },
+          "end": {
+            "line": 85,
+            "column": 28
+          }
+        }
+      ]
+    },
+    {
       "key": "2cb4acf6bd44f31e528b5dca612827ba",
       "value": "脚本模板文案",
       "locations": [
@@ -11,11 +29,11 @@
           "path": "src/App.vue",
           "kind": "template-literal",
           "start": {
-            "line": 30,
+            "line": 36,
             "column": 27
           },
           "end": {
-            "line": 30,
+            "line": 36,
             "column": 33
           }
         }
@@ -137,11 +155,11 @@
           "path": "src/App.vue",
           "kind": "css-generated-content",
           "start": {
-            "line": 38,
+            "line": 44,
             "column": 12
           },
           "end": {
-            "line": 38,
+            "line": 44,
             "column": 16
           }
         }
@@ -166,6 +184,42 @@
       ]
     },
     {
+      "key": "a6d62b7daace171a1067f1c5c2874a1b",
+      "value": "Vue 3 SCSS 样式",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 57,
+            "column": 14
+          },
+          "end": {
+            "line": 57,
+            "column": 27
+          }
+        }
+      ]
+    },
+    {
+      "key": "c1397b667b213a01e852f9950b7fec52",
+      "value": "Vue 3 Sass 样式",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 67,
+            "column": 14
+          },
+          "end": {
+            "line": 67,
+            "column": 27
+          }
+        }
+      ]
+    },
+    {
       "key": "d7ec2d3fea4756bc1642e0f10c180cf5",
       "value": "名称",
       "locations": [
@@ -179,6 +233,24 @@
           "end": {
             "line": 13,
             "column": 51
+          }
+        }
+      ]
+    },
+    {
+      "key": "dc16bfa48c983b2c8bf7cf475d44e836",
+      "value": "Vue 3 Less 样式",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "css-generated-content",
+          "start": {
+            "line": 75,
+            "column": 14
+          },
+          "end": {
+            "line": 75,
+            "column": 27
           }
         }
       ]
@@ -245,11 +317,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 29,
+            "line": 35,
             "column": 18
           },
           "end": {
-            "line": 29,
+            "line": 35,
             "column": 24
           }
         }
