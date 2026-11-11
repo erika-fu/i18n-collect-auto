@@ -3,8 +3,8 @@ const path = require('path')
 const { upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFiles, identityFiles, loadConfig } = require('../mycommon/config')
 const { commitFiles, recoverCommits } = require('../mycommon/output')
-const { SCRIPT_EXTENSIONS, exportsLocalizationFunction, runtimeCalls } = require('../mycommon/replace-preview')
 const { ReplacementPlanner } = require('../mycommon/replacement-planner')
+const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
 const { parseTemplate } = require('../myloader/template-parser')
 
 const EXIT = {
@@ -18,12 +18,6 @@ const RESERVED_CATALOG_NAMES = new Set(['catalog.meta.json', REPLACEMENTS_NAME, 
 const AMBIGUOUS = 'occurrence identity is ambiguous'
 const ORPHANED = 'orphaned occurrence is outside the current collection'
 const ADAPTERS = ['vue2', 'vue3', 'js']
-const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'coverage'])
-const RUNTIME = {
-  vue2: 'vue2 adapter requires vue-i18n 8 in package.json and an existing Vue.use(VueI18n) or new VueI18n(...) call. This command does not install dependencies or rewrite application bootstrap.',
-  vue3: 'vue3 adapter requires vue-i18n 9 or newer in package.json and an existing createI18n(...) call. This command does not install dependencies or rewrite application bootstrap.',
-  js: 'js adapter requires an existing module that exports a localization function named t. This command does not rewrite application bootstrap.'
-}
 
 function commandError(kind, message) {
   const error = new Error(message)
@@ -199,91 +193,12 @@ function withoutOrphaned(items) {
   return { open, held }
 }
 
-function walkFiles(directory, files) {
-  let names
-  try {
-    names = fs.readdirSync(directory)
-  } catch (error) {
-    return
-  }
-  for (const name of names) {
-    if (SKIP_DIRECTORIES.has(name)) continue
-    const full = path.join(directory, name)
-    let stat
-    try {
-      stat = fs.statSync(full)
-    } catch (error) {
-      continue
-    }
-    if (stat.isDirectory()) walkFiles(full, files)
-    else files.push(full)
-  }
-}
-
-function majorVersion(spec) {
-  const match = String(spec || '').match(/\d+/)
-  return match ? Number(match[0]) : null
-}
-
-function packageVersion(root, name) {
-  const file = path.join(root, 'package.json')
-  if (!fs.existsSync(file)) return null
-  try {
-    const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
-    const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }
-    return deps[name] || null
-  } catch (error) {
-    return null
-  }
-}
-
-function sourceText(file) {
-  const extension = path.extname(file).toLowerCase()
-  if (extension === '.vue') {
-    const match = fs.readFileSync(file, 'utf8').match(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/i)
-    return match ? match[2] : ''
-  }
-  if (SCRIPT_EXTENSIONS.has(extension)) return fs.readFileSync(file, 'utf8')
-  return null
-}
-
-function projectRuntime(root) {
-  const found = { vue2: false, vue3: false }
-  const files = []
-  walkFiles(root, files)
-  for (const file of files) {
-    const text = sourceText(file)
-    if (!text || !text.trim()) continue
-    const calls = runtimeCalls(text)
-    found.vue2 = found.vue2 || calls.vue2
-    found.vue3 = found.vue3 || calls.vue3
-  }
-  return found
-}
-
-function projectExportsT(root) {
-  const files = []
-  walkFiles(root, files)
-  return files.some(file => {
-    const text = sourceText(file)
-    if (text == null || !/\bt\b/.test(text)) return false
-    return exportsLocalizationFunction(text)
-  })
-}
-
 function assertRuntime(root, adapter) {
-  if (adapter === 'js') {
-    if (!projectExportsT(root)) throw commandError('configuration', RUNTIME.js)
-    return { adapter, localizationFunction: true }
+  try {
+    return assertReplacementRuntime(root, adapter)
+  } catch (error) {
+    throw commandError('configuration', error.message)
   }
-  const version = majorVersion(packageVersion(root, 'vue-i18n'))
-  const runtime = projectRuntime(root)
-  if (adapter === 'vue2') {
-    if (version !== 8 || !runtime.vue2) throw commandError('configuration', RUNTIME.vue2)
-    return { adapter, localizationFunction: true, vueVersion: 2 }
-  }
-  if (version == null || version < 9 || !runtime.vue3) throw commandError('configuration', RUNTIME.vue3)
-  return { adapter, localizationFunction: true, vueVersion: 3 }
 }
 
 function insideRoot(root, projectPath) {

@@ -41,7 +41,7 @@ const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrp
 const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
 const BUILD_FIELDS = ['buildReplacement']
 const BUILD_REPLACEMENT_FIELDS = new Set(['enabled', 'adapter', 'runtimeModule', 'runtimeExport'])
-const BUILD_ADAPTERS = new Set(['js'])
+const BUILD_ADAPTERS = new Set(['js', 'vue3'])
 const EXPORT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
@@ -194,7 +194,7 @@ function validateBuildReplacement(root, value) {
     }
   }
   if (!BUILD_ADAPTERS.has(value.adapter)) {
-    fail('buildReplacement.adapter must be "js"')
+    fail('buildReplacement.adapter must be "js" or "vue3"')
   }
   if (typeof value.runtimeModule !== 'string' || !value.runtimeModule) {
     fail('buildReplacement.runtimeModule must be a project-relative path')

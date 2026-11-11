@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
+const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
 const I18nBuildReplacementPlugin = require('../myplugin/build-replacement')
 const {
   EXIT,
@@ -51,8 +52,13 @@ function requireBuildReplacement(root) {
       'buildReplacement.enabled must be true to run i18n-collect build'
     )
   }
-  if (build.adapter !== 'js') {
-    throw commandError('configuration', 'buildReplacement.adapter must be "js"')
+  if (build.adapter !== 'js' && build.adapter !== 'vue3') {
+    throw commandError('configuration', 'buildReplacement.adapter must be "js" or "vue3"')
+  }
+  try {
+    assertReplacementRuntime(root, build.adapter)
+  } catch (error) {
+    throw commandError('configuration', error.message)
   }
   return config
 }
@@ -119,7 +125,10 @@ async function runReplacementCompilation(root, parsed, config) {
     webpackConfig.watch = false
     webpackConfig.cache = false
     webpackConfig.infrastructureLogging = { level: 'error' }
-    webpackConfig.plugins.push(new I18nBuildReplacementPlugin({ root }))
+    webpackConfig.plugins.push(new I18nBuildReplacementPlugin({
+      root,
+      adapter: config.buildReplacement && config.buildReplacement.adapter
+    }))
     const pluginOptions = pluginOptionsFrom(webpackConfig)
     const resolved = loadConfig({ root, pluginOptions })
     const { error, stats } = await runCompiler(webpackConfig)

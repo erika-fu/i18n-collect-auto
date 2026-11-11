@@ -25,6 +25,16 @@ function catalogOccurrences(metadata) {
   return items
 }
 
+function supportedResource(projectPath, adapter) {
+  const extension = path.posix.extname(projectPath).toLowerCase()
+  if (SCRIPT_EXTENSIONS.has(extension)) return true
+  return adapter === 'vue3' && extension === '.vue'
+}
+
+function looksLikeVueSfc(source) {
+  return typeof source === 'string' && /<(?:template|script|style)\b/i.test(source)
+}
+
 function loader(source, sourceMap, meta) {
   const callback = this.async()
   try {
@@ -32,14 +42,17 @@ function loader(source, sourceMap, meta) {
     const root = path.resolve(options.root || this.rootContext || process.cwd())
     const resourcePath = this.resourcePath
     const projectPath = path.relative(root, resourcePath).split(path.sep).join('/')
-    const extension = path.posix.extname(projectPath).toLowerCase()
-    if (!SCRIPT_EXTENSIONS.has(extension)) {
+    const config = loadConfig({ root })
+    const build = config.buildReplacement
+    if (!build || !build.enabled || (build.adapter !== 'js' && build.adapter !== 'vue3')) {
       callback(null, source, sourceMap, meta)
       return
     }
-    const config = loadConfig({ root })
-    const build = config.buildReplacement
-    if (!build || !build.enabled || build.adapter !== 'js') {
+    if (!supportedResource(projectPath, build.adapter)) {
+      callback(null, source, sourceMap, meta)
+      return
+    }
+    if (build.adapter === 'vue3' && path.posix.extname(projectPath).toLowerCase() === '.vue' && !looksLikeVueSfc(source)) {
       callback(null, source, sourceMap, meta)
       return
     }
@@ -60,6 +73,10 @@ function loader(source, sourceMap, meta) {
       styleExtensions: config.styleExtensions,
       inputSourceMap: sourceMap || null
     })
+    if (result.error) {
+      callback(result.error instanceof Error ? result.error : new Error(String(result.error)))
+      return
+    }
     if (typeof this.addDependency === 'function') {
       this.addDependency(path.join(root, catalogFiles(config).metadata))
       this.addDependency(path.resolve(root, build.runtimeModule))

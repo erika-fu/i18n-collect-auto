@@ -430,11 +430,13 @@ function selectCall(adapter, info, setup, helper = { name: 't', available: false
   }
   if (adapter === 'vue2' && setup) return { skip: 'vue2 adapter does not replace script setup' }
   if (setup) {
-    if (!info.hasT) return { skip: 'vue3 adapter requires t to already be in scope' }
-    return { call: 't' }
+    if (info.hasT) return { call: 't' }
+    if (helper.available) return { call: helper.name || 't' }
+    return { skip: 'vue3 adapter requires t to already be in scope' }
   }
   if (info.instance && info.instance.call) return { call: info.instance.call }
   if (adapter === 'vue3' && info.hasT) return { call: 't' }
+  if (adapter === 'vue3' && helper.available) return { call: helper.name || 't' }
   if (info.instance && info.instance.skip) return { skip: info.instance.skip }
   if (adapter === 'vue2') return { skip: 'vue2 adapter requires a component instance method' }
   return { skip: 'vue3 adapter requires t in scope or a component instance method' }

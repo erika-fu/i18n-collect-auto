@@ -1,5 +1,6 @@
 const path = require('path')
 const { SCRIPT_EXTENSIONS } = require('../mycommon/replace-preview')
+const { loadConfig } = require('../mycommon/config')
 
 const PLUGIN = 'I18nBuildReplacementPlugin'
 const LOADER = require.resolve('../myloader/build-replace-loader')
@@ -22,7 +23,7 @@ function isBuildReplaceLoader(loader) {
   return value.includes('/build-replace-loader')
 }
 
-function insertLoader(loaders, entry) {
+function insertScriptLoader(loaders, entry) {
   if (loaders.some(isBuildReplaceLoader)) return
   const collectIndex = loaders.findIndex(isCollectLoader)
   if (collectIndex >= 0) {
@@ -32,6 +33,16 @@ function insertLoader(loaders, entry) {
   loaders.push(entry)
 }
 
+function resolveAdapter(root, explicit) {
+  if (explicit) return explicit
+  try {
+    const config = loadConfig({ root })
+    return config.buildReplacement && config.buildReplacement.adapter
+  } catch (error) {
+    return null
+  }
+}
+
 class I18nBuildReplacementPlugin {
   constructor(options = {}) {
     this.options = options
@@ -39,8 +50,33 @@ class I18nBuildReplacementPlugin {
 
   apply(compiler) {
     const root = path.resolve(this.options.root || compiler.context || process.cwd())
+    const adapter = resolveAdapter(root, this.options.adapter)
     const webpack = compiler.webpack || require('webpack')
     const { NormalModule } = webpack
+
+    if (adapter === 'vue3') {
+      const rules = compiler.options.module.rules || (compiler.options.module.rules = [])
+      const already = rules.some(rule => (
+        rule
+        && rule.enforce === 'pre'
+        && rule.use
+        && [].concat(rule.use).some(entry => isBuildReplaceLoader(entry && entry.loader ? entry.loader : entry))
+      ))
+      if (!already) {
+        // Match every .vue request, including vue-loader block queries. Block
+        // requests still receive the full SFC source before vue-loader selects a
+        // block, so transforming here keeps Template IR coordinates aligned.
+        rules.unshift({
+          enforce: 'pre',
+          test: /\.vue$/i,
+          use: [{
+            loader: LOADER,
+            options: { root },
+            ident: 'i18n-collect-build-replace-vue'
+          }]
+        })
+      }
+    }
 
     compiler.hooks.compilation.tap(PLUGIN, compilation => {
       NormalModule.getCompilationHooks(compilation).loader.tap(PLUGIN, (loaderContext, mod) => {
@@ -48,7 +84,7 @@ class I18nBuildReplacementPlugin {
         if (!resource) return
         const extension = path.extname(resource).toLowerCase()
         if (!SCRIPT_EXTENSIONS.has(extension)) return
-        insertLoader(mod.loaders, {
+        insertScriptLoader(mod.loaders, {
           loader: LOADER,
           options: { root },
           ident: 'i18n-collect-build-replace'

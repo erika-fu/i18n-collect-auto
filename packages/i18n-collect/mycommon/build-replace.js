@@ -4,8 +4,11 @@ const traverse = require('@babel/traverse').default
 const { SourceMapConsumer, SourceMapGenerator } = require('source-map')
 const { SCRIPT_EXTENSIONS } = require('./replace-preview')
 const { ReplacementPlanner } = require('./replacement-planner')
+const { parseTemplate } = require('../myloader/template-parser')
 
 const PARSE = { sourceType: 'unambiguous', plugins: ['jsx', 'typescript'] }
+const TEMPLATE_KINDS = new Set(['html-text', 'html-attribute', 'template-expression'])
+const MISMATCH = 'catalog location does not match the current source'
 
 function positionAt(source, index) {
   let line = 1
@@ -196,31 +199,101 @@ function injectionStatement(esm, helperName, runtimeExport, request) {
   return `const { ${runtimeExport}: ${helperName} } = require(${moduleLiteral})\n`
 }
 
-function transformBuildReplacement({
+function vueScriptBlocks(source) {
+  const blocks = []
+  const pattern = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi
+  let match = pattern.exec(source)
+  while (match) {
+    const openTag = match[0].slice(0, match[0].length - match[2].length - '</script>'.length)
+    const innerStart = match.index + openTag.length
+    const inner = match[2]
+    blocks.push({
+      setup: /\bsetup\b/.test(match[1] || ''),
+      innerStart,
+      innerEnd: innerStart + inner.length,
+      inner
+    })
+    match = pattern.exec(source)
+  }
+  return blocks
+}
+
+function helperCallPrefix(helperName) {
+  return `${helperName}(`
+}
+
+function isReusableAlias(source, helperName, runtimeExport) {
+  let ast
+  try {
+    ast = parser.parse(source, PARSE)
+  } catch (error) {
+    return false
+  }
+  let reusable = false
+  traverse(ast, {
+    ImportDeclaration(nodePath) {
+      for (const specifier of nodePath.node.specifiers || []) {
+        if (specifier.type !== 'ImportSpecifier') continue
+        const local = specifier.local && specifier.local.name
+        const imported = specifier.imported && specifier.imported.name
+        if (local === helperName && imported === runtimeExport) reusable = true
+      }
+    },
+    VariableDeclarator(nodePath) {
+      const id = nodePath.node.id
+      const init = nodePath.node.init
+      if (!init || init.type !== 'CallExpression' || init.callee.type !== 'Identifier' || init.callee.name !== 'require') {
+        return
+      }
+      if (id.type === 'ObjectPattern') {
+        reusable = id.properties.some(property => (
+          property.type === 'ObjectProperty'
+          && !property.computed
+          && property.key.type === 'Identifier'
+          && property.key.name === runtimeExport
+          && property.value.type === 'Identifier'
+          && property.value.name === helperName
+        )) || reusable
+      }
+    }
+  })
+  return reusable
+}
+
+function chooseVueHelperName(source, runtimeExport) {
+  const bindings = new Set()
+  let anyReusable = false
+  for (const block of vueScriptBlocks(source)) {
+    const inspected = inspectSource(block.inner, runtimeExport)
+    for (const name of inspected.bindings) bindings.add(name)
+    if (inspected.reusableHelper) anyReusable = true
+  }
+  if (anyReusable || !bindings.has(runtimeExport)) {
+    return runtimeExport
+  }
+  return chooseHelperName(bindings)
+}
+
+function templateMismatchError(planned) {
+  const mismatch = planned.skipped.find(item => (
+    TEMPLATE_KINDS.has(item.kind) && item.reason === MISMATCH
+  ))
+  if (!mismatch) return null
+  return new Error(MISMATCH)
+}
+
+function transformScriptBuildReplacement({
   source,
   root,
   projectPath,
   resourcePath,
-  occurrences = [],
-  adapter = 'js',
+  occurrences,
+  adapter,
   runtimeModule,
-  runtimeExport = 't',
-  styleExtensions = [],
-  inputSourceMap = null
+  runtimeExport,
+  styleExtensions,
+  inputSourceMap
 }) {
-  if (typeof source !== 'string') {
-    return { code: source, map: null, changed: false, planned: null }
-  }
-  const extension = path.posix.extname(projectPath).toLowerCase()
-  if (!SCRIPT_EXTENSIONS.has(extension)) {
-    return { code: source, map: null, changed: false, planned: null }
-  }
-
-  const relevant = occurrences.filter(item => item.location && item.location.path === projectPath)
-  if (relevant.length === 0) {
-    return { code: source, map: null, changed: false, planned: null }
-  }
-
   const inspected = inspectSource(source, runtimeExport)
   if (inspected.error) {
     return { code: source, map: null, changed: false, planned: null, error: inspected.error }
@@ -238,7 +311,7 @@ function transformBuildReplacement({
     }
   })
   const planned = planner.plan({
-    occurrences: relevant,
+    occurrences,
     resources: new Map([[projectPath, source]])
   })
   const fileEdits = planned.edits
@@ -272,6 +345,154 @@ function transformBuildReplacement({
     helperName,
     injected: inject
   }
+}
+
+function transformVue3BuildReplacement({
+  source,
+  root,
+  projectPath,
+  resourcePath,
+  occurrences,
+  runtimeModule,
+  runtimeExport,
+  styleExtensions,
+  inputSourceMap
+}) {
+  let template
+  try {
+    template = parseTemplate({
+      source,
+      resource: {
+        absolutePath: resourcePath,
+        projectPath
+      },
+      standalone: false,
+      config: { vueVersion: 3 }
+    })
+  } catch (error) {
+    return { code: source, map: null, changed: false, planned: null, error }
+  }
+
+  const helperName = chooseVueHelperName(source, runtimeExport)
+  const planner = new ReplacementPlanner({
+    adapter: 'vue3',
+    styleExtensions,
+    runtime: {
+      localizationFunction: true,
+      helperName,
+      helperAvailable: true,
+      vueVersion: 3
+    }
+  })
+  const planned = planner.plan({
+    occurrences,
+    resources: new Map([[projectPath, { source, template }]])
+  })
+
+  const mismatch = templateMismatchError(planned)
+  if (mismatch) {
+    return { code: source, map: null, changed: false, planned, helperName, error: mismatch }
+  }
+
+  const fileEdits = planned.edits
+    .filter(edit => edit.path === projectPath)
+    .map(({ start, end, text }) => ({ start, end, text }))
+
+  const request = runtimeRequest(root, runtimeModule, resourcePath)
+  const injectionTargets = []
+  for (const block of vueScriptBlocks(source)) {
+    const helperEdits = fileEdits.filter(edit => (
+      edit.start >= block.innerStart
+      && edit.start < block.innerEnd
+      && planned.replacements.some(item => item.call && item.call.startsWith(helperCallPrefix(helperName)) && edit.text.includes(item.call))
+    ))
+    if (helperEdits.length === 0) continue
+    const inspected = inspectSource(block.inner, runtimeExport)
+    const reuse = helperName === runtimeExport
+      ? inspected.reusableHelper
+      : isReusableAlias(block.inner, helperName, runtimeExport)
+    if (reuse) continue
+    const esm = inspected.esm || block.setup || /^\s*import\b/m.test(block.inner) || /^\s*export\b/m.test(block.inner)
+    injectionTargets.push({
+      start: block.innerStart,
+      end: block.innerStart,
+      text: injectionStatement(esm, helperName, runtimeExport, request)
+    })
+  }
+
+  const allEdits = [...fileEdits, ...injectionTargets]
+  if (allEdits.length === 0) {
+    return { code: source, map: null, changed: false, planned, helperName }
+  }
+
+  const edited = applyEditsWithSegments(source, allEdits)
+  const map = composeSourceMaps(
+    buildSourceMap(source, edited.code, projectPath, 0, edited.segments),
+    inputSourceMap,
+    projectPath
+  )
+
+  return {
+    code: edited.code,
+    map,
+    changed: true,
+    planned,
+    helperName,
+    injected: injectionTargets.length > 0
+  }
+}
+
+function transformBuildReplacement({
+  source,
+  root,
+  projectPath,
+  resourcePath,
+  occurrences = [],
+  adapter = 'js',
+  runtimeModule,
+  runtimeExport = 't',
+  styleExtensions = [],
+  inputSourceMap = null
+}) {
+  if (typeof source !== 'string') {
+    return { code: source, map: null, changed: false, planned: null }
+  }
+  const extension = path.posix.extname(projectPath).toLowerCase()
+  const relevant = occurrences.filter(item => item.location && item.location.path === projectPath)
+  if (relevant.length === 0) {
+    return { code: source, map: null, changed: false, planned: null }
+  }
+
+  if (adapter === 'vue3' && extension === '.vue') {
+    return transformVue3BuildReplacement({
+      source,
+      root,
+      projectPath,
+      resourcePath,
+      occurrences: relevant,
+      runtimeModule,
+      runtimeExport,
+      styleExtensions,
+      inputSourceMap
+    })
+  }
+
+  if (!SCRIPT_EXTENSIONS.has(extension)) {
+    return { code: source, map: null, changed: false, planned: null }
+  }
+
+  return transformScriptBuildReplacement({
+    source,
+    root,
+    projectPath,
+    resourcePath,
+    occurrences: relevant,
+    adapter: adapter === 'vue3' ? 'vue3' : 'js',
+    runtimeModule,
+    runtimeExport,
+    styleExtensions,
+    inputSourceMap
+  })
 }
 
 module.exports = {

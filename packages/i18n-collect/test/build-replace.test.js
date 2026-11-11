@@ -1,9 +1,16 @@
 const assert = require('assert')
+const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const { SourceMapConsumer } = require('source-map')
 const { extractScript } = require('../myloader/extract-script')
+const { extractHtml } = require('../myloader/extract-html')
+const { extractVueScript } = require('../myloader/extract-vue-compat')
 const { transformBuildReplacement } = require('../mycommon/build-replace')
+const { installVue3 } = require('./vue3-fixture')
+
+const ALLOW = ['title', 'placeholder', 'alt', 'aria-label', 'value']
 
 function occurrence(key, source, containingSource, projectPath = 'src/app.js') {
   const extracted = extractScript({
@@ -195,5 +202,261 @@ test('transform emits a source map that maps generated code back to the original
   const generatedLine = result.code.split('\n').findIndex(line => /\('home\.hello'\)/.test(line)) + 1
   const original = consumer.originalPositionFor({ line: generatedLine, column: 0 })
   assert.strictEqual(original.source, 'src/app.js')
+  assert.ok(original.line >= 1)
+})
+
+function vueScriptEntries(projectPath, source) {
+  const resource = { projectPath }
+  const entries = []
+  const pattern = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi
+  let match = pattern.exec(source)
+  while (match) {
+    const openTag = match[0].slice(0, match[0].length - match[2].length - '</script>'.length)
+    const innerStart = match.index + openTag.length
+    const padded = `${source.slice(0, innerStart).replace(/[^\n]/g, ' ')}${match[2]}`
+    entries.push(...extractScript({ source: padded, resource, config: {} }))
+    match = pattern.exec(source)
+  }
+  if (entries.length === 0) {
+    entries.push(...extractVueScript({ source, resource, config: {} }))
+  }
+  return entries
+}
+
+function vueOccurrences(projectPath, source, keys) {
+  const resource = { projectPath }
+  const html = extractHtml({
+    source,
+    resource: { ...resource, block: 'template', lang: 'html', query: '?vue&type=template' },
+    config: { attributeAllowlist: ALLOW }
+  }).entries
+  const script = vueScriptEntries(projectPath, source)
+  const entries = [...html, ...script]
+  return Object.entries(keys).map(([text, key]) => {
+    const entry = entries.find(item => (
+      item.value === text
+      || (item.representation === 'localized-call' && item.key === text)
+    ))
+    assert.ok(entry, `missing collected text ${text}`)
+    return {
+      key,
+      source: text,
+      location: {
+        path: projectPath,
+        kind: entry.locations[0].kind,
+        start: entry.locations[0].start,
+        end: entry.locations[0].end
+      }
+    }
+  })
+}
+
+function transformVue(source, {
+  projectPath = 'src/Home.vue',
+  root,
+  occurrences,
+  runtimeModule = 'src/i18n.js',
+  runtimeExport = 't'
+} = {}) {
+  const projectRoot = root || fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue-'))
+  installVue3(projectRoot)
+  return transformBuildReplacement({
+    source,
+    root: projectRoot,
+    projectPath,
+    resourcePath: path.join(projectRoot, projectPath),
+    occurrences: occurrences || vueOccurrences(projectPath, source, { 欢迎: 'home.welcome' }),
+    adapter: 'vue3',
+    runtimeModule,
+    runtimeExport,
+    styleExtensions: ['.css']
+  })
+}
+
+test('Vue 3 build replacement rewrites template text to $t before vue-loader would split the SFC', () => {
+  const source = [
+    '<template>',
+    '  <p>欢迎</p>',
+    '</template>',
+    '<script>',
+    'export default {}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source)
+  assert.strictEqual(result.changed, true)
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+  assert.doesNotMatch(result.code, />欢迎</)
+})
+
+test('Vue 3 build replacement rewrites Options API methods with this.$t', () => {
+  const source = [
+    '<template><p>欢迎</p></template>',
+    '<script>',
+    'export default {',
+    '  methods: {',
+    '    greet() {',
+    "      return '你好'",
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 你好: 'home.hello' })
+  })
+  assert.match(result.code, /return this\.\$t\('home\.hello'\)/)
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+})
+
+test('Vue 3 build replacement injects a runtime import into script setup when t is missing', () => {
+  const source = [
+    '<template><p>欢迎</p></template>',
+    '<script setup>',
+    "const title = '标题'",
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 标题: 'home.title' })
+  })
+  assert.match(result.code, /<script setup>\s*import\s*\{\s*t(?:\s+as\s+\w+)?\s*\}\s*from\s*['"]\.\/i18n\.js['"]/)
+  assert.match(result.code, /const title = t\('home\.title'\)/)
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+})
+
+test('Vue 3 build replacement recognizes existing localized calls without nesting', () => {
+  const source = [
+    '<template>',
+    "  <p>{{ $t('欢迎') }}</p>",
+    '</template>',
+    '<script setup>',
+    "import { t } from './i18n.js'",
+    "const title = t('标题')",
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 标题: 'home.title' })
+  })
+  assert.strictEqual(result.changed, false)
+  assert.match(result.code, /\$t\('欢迎'\)/)
+  assert.match(result.code, /t\('标题'\)/)
+  assert.doesNotMatch(result.code, /\$t\(\$t\(|t\(t\(/)
+})
+
+test('Vue 3 build replacement fails when Template IR does not match catalog locations', () => {
+  const source = [
+    '<template><p>Welcome</p></template>',
+    '<script>',
+    "const title = '标题'",
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: [{
+      key: 'home.title',
+      source: '标题',
+      location: {
+        path: 'src/Home.vue',
+        kind: 'html-text',
+        start: { line: 3, column: 15 },
+        end: { line: 3, column: 17 }
+      }
+    }]
+  })
+  assert.ok(result.error)
+  assert.match(String(result.error.message || result.error), /catalog location does not match/)
+  assert.strictEqual(result.changed, false)
+  assert.strictEqual(result.code, source)
+})
+
+test('Vue 3 build replacement merges template and script edits with full SFC coordinates', () => {
+  const source = [
+    '<template>',
+    '  <p title="提示">欢迎</p>',
+    '</template>',
+    '<script>',
+    'export default {',
+    '  data() {',
+    "    return { label: '标题' }",
+    '  },',
+    '  methods: {',
+    '    greet() {',
+    "      return '你好'",
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    '<script setup>',
+    "const tip = '说明'",
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, {
+      提示: 'home.hint',
+      欢迎: 'home.welcome',
+      标题: 'home.title',
+      你好: 'home.hello',
+      说明: 'home.note'
+    })
+  })
+  assert.strictEqual(result.changed, true)
+  assert.match(result.code, /:title="\$t\('home\.hint'\)"|:title='\$t\('home\.hint'\)'/)
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+  assert.match(result.code, /label:\s*this\.\$t\('home\.title'\)/)
+  assert.match(result.code, /return this\.\$t\('home\.hello'\)/)
+  assert.match(result.code, /const tip = t\('home\.note'\)/)
+  assert.match(result.code, /<script setup>\s*import\s*\{/)
+})
+
+test('Vue 3 build replacement keeps template expression structure and uses helpers outside instance methods', () => {
+  const source = [
+    '<template>',
+    "  <p>{{ '前缀' + name }}</p>",
+    '</template>',
+    '<script>',
+    "const top = '顶层'",
+    'export default {',
+    '  mounted() {',
+    "    this.msg = '挂载'",
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, {
+      前缀: 'home.prefix',
+      顶层: 'home.top',
+      挂载: 'home.mounted'
+    })
+  })
+  assert.match(result.code, /\{\{\s*\$t\('home\.prefix'\)\s*\+\s*name\s*\}\}/)
+  assert.match(result.code, /const top = t\('home\.top'\)/)
+  assert.match(result.code, /this\.msg = this\.\$t\('home\.mounted'\)/)
+  assert.match(result.code, /<script>\s*import\s*\{\s*t(?:\s+as\s+\w+)?\s*\}\s*from/)
+})
+
+test('Vue 3 build replacement source map still points at the original SFC', async () => {
+  const source = [
+    '<template>',
+    '  <p>欢迎</p>',
+    '</template>',
+    '<script setup>',
+    "const title = '标题'",
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 标题: 'home.title' })
+  })
+  assert.ok(result.map)
+  const consumer = await new SourceMapConsumer(result.map)
+  const generatedLine = result.code.split('\n').findIndex(line => /\$t\('home\.welcome'\)/.test(line)) + 1
+  const original = consumer.originalPositionFor({ line: generatedLine, column: 0 })
+  assert.strictEqual(original.source, 'src/Home.vue')
   assert.ok(original.line >= 1)
 })
