@@ -4,6 +4,7 @@ const { keyFor } = require('./store')
 const { extractScript } = require('../myloader/extract-script')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
+const { auditStyle } = require('../myloader/audit-style')
 
 const ANALYSIS_REPORT_VERSION = 1
 
@@ -11,14 +12,28 @@ const SCRIPT_EXTENSIONS = new Set([
   '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'
 ])
 const TYPESCRIPT_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts'])
+const STYLE_EXTENSIONS = new Set([
+  '.css', '.scss', '.sass', '.less', '.styl', '.stylus'
+])
 
 const CAPABILITY_AUTOMATIC = 'automatically-runtime-localizable'
 const CAPABILITY_LOCALIZED = 'already-localized'
 const CAPABILITY_AUDIT = 'chinese-source-audit'
 const DISPOSITION_UNRESOLVED = 'unresolved'
+const DISPOSITION_NEEDS_REVIEW = 'needs-review'
 const DISPOSITION_INTENTIONALLY_IGNORED = 'intentionally-ignored'
 const STANDALONE_HTML_EXTENSIONS = new Set(['.html', '.htm'])
-const AUDIT_KINDS = new Set(['static-html-text', 'static-html-attribute'])
+const AUDIT_KINDS = new Set([
+  'static-html-text',
+  'static-html-attribute',
+  'css-generated-content',
+  'css-preprocessor-candidate'
+])
+
+const CSS_PROVEN_DIAGNOSTIC =
+  'Proven CSS generated content: Chinese static string in a content declaration'
+const PREPROCESSOR_REVIEW_DIAGNOSTIC =
+  'Conservative preprocessor review item: possible Chinese user-facing content without semantic proof'
 
 function emptyAnalysis() {
   return {
@@ -36,6 +51,7 @@ function emptyAnalysis() {
       chineseSourceAudit: {
         total: 0,
         unresolved: 0,
+        needsReview: 0,
         intentionallyIgnored: 0
       }
     }
@@ -46,10 +62,24 @@ function extensionOf(projectPath) {
   return path.posix.extname(String(projectPath).split('\\').join('/')).toLowerCase()
 }
 
+function styleLangFor(projectPath) {
+  const ext = extensionOf(projectPath)
+  if (ext === '.scss') return 'scss'
+  if (ext === '.sass') return 'sass'
+  if (ext === '.less') return 'less'
+  if (ext === '.styl' || ext === '.stylus') return 'stylus'
+  return 'css'
+}
+
 function sourceSurfaceFor(projectPath, block) {
   const ext = extensionOf(projectPath)
   if (STANDALONE_HTML_EXTENSIONS.has(ext)) return 'standalone-html'
-  if (ext === '.vue') return block === 'template' ? 'vue-template' : 'vue-script'
+  if (STYLE_EXTENSIONS.has(ext)) return styleLangFor(projectPath)
+  if (ext === '.vue') {
+    if (block === 'template') return 'vue-template'
+    if (block === 'style') return 'vue-style'
+    return 'vue-script'
+  }
   if (TYPESCRIPT_EXTENSIONS.has(ext)) return 'typescript'
   return 'javascript'
 }
@@ -69,6 +99,7 @@ function findingFrom(entry, location, capability, sourceSurface, extras = {}) {
   if (entry.key) finding.key = entry.key
   if (extras.disposition) finding.disposition = extras.disposition
   if (extras.ignoreReason) finding.ignoreReason = extras.ignoreReason
+  if (extras.diagnostic) finding.diagnostic = extras.diagnostic
   return finding
 }
 
@@ -109,7 +140,20 @@ function collectVueEntries(file, config) {
     entry,
     sourceSurface: sourceSurfaceFor(file.path, 'template')
   }))
-  return script.concat(template)
+  const styles = auditStyle({
+    source: file.source,
+    resource: {
+      projectPath: file.path,
+      absolutePath,
+      block: 'style',
+      identity: `${file.path}::style`
+    },
+    config
+  }).entries.map(entry => ({
+    entry,
+    sourceSurface: sourceSurfaceFor(file.path, 'style')
+  }))
+  return script.concat(template).concat(styles)
 }
 
 function collectStandaloneHtmlEntries(file, config) {
@@ -127,12 +171,41 @@ function collectStandaloneHtmlEntries(file, config) {
   }))
 }
 
+function collectStyleEntries(file, config) {
+  const lang = styleLangFor(file.path)
+  const absolutePath = file.absolutePath || path.resolve(file.path)
+  const resource = {
+    projectPath: file.path,
+    absolutePath,
+    block: 'style',
+    lang,
+    identity: `${file.path}::style[index=0;lang=${lang}]`
+  }
+  return auditStyle({ source: file.source, resource, config }).entries.map(entry => ({
+    entry,
+    sourceSurface: sourceSurfaceFor(file.path, 'style')
+  }))
+}
+
 function entriesForFile(file, config) {
   const ext = extensionOf(file.path)
   if (SCRIPT_EXTENSIONS.has(ext)) return collectScriptEntries(file, config)
   if (ext === '.vue') return collectVueEntries(file, config)
   if (STANDALONE_HTML_EXTENSIONS.has(ext)) return collectStandaloneHtmlEntries(file, config)
+  if (STYLE_EXTENSIONS.has(ext)) return collectStyleEntries(file, config)
   return []
+}
+
+function auditDisposition(entry, location) {
+  if (entry.ignoreReason) return DISPOSITION_INTENTIONALLY_IGNORED
+  if (location.kind === 'css-preprocessor-candidate') return DISPOSITION_NEEDS_REVIEW
+  return DISPOSITION_UNRESOLVED
+}
+
+function auditDiagnostic(location) {
+  if (location.kind === 'css-preprocessor-candidate') return PREPROCESSOR_REVIEW_DIAGNOSTIC
+  if (location.kind === 'css-generated-content') return CSS_PROVEN_DIAGNOSTIC
+  return undefined
 }
 
 function classifyCollected(collected) {
@@ -149,16 +222,15 @@ function classifyCollected(collected) {
       }
       if (!entry.value) continue
       if (AUDIT_KINDS.has(location.kind) || sourceSurface === 'standalone-html') {
-        const disposition = entry.ignoreReason
-          ? DISPOSITION_INTENTIONALLY_IGNORED
-          : DISPOSITION_UNRESOLVED
+        const disposition = auditDisposition(entry, location)
         // Audit findings never receive localization keys (ADR-0007), even if a
         // legacy extractor still attached an i18n-key for webpack collect.
         const auditEntry = { ...entry, key: null }
         analysis.auditFindings.push(
           findingFrom(auditEntry, location, CAPABILITY_AUDIT, sourceSurface, {
             disposition,
-            ignoreReason: entry.ignoreReason || undefined
+            ignoreReason: entry.ignoreReason || undefined,
+            diagnostic: auditDiagnostic(location)
           })
         )
         continue
@@ -175,7 +247,12 @@ function classifyCollected(collected) {
   const intentionallyIgnored = analysis.auditFindings.filter(
     finding => finding.disposition === DISPOSITION_INTENTIONALLY_IGNORED
   ).length
-  const unresolved = audit - intentionallyIgnored
+  const needsReview = analysis.auditFindings.filter(
+    finding => finding.disposition === DISPOSITION_NEEDS_REVIEW
+  ).length
+  const unresolved = analysis.auditFindings.filter(
+    finding => finding.disposition === DISPOSITION_UNRESOLVED
+  ).length
   analysis.coverage = {
     sourceDiscovery: { total: automatic + already + audit + explicit },
     runtimeLocalization: {
@@ -186,6 +263,7 @@ function classifyCollected(collected) {
     chineseSourceAudit: {
       total: audit,
       unresolved,
+      needsReview,
       intentionallyIgnored
     }
   }
@@ -262,5 +340,6 @@ module.exports = {
   CAPABILITY_LOCALIZED,
   CAPABILITY_AUDIT,
   DISPOSITION_UNRESOLVED,
+  DISPOSITION_NEEDS_REVIEW,
   DISPOSITION_INTENTIONALLY_IGNORED
 }

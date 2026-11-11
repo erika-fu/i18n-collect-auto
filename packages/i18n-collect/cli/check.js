@@ -12,7 +12,9 @@ const EXIT = {
 }
 
 const SOURCE_EXTENSIONS = new Set([
-  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue', '.html', '.htm'
+  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
+  '.vue', '.html', '.htm',
+  '.css', '.scss', '.sass', '.less', '.styl', '.stylus'
 ])
 
 const SKIP_DIRECTORIES = new Set([
@@ -150,7 +152,9 @@ function check(args) {
     }))
     const analysis = analyzeProject({ files: sources, config })
     const unresolved = analysis.coverage.chineseSourceAudit.unresolved
-    const ok = unresolved === 0
+    const needsReview = analysis.coverage.chineseSourceAudit.needsReview || 0
+    const blocking = unresolved + needsReview
+    const ok = blocking === 0
     const summary = {
       command: 'check',
       ok,
@@ -160,7 +164,11 @@ function check(args) {
       auditFindings: analysis.auditFindings
     }
     if (!ok) {
-      const message = `project localization completeness failed: ${unresolved} unresolved Chinese source audit finding(s)`
+      const parts = []
+      if (unresolved > 0) parts.push(`${unresolved} unresolved`)
+      if (needsReview > 0) parts.push(`${needsReview} needs-review`)
+      const message =
+        `project localization completeness failed: ${parts.join(', ')} Chinese source audit finding(s)`
       if (parsed.json) {
         return outcome(
           EXIT.incomplete,
@@ -173,7 +181,7 @@ function check(args) {
     if (parsed.json) return outcome(EXIT.ok, jsonText(summary), '')
     return outcome(
       EXIT.ok,
-      `check: complete; source discovery ${analysis.coverage.sourceDiscovery.total}; unresolved audit ${unresolved}\n`,
+      `check: complete; source discovery ${analysis.coverage.sourceDiscovery.total}; unresolved audit ${unresolved}; needs-review ${needsReview}\n`,
       ''
     )
   } catch (error) {

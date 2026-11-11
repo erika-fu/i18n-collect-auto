@@ -83,6 +83,7 @@ test('check succeeds when every HTML audit finding is intentionally ignored with
   assert.deepStrictEqual(report.chineseSourceAudit, {
     total: 1,
     unresolved: 0,
+    needsReview: 0,
     intentionallyIgnored: 1
   })
   assert.strictEqual(report.auditFindings.length, 1)
@@ -90,4 +91,86 @@ test('check succeeds when every HTML audit finding is intentionally ignored with
   assert.strictEqual(report.auditFindings[0].ignoreReason, 'legal copy stays Chinese')
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/analysis-report.json')))
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
+})
+
+test('check fails for unresolved CSS findings and preprocessor needs-review findings', () => {
+  const cssRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-css-fail-'))
+  fs.mkdirSync(path.join(cssRoot, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(cssRoot, 'src/theme.css'), '.a::before { content: "必填"; }\n')
+  fs.writeFileSync(
+    path.join(cssRoot, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"] }\n'
+  )
+  const cssResult = run(['check', '--json'], cssRoot)
+  assert.notStrictEqual(cssResult.status, 0, cssResult.stdout)
+  const cssReport = JSON.parse(cssResult.stdout)
+  assert.strictEqual(cssReport.ok, false)
+  assert.ok(cssReport.chineseSourceAudit.unresolved >= 1)
+  assert.match(cssReport.message, /unresolved/)
+  assert.ok(cssReport.auditFindings.some(item => (
+    item.disposition === 'unresolved' &&
+    item.semanticRole === 'css-generated-content' &&
+    /proven|generated content/i.test(item.diagnostic)
+  )))
+
+  const scssRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-scss-fail-'))
+  fs.mkdirSync(path.join(scssRoot, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(scssRoot, 'src/theme.scss'), '.a::before { content: "待审"; }\n')
+  fs.writeFileSync(
+    path.join(scssRoot, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"] }\n'
+  )
+  const scssResult = run(['check', '--json'], scssRoot)
+  assert.notStrictEqual(scssResult.status, 0, scssResult.stdout)
+  const scssReport = JSON.parse(scssResult.stdout)
+  assert.strictEqual(scssReport.ok, false)
+  assert.ok(scssReport.chineseSourceAudit.needsReview >= 1)
+  assert.match(scssReport.message, /needs-review/)
+  assert.ok(scssReport.auditFindings.some(item => (
+    item.disposition === 'needs-review' &&
+    item.semanticRole === 'css-preprocessor-candidate' &&
+    /conservative|without semantic proof/i.test(item.diagnostic)
+  )))
+})
+
+test('check succeeds when every style audit finding is intentionally ignored with a reason', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-style-ok-'))
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.writeFileSync(
+    path.join(root, 'src/theme.css'),
+    [
+      '.a::before {',
+      '  /* i18n-ignore: legal glyph stays Chinese */',
+      '  content: "版权";',
+      '}',
+      ''
+    ].join('\n')
+  )
+  fs.writeFileSync(
+    path.join(root, 'src/theme.scss'),
+    [
+      '.b::after {',
+      '  /* i18n-ignore: reviewed brand mark */',
+      '  content: "品牌";',
+      '}',
+      ''
+    ].join('\n')
+  )
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"] }\n'
+  )
+
+  const result = run(['check', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.deepStrictEqual(report.chineseSourceAudit, {
+    total: 2,
+    unresolved: 0,
+    needsReview: 0,
+    intentionallyIgnored: 2
+  })
+  assert.ok(report.auditFindings.every(item => item.disposition === 'intentionally-ignored'))
+  assert.ok(report.auditFindings.every(item => item.key === undefined))
 })

@@ -63,6 +63,7 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
     chineseSourceAudit: {
       total: 0,
       unresolved: 0,
+      needsReview: 0,
       intentionallyIgnored: 0
     }
   })
@@ -162,6 +163,7 @@ test('scan reports standalone HTML as audit findings without catalog keys', () =
   assert.deepStrictEqual(report.coverage.chineseSourceAudit, {
     total: 3,
     unresolved: 2,
+    needsReview: 0,
     intentionallyIgnored: 1
   })
   assert.strictEqual(report.coverage.runtimeLocalization.automaticallyRuntimeLocalizable, 1)
@@ -179,6 +181,48 @@ test('scan reports standalone HTML as audit findings without catalog keys', () =
   assert.strictEqual(ignored.ignoreReason, 'brand stays Chinese')
   assert.strictEqual(ignored.key, undefined)
   assert.ok(analysis.auditFindings.every(item => item.capability === 'chinese-source-audit'))
+  assert.ok(analysis.auditFindings.every(item => item.key === undefined))
+})
+
+test('scan reports CSS and preprocessor style audit findings without catalog keys', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-style-'))
+  writeScanProject(root, {
+    source: 'const message = "你好"\n',
+    files: {
+      'src/theme.css': '.a::before { content: "必填"; }\n',
+      'src/theme.scss': '.b::after { content: "待审"; }\n'
+    }
+  })
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"] }\n'
+  )
+
+  const result = run(['scan', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.deepStrictEqual(report.coverage.chineseSourceAudit, {
+    total: 2,
+    unresolved: 1,
+    needsReview: 1,
+    intentionallyIgnored: 0
+  })
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.deepStrictEqual(catalog, { [HELLO]: '你好' })
+  assert.ok(!Object.values(catalog).includes('必填'))
+  assert.ok(!Object.values(catalog).includes('待审'))
+
+  const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
+  assert.strictEqual(analysis.auditFindings.length, 2)
+  const proven = analysis.auditFindings.find(item => item.disposition === 'unresolved')
+  const review = analysis.auditFindings.find(item => item.disposition === 'needs-review')
+  assert.strictEqual(proven.text, '必填')
+  assert.strictEqual(proven.semanticRole, 'css-generated-content')
+  assert.match(proven.diagnostic, /proven|generated content/i)
+  assert.strictEqual(review.text, '待审')
+  assert.strictEqual(review.semanticRole, 'css-preprocessor-candidate')
+  assert.match(review.diagnostic, /conservative|without semantic proof/i)
   assert.ok(analysis.auditFindings.every(item => item.key === undefined))
 })
 

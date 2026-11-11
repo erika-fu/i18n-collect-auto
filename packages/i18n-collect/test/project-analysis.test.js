@@ -77,6 +77,7 @@ test('analyzeProject reports coverage totals that distinguish discovery from run
     chineseSourceAudit: {
       total: 0,
       unresolved: 0,
+      needsReview: 0,
       intentionallyIgnored: 0
     }
   })
@@ -168,6 +169,7 @@ test('analyzeProject classifies standalone HTML text and allowlisted attributes 
     chineseSourceAudit: {
       total: 2,
       unresolved: 2,
+      needsReview: 0,
       intentionallyIgnored: 0
     }
   })
@@ -215,6 +217,7 @@ test('analyzeProject keeps reasoned i18n-ignore HTML findings as intentionally i
   assert.deepStrictEqual(analysis.coverage.chineseSourceAudit, {
     total: 3,
     unresolved: 2,
+    needsReview: 0,
     intentionallyIgnored: 1
   })
   assert.deepStrictEqual(buildSourceCatalog(analysis), {})
@@ -259,6 +262,248 @@ test('analyzeProject fails on malformed, reasonless, unused, or ambiguous i18n-i
         files: [{ path: 'public/index.html', source: item.source }],
         config: { attributeAllowlist: ['title'] }
       }),
+      error => {
+        assert.match(String(error && error.message), item.match, item.label)
+        return true
+      },
+      item.label
+    )
+  }
+})
+
+test('analyzeProject reports Chinese CSS content strings as unresolved audit findings', () => {
+  const source = [
+    '/* 样式说明 */',
+    '.a::before { content: "必填"; }',
+    '.b { content: attr(data-label); }',
+    '.c { --label: "内部文案"; color: red; }',
+    '.d { content: "第" counter(item) "项"; }',
+    ''
+  ].join('\n')
+  const analysis = analyzeProject({
+    files: [{ path: 'src/theme.css', source }]
+  })
+
+  assert.strictEqual(analysis.runtimeMessages.length, 0)
+  assert.strictEqual(analysis.localizedCallFindings.length, 0)
+  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.strictEqual(analysis.auditFindings.length, 3)
+
+  const texts = analysis.auditFindings.map(item => item.text).sort()
+  assert.deepStrictEqual(texts, ['必填', '第', '项'])
+  for (const finding of analysis.auditFindings) {
+    assert.strictEqual(finding.sourceSurface, 'css')
+    assert.strictEqual(finding.semanticRole, 'css-generated-content')
+    assert.strictEqual(finding.capability, 'chinese-source-audit')
+    assert.strictEqual(finding.disposition, 'unresolved')
+    assert.strictEqual(finding.key, undefined)
+    assert.match(finding.diagnostic, /proven|generated content/i)
+    assert.strictEqual(finding.location.path, 'src/theme.css')
+  }
+  assert.deepStrictEqual(analysis.coverage.chineseSourceAudit, {
+    total: 3,
+    unresolved: 3,
+    needsReview: 0,
+    intentionallyIgnored: 0
+  })
+})
+
+test('analyzeProject decodes CSS escapes and audits Vue style blocks', () => {
+  const css = analyzeProject({
+    files: [{
+      path: 'src/escape.css',
+      source: '.a::before { content: "\\5FC5\\586B"; }\n'
+    }]
+  })
+  assert.strictEqual(css.auditFindings.length, 1)
+  assert.strictEqual(css.auditFindings[0].text, '必填')
+  assert.strictEqual(css.auditFindings[0].disposition, 'unresolved')
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-analysis-vue-style-'))
+  installVue3(root)
+  const absolutePath = path.join(root, 'src', 'Styled.vue')
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  const source = [
+    '<template><p>页面</p></template>',
+    '<style>',
+    '.a::before { content: "角标"; }',
+    '</style>',
+    '<style lang="scss">',
+    '.b::after { content: "待审"; }',
+    '</style>',
+    ''
+  ].join('\n')
+  fs.writeFileSync(absolutePath, source)
+  const vue = analyzeProject({
+    files: [{ path: 'src/Styled.vue', source, absolutePath }],
+    config: { vueVersion: 3 }
+  })
+  const styleFindings = vue.auditFindings.filter(item => (
+    item.semanticRole === 'css-generated-content' ||
+    item.semanticRole === 'css-preprocessor-candidate'
+  ))
+  assert.deepStrictEqual(styleFindings.map(item => item.text).sort(), ['待审', '角标'])
+  assert.ok(styleFindings.some(item => item.disposition === 'unresolved' && item.text === '角标'))
+  assert.ok(styleFindings.some(item => item.disposition === 'needs-review' && item.text === '待审'))
+  assert.ok(vue.runtimeMessages.some(item => item.text === '页面'))
+  assert.deepStrictEqual(buildSourceCatalog(vue), { [keyFor('页面')]: '页面' })
+})
+
+test('analyzeProject surfaces preprocessor content candidates as needs-review without semantic proof', () => {
+  const cases = [
+    {
+      path: 'src/theme.scss',
+      surface: 'scss',
+      source: [
+        '// 注释中文',
+        '@import "tokens";',
+        '$label: "变量中文";',
+        '.a::before { content: "必填"; }',
+        '.b { content: "#{$label}"; }',
+        '.c { content: $label; }',
+        ''
+      ].join('\n'),
+      expected: ['必填']
+    },
+    {
+      path: 'src/theme.sass',
+      surface: 'sass',
+      source: [
+        '// 注释中文',
+        '.a::before',
+        '  content: "必填"',
+        ''
+      ].join('\n'),
+      expected: ['必填']
+    },
+    {
+      path: 'src/theme.less',
+      surface: 'less',
+      source: [
+        '/* 注释中文 */',
+        '@label: "变量中文";',
+        '.a::before { content: "必填"; }',
+        '.b { content: "@{label}"; }',
+        ''
+      ].join('\n'),
+      expected: ['必填']
+    },
+    {
+      path: 'src/theme.styl',
+      surface: 'stylus',
+      source: [
+        '// 注释中文',
+        '.a::before',
+        '  content: "必填"',
+        ''
+      ].join('\n'),
+      expected: ['必填']
+    }
+  ]
+
+  for (const item of cases) {
+    const analysis = analyzeProject({
+      files: [{ path: item.path, source: item.source }]
+    })
+    assert.strictEqual(analysis.runtimeMessages.length, 0, item.path)
+    assert.deepStrictEqual(buildSourceCatalog(analysis), {}, item.path)
+    assert.deepStrictEqual(
+      analysis.auditFindings.map(finding => finding.text).sort(),
+      item.expected.slice().sort(),
+      item.path
+    )
+    for (const finding of analysis.auditFindings) {
+      assert.strictEqual(finding.sourceSurface, item.surface, item.path)
+      assert.strictEqual(finding.semanticRole, 'css-preprocessor-candidate', item.path)
+      assert.strictEqual(finding.capability, 'chinese-source-audit', item.path)
+      assert.strictEqual(finding.disposition, 'needs-review', item.path)
+      assert.strictEqual(finding.key, undefined, item.path)
+      assert.match(finding.diagnostic, /conservative|needs.?review|without semantic proof/i, item.path)
+    }
+    assert.strictEqual(analysis.coverage.chineseSourceAudit.needsReview, analysis.auditFindings.length, item.path)
+    assert.strictEqual(analysis.coverage.chineseSourceAudit.unresolved, 0, item.path)
+  }
+})
+
+test('analyzeProject applies reasoned style i18n-ignore and fails closed on bad directives', () => {
+  const ignored = analyzeProject({
+    files: [{
+      path: 'src/theme.css',
+      source: [
+        '.a::before {',
+        '  /* i18n-ignore: brand glyph stays Chinese */',
+        '  content: "品牌";',
+        '}',
+        '.b::after { content: "未忽略"; }',
+        ''
+      ].join('\n')
+    }]
+  })
+  assert.strictEqual(ignored.auditFindings.length, 2)
+  const accepted = ignored.auditFindings.find(item => item.disposition === 'intentionally-ignored')
+  const unresolved = ignored.auditFindings.find(item => item.disposition === 'unresolved')
+  assert.strictEqual(accepted.text, '品牌')
+  assert.strictEqual(accepted.ignoreReason, 'brand glyph stays Chinese')
+  assert.strictEqual(accepted.key, undefined)
+  assert.strictEqual(unresolved.text, '未忽略')
+  assert.deepStrictEqual(ignored.coverage.chineseSourceAudit, {
+    total: 2,
+    unresolved: 1,
+    needsReview: 0,
+    intentionallyIgnored: 1
+  })
+  assert.deepStrictEqual(buildSourceCatalog(ignored), {})
+
+  const preprocessorIgnored = analyzeProject({
+    files: [{
+      path: 'src/theme.scss',
+      source: [
+        '.a::before {',
+        '  /* i18n-ignore: review later */',
+        '  content: "待审";',
+        '}',
+        ''
+      ].join('\n')
+    }]
+  })
+  assert.strictEqual(preprocessorIgnored.auditFindings.length, 1)
+  assert.strictEqual(preprocessorIgnored.auditFindings[0].disposition, 'intentionally-ignored')
+  assert.strictEqual(preprocessorIgnored.coverage.chineseSourceAudit.needsReview, 0)
+
+  const failures = [
+    {
+      label: 'reasonless css',
+      path: 'src/bad.css',
+      source: '/* i18n-ignore */\n.a { content: "文案"; }\n',
+      match: /i18n-ignore/
+    },
+    {
+      label: 'unused css',
+      path: 'src/unused.css',
+      source: '/* i18n-ignore: leftover */\n.a { color: red; }\n.b { content: "文案"; }\n',
+      match: /unused|no associated|i18n-ignore/
+    },
+    {
+      label: 'ambiguous scss',
+      path: 'src/ambiguous.scss',
+      source: [
+        '/* i18n-ignore: first */',
+        '/* i18n-ignore: second */',
+        '.a { content: "文案"; }',
+        ''
+      ].join('\n'),
+      match: /ambiguous|conflicting|i18n-ignore/
+    },
+    {
+      label: 'malformed css',
+      path: 'src/broken.css',
+      source: '.a { content: "文案"',
+      match: /Unclosed|CssSyntaxError|end of file|missing/i
+    }
+  ]
+  for (const item of failures) {
+    assert.throws(
+      () => analyzeProject({ files: [{ path: item.path, source: item.source }] }),
       error => {
         assert.match(String(error && error.message), item.match, item.label)
         return true

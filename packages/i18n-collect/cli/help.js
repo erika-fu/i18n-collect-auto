@@ -266,12 +266,13 @@ Exit codes are the exit code of the stage that finished the workflow:
 
 const SCAN_HELP = `i18n-collect scan
 
-Analyze JavaScript, TypeScript, Vue, and standalone HTML sources without webpack.
+Analyze JavaScript, TypeScript, Vue, standalone HTML, and style sources without webpack.
 Classify complete static copy as automatically runtime-localizable, existing static
-t/$t/this.$t calls as already localized, and standalone HTML Chinese as Chinese source
-audit findings that never receive keys or enter catalogs. Write a deterministic source
-catalog and a machine-readable analysis report. Adjacent HTML comments of the form
-i18n-ignore: <reason> mark an associated audit finding as intentionally ignored.
+t/$t/this.$t calls as already localized, and Chinese on audit surfaces (standalone HTML,
+proven CSS generated content, and conservative SCSS/Sass/Less/Stylus review items) as
+Chinese source audit findings that never receive keys or enter catalogs. Write a
+deterministic source catalog and a machine-readable analysis report. Adjacent comments of
+the form i18n-ignore: <reason> mark an associated audit finding as intentionally ignored.
 This command does not rewrite application source and does not make network requests.
 Existing collect integrations remain available.
 
@@ -296,10 +297,11 @@ Exit codes:
 const CHECK_HELP = `i18n-collect check
 
 Evaluate project localization completeness without writing files.
-For this expand step, check analyzes sources in memory and fails when any standalone HTML
-Chinese source audit finding remains unresolved. Intentionally ignored findings stay visible
-in the JSON report with their non-empty reason. Later work widens this command to full
-runtime coverage and target-locale checks.
+For this expand step, check analyzes sources in memory and fails when any Chinese source
+audit finding remains unresolved or needs-review (standalone HTML, proven CSS generated
+content, or conservative preprocessor candidates). Intentionally ignored findings stay
+visible in the JSON report with their non-empty reason. Later work widens this command to
+full runtime coverage and target-locale checks.
 
 Usage:
   i18n-collect check [options]
@@ -316,7 +318,7 @@ Options:
 Exit codes:
   0  project localization completeness passed for the audited surfaces
   1  configuration failure
-  2  incomplete: unresolved Chinese source audit findings or analysis failure
+  2  incomplete: unresolved or needs-review Chinese source audit findings, or analysis failure
 `
 
 const BUILD_HELP = `i18n-collect build

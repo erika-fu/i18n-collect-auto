@@ -23,11 +23,11 @@ One Chinese source audit observation with source text, location, surface, and di
 _Avoid_: Occurrence, runtime-localizable message
 
 **Accepted audit finding**:
-An audit finding migrated to a runtime-localizable surface, handled by a real adapter that makes it runtime-localizable, or suppressed by an adjacent audit ignore directive with a non-empty reason. In analysis reports, a finding suppressed that way carries disposition `intentionally-ignored` and keeps its reason visible; unresolved findings carry disposition `unresolved`.
+An audit finding migrated to a runtime-localizable surface, handled by a real adapter that makes it runtime-localizable, or suppressed by an adjacent audit ignore directive with a non-empty reason. In analysis reports, a finding suppressed that way carries disposition `intentionally-ignored` and keeps its reason visible; unresolved proven findings carry disposition `unresolved`; conservative preprocessor candidates carry disposition `needs-review` until accepted or ignored.
 _Avoid_: Unresolved audit finding, silent ignore, reasonless ignore
 
 **Project localization completeness**:
-The project state with complete runtime localization coverage and no unresolved Chinese source audit findings.
+The project state with complete runtime localization coverage and no blocking Chinese source audit findings: no disposition `unresolved` and no disposition `needs-review`. Intentionally ignored findings do not block completeness.
 _Avoid_: Runtime localization coverage alone, Chinese source audit alone
 
 ### Commands
@@ -92,7 +92,11 @@ A user-visible HTML text-node fragment considered independently (formatting-only
 An allowlisted HTML attribute presented to users or assistive technology (`title`, `placeholder`, `alt`, `aria-label`, `value`, and peers); static values decode directly, dynamic bindings contribute only statically determinable fragments. Vue attributes may be runtime-localizable; standalone HTML attributes are Chinese source audit findings until an adapter exists.
 
 **CSS generated content**:
-Chinese text in a CSS `content` declaration that may render as generated user-visible content; statically determinable string fragments qualify, and until an adapter exists these findings are Chinese source audit findings.
+Chinese text in a CSS `content` declaration that may render as generated user-visible content; statically determinable string fragments qualify, and until an adapter exists these findings are Chinese source audit findings with semantic kind `css-generated-content`.
+
+**CSS preprocessor candidate**:
+A conservative style-audit observation from SCSS, indented Sass, Less, or Stylus lightweight source scanning (no import, variable, function, mixin, or interpolation execution). It is reported as disposition `needs-review` with semantic kind `css-preprocessor-candidate` rather than claimed as proven generated content.
+_Avoid_: CSS generated content, Style IR collection entry
 
 **Source range**:
 A half-open range covering the collected fragment's original content, with 1-based line numbers and 0-based columns; the end position is exclusive. For HTML attributes and CSS strings, the range excludes the attribute syntax and string delimiters.
@@ -101,7 +105,7 @@ A half-open range covering the collected fragment's original content, with 1-bas
 The originating file, semantic kind, and source range associated with collected text.
 
 **Semantic kind**:
-The fixed category identifying where collected text came from: `script-string`, `template-literal`, `html-text`, `html-attribute`, `template-expression`, `css-generated-content`, `static-html-text`, or `static-html-attribute`. A static fragment inside a dynamic HTML attribute remains `html-attribute`.
+The fixed category identifying where collected text came from: `script-string`, `template-literal`, `html-text`, `html-attribute`, `template-expression`, `css-generated-content`, `css-preprocessor-candidate`, `static-html-text`, or `static-html-attribute`. A static fragment inside a dynamic HTML attribute remains `html-attribute`.
 
 **Collection result**:
 The runtime-localizable messages in the current source analysis; equal exact source text shares one automatic key unless an explicit key is required, and Chinese source audit findings stay outside the catalog.
@@ -192,7 +196,7 @@ A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the nex
 _Avoid_: Audit ignore directive, `i18n-ignore`
 
 **Audit ignore directive**:
-A syntax-valid, node-local comment `i18n-ignore: <non-empty reason>` on a Chinese source audit surface (today: standalone HTML) that accepts exactly the next associated audit finding. The finding remains in the analysis report as an accepted audit finding with disposition `intentionally-ignored` and the stated reason. A comment that starts with `i18n-ignore` but lacks a non-empty reason, associates to no finding, or associates ambiguously fails the analysis round.
+A syntax-valid, node-local comment `i18n-ignore: <non-empty reason>` on a Chinese source audit surface (standalone HTML, standard CSS, or supported style preprocessors) that accepts exactly the next associated audit finding. The finding remains in the analysis report as an accepted audit finding with disposition `intentionally-ignored` and the stated reason. A comment that starts with `i18n-ignore` but lacks a non-empty reason, associates to no finding, or associates ambiguously fails the analysis round.
 _Avoid_: Exclusion directive, `no-i18n-auto`, silent ignore, reasonless ignore, complete-static-copy baseline
 
 **Existing translation**:

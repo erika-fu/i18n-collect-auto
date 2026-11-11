@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by ADR-0007 for treating style findings as runtime catalog messages. Accepted for original-source parsing of author-written styles (not compiled CSS) when locating audit findings.
+Superseded by ADR-0007 for treating style findings as runtime catalog messages. Accepted for original-source parsing of author-written standard CSS when locating proven audit findings. For SCSS, indented Sass, Less, and Stylus, project analysis now uses lightweight source scanning (ADR-0007) rather than the full Style IR adapters described below; those adapters remain only for the legacy webpack collection path until contraction.
 
 ## Context
 
