@@ -202,6 +202,7 @@ Usage:
   i18n-collect <command> [options]
 
 Commands:
+  scan          Analyze project sources and write the source catalog plus analysis report.
   collect       Collect Chinese user-facing copy through the project's webpack integration.
   translate     Fill target-locale catalogs through a project translation provider.
   replace       Preview safe source replacements, or commit them with --write.
@@ -262,6 +263,33 @@ Exit codes are the exit code of the stage that finished the workflow:
   7  strict mode found a skipped candidate
 `
 
+const SCAN_HELP = `i18n-collect scan
+
+Analyze JavaScript, TypeScript, and Vue sources without webpack.
+Classify complete static copy as automatically runtime-localizable and existing static
+t/$t/this.$t calls as already localized, then write a deterministic source catalog and a
+machine-readable analysis report (including empty audit and explicit-required buckets for
+later expand work). This command does not rewrite application source and does not make
+network requests. Existing collect integrations remain available.
+
+Usage:
+  i18n-collect scan [options]
+
+Options:
+  --cwd <dir>               Project root. Defaults to the current directory.
+  --include <pattern>       Replace the configured include scope. Repeat to set several patterns.
+  --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
+  --context-filter <name>   Replace configured context filters. Repeat to select several.
+                            Names: logging, tests, analytics.
+  --json                    Print the scan report as JSON on stdout.
+  -h, --help                Show this help.
+
+Exit codes:
+  0  scan finished
+  1  configuration failure
+  2  collection failure, including a malformed directive or incompatible source catalog key
+`
+
 const BUILD_HELP = `i18n-collect build
 
 Run a two-phase Build replacement through the project's existing webpack integration.
@@ -299,6 +327,7 @@ Exit codes:
 `
 
 function helpFor(command) {
+  if (command === 'scan') return SCAN_HELP
   if (command === 'collect') return COLLECT_HELP
   if (command === 'translate') return TRANSLATE_HELP
   if (command === 'replace') return REPLACE_HELP
@@ -316,6 +345,7 @@ module.exports = {
   REPLACE_HELP,
   ROOT_HELP,
   RUN_HELP,
+  SCAN_HELP,
   TRANSLATE_HELP,
   VERIFY_HELP,
   helpFor

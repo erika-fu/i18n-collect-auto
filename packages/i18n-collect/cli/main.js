@@ -4,6 +4,7 @@ const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
 const { replace } = require('./replace')
 const { run } = require('./run')
+const { scan } = require('./scan')
 const { translate } = require('./translate')
 const { verify } = require('./verify')
 
@@ -20,7 +21,8 @@ async function main(argv) {
   }
   const command = args[0]
   if (
-    command !== 'collect'
+    command !== 'scan'
+    && command !== 'collect'
     && command !== 'translate'
     && command !== 'replace'
     && command !== 'run'
@@ -37,19 +39,21 @@ async function main(argv) {
     write(process.stdout, helpFor(command))
     return EXIT.ok
   }
-  const outcome = command === 'collect'
-    ? await collect(commandArgs)
-    : command === 'translate'
-      ? await translate(commandArgs)
-      : command === 'replace'
-        ? replace(commandArgs)
-        : command === 'check-policy'
-          ? checkPolicy(commandArgs)
-          : command === 'verify'
-            ? await verify(commandArgs)
-            : command === 'build'
-              ? await build(commandArgs)
-              : await run(commandArgs)
+  const outcome = command === 'scan'
+    ? scan(commandArgs)
+    : command === 'collect'
+      ? await collect(commandArgs)
+      : command === 'translate'
+        ? await translate(commandArgs)
+        : command === 'replace'
+          ? replace(commandArgs)
+          : command === 'check-policy'
+            ? checkPolicy(commandArgs)
+            : command === 'verify'
+              ? await verify(commandArgs)
+              : command === 'build'
+                ? await build(commandArgs)
+                : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   if (typeof outcome.waitUntilClosed === 'function') {
