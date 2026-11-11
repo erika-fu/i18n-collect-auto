@@ -109,6 +109,8 @@ test('build help describes the two-phase Build replacement command', () => {
   assert.match(result.stdout, /buildReplacement/)
   assert.match(result.stdout, /does not modify|not modified/i)
   assert.match(result.stdout, /fail-closed|unsafe collected positions/i)
+  assert.match(result.stdout, /--watch/)
+  assert.match(result.stdout, /serial collect-then-replace|coalesced/i)
 })
 
 test('build requires buildReplacement to be enabled', { timeout: 20000 }, () => {

@@ -165,7 +165,7 @@ function redirectEmit(config) {
   return emitDir
 }
 
-function runCompiler(config) {
+function runCompiler(config, hooks = {}) {
   const webpack = require('webpack')
   let compiler
   try {
@@ -173,9 +173,13 @@ function runCompiler(config) {
   } catch (error) {
     throw commandError('build', error && error.message ? error.message : String(error))
   }
+  if (typeof hooks.onCompiler === 'function') hooks.onCompiler(compiler)
   return new Promise(resolve => {
     compiler.run((error, stats) => {
-      compiler.close(() => resolve({ error, stats }))
+      compiler.close(() => {
+        if (typeof hooks.onCompilerClosed === 'function') hooks.onCompilerClosed(compiler)
+        resolve({ error, stats })
+      })
     })
   })
 }
@@ -275,7 +279,7 @@ function reportFrom(config, dictionaryFile, previousCatalog) {
   }
 }
 
-async function execute(parsed) {
+async function execute(parsed, hooks = {}) {
   const root = path.resolve(parsed.cwd || process.cwd())
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
     throw commandError('configuration', `project root is not a directory: ${root}`)
@@ -308,7 +312,7 @@ async function execute(parsed) {
     const pluginOptions = pluginOptionsFrom(webpackConfig)
     const previousCatalog = readCatalogMetadata(root, loadConfig({ root, pluginOptions }))
     emitDir = redirectEmit(webpackConfig)
-    const { error, stats } = await runCompiler(webpackConfig)
+    const { error, stats } = await runCompiler(webpackConfig, hooks)
     const failed = classifyBuild(error, stats)
     if (failed) throw failed
     if (stats && stats.hasErrors()) throw commandError('build', 'webpack reported a build failure')
@@ -324,7 +328,7 @@ async function execute(parsed) {
   }
 }
 
-async function collect(args) {
+async function collect(args, hooks = {}) {
   const json = args.includes('--json')
   let parsed
   try {
@@ -333,7 +337,7 @@ async function collect(args) {
     return failure(error, json)
   }
   try {
-    const report = await execute(parsed)
+    const report = await execute(parsed, hooks)
     const stdout = parsed.json ? jsonText(report) : humanReport(report)
     return outcome(EXIT.ok, stdout, '')
   } catch (error) {

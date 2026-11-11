@@ -284,6 +284,10 @@ Options:
   --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
   --context-filter <name>   Replace configured context filters. Repeat to select several.
                             Names: logging, tests, analytics.
+  --watch                   Keep a serial collect-then-replace loop. Each cycle commits the
+                            catalog before replacement compilation and only then publishes the
+                            formal bundle. Invalidations are coalesced; at most one coordinated
+                            cycle runs at a time.
   --json                    Print the build report as JSON on stdout.
   -h, --help                Show this help.
 

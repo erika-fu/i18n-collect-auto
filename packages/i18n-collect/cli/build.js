@@ -143,10 +143,11 @@ function classifyReplacementBuild(error, stats) {
   return null
 }
 
-async function runReplacementCompilation(root, parsed, config) {
+async function runReplacementCompilation(root, parsed, config, hooks = {}) {
   const previous = process.cwd()
   let restoreNetwork = null
   let staging = null
+  let compiler = null
   process.chdir(root)
   clearCollectionOverrides()
   try {
@@ -183,7 +184,16 @@ async function runReplacementCompilation(root, parsed, config) {
     staging = stageFormalBundle(webpackConfig, root)
     const pluginOptions = pluginOptionsFrom(webpackConfig)
     const resolved = loadConfig({ root, pluginOptions })
-    const { error, stats } = await runCompiler(webpackConfig)
+    const { error, stats } = await runCompiler(webpackConfig, {
+      onCompiler(next) {
+        compiler = next
+        if (typeof hooks.onCompiler === 'function') hooks.onCompiler(next)
+      },
+      onCompilerClosed(next) {
+        if (compiler === next) compiler = null
+        if (typeof hooks.onCompilerClosed === 'function') hooks.onCompilerClosed(next)
+      }
+    })
     const failed = classifyReplacementBuild(error, stats)
     if (failed) throw failed
     publishFormalBundle(staging)
@@ -218,11 +228,23 @@ function collectionReportFrom(stdout, json) {
   return null
 }
 
+function parseBuildArgs(args) {
+  const watch = args.includes('--watch')
+  const rest = []
+  for (const arg of args) {
+    if (arg === '--watch') continue
+    rest.push(arg)
+  }
+  const parsed = parseCollectArgs(rest)
+  parsed.watch = watch
+  return parsed
+}
+
 async function build(args) {
   const json = args.includes('--json')
   let parsed
   try {
-    parsed = parseCollectArgs(args)
+    parsed = parseBuildArgs(args)
   } catch (error) {
     return failure(error, json)
   }
@@ -238,7 +260,25 @@ async function build(args) {
     return failure(error, json)
   }
 
-  const phase1 = await collect(args)
+  const collectArgs = args.filter(arg => arg !== '--watch')
+
+  if (parsed.watch) {
+    const { createWatchBuildSession } = require('./build-watch')
+    const session = createWatchBuildSession({
+      root,
+      parsed,
+      collectArgs,
+      runReplacementCompilation,
+      requireBuildReplacement,
+      failure,
+      jsonText,
+      humanReport,
+      collectionReportFrom
+    })
+    return session.start()
+  }
+
+  const phase1 = await collect(collectArgs)
   if (phase1.code !== EXIT.ok) {
     if (json && phase1.stdout) {
       try {
@@ -293,4 +333,4 @@ async function build(args) {
   }
 }
 
-module.exports = { EXIT, build }
+module.exports = { EXIT, build, parseBuildArgs, runReplacementCompilation }

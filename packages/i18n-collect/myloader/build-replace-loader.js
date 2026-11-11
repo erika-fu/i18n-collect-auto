@@ -95,7 +95,9 @@ function loader(source, sourceMap, meta) {
       return
     }
     if (typeof this.addDependency === 'function') {
-      this.addDependency(path.join(root, catalogFiles(config).metadata))
+      const files = catalogFiles(config)
+      this.addDependency(path.join(root, files.metadata))
+      this.addDependency(path.join(root, files.messages))
       this.addDependency(path.resolve(root, build.runtimeModule))
     }
     callback(null, result.code, result.map || sourceMap, meta)

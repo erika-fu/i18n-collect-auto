@@ -52,6 +52,9 @@ async function main(argv) {
               : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
+  if (typeof outcome.waitUntilClosed === 'function') {
+    return outcome.waitUntilClosed()
+  }
   return outcome.code
 }
 
