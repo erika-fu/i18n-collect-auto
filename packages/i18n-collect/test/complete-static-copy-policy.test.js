@@ -73,6 +73,13 @@ test('reports formatting calls that transform Chinese copy', () => {
   assert.ok(violations.some(item => item.reason === 'formatting' && item.text === '你好 {name}'))
 })
 
+test('reports pluralization helper arguments as formatting', () => {
+  const source = 'const label = pluralize("一项", "多项", count)\n'
+  const violations = scanCompleteStaticCopyPolicy([{ path: 'src/plural.js', source }])
+  assert.ok(violations.some(item => item.reason === 'formatting' && item.text === '一项'))
+  assert.ok(violations.some(item => item.reason === 'formatting' && item.text === '多项'))
+})
+
 test('reports TypeScript and JSX interpolation shapes', () => {
   const ts = 'const count: number = 1\nconst summary = `还有${count}项`\n'
   const jsx = 'export function App() { const n = 1; return <p>{`你有${n}条`}</p> }\n'

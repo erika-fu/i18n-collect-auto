@@ -27,6 +27,44 @@ test('analyzeProject classifies complete static JavaScript copy as automatically
   assert.strictEqual(finding.capability, 'automatically-runtime-localizable')
 })
 
+test('analyzeProject classifies dynamic script interpolation as explicit-required without catalog keys', () => {
+  const analysis = analyzeProject({
+    files: [{ path: 'src/dynamic.js', source: 'const message = `你好${name}世界`\n' }]
+  })
+
+  assert.strictEqual(analysis.runtimeMessages.length, 0)
+  assert.strictEqual(analysis.localizedCallFindings.length, 0)
+  assert.strictEqual(analysis.auditFindings.length, 0)
+  assert.strictEqual(analysis.explicitRequiredFindings.length, 2)
+
+  const texts = analysis.explicitRequiredFindings.map(item => item.text).sort()
+  assert.deepStrictEqual(texts, ['世界', '你好'])
+  for (const finding of analysis.explicitRequiredFindings) {
+    assert.strictEqual(finding.capability, 'explicit-required')
+    assert.strictEqual(finding.sourceSurface, 'javascript')
+    assert.strictEqual(finding.semanticRole, 'template-literal')
+    assert.strictEqual(finding.reason, 'interpolation')
+    assert.strictEqual(finding.key, undefined)
+  }
+
+  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.deepStrictEqual(analysis.coverage, {
+    sourceDiscovery: { total: 2 },
+    runtimeLocalization: {
+      total: 0,
+      automaticallyRuntimeLocalizable: 0,
+      alreadyLocalized: 0
+    },
+    chineseSourceAudit: {
+      total: 0,
+      unresolved: 0,
+      needsReview: 0,
+      intentionallyIgnored: 0
+    },
+    explicitRequired: { total: 2 }
+  })
+})
+
 test('analyzeProject classifies complete static TypeScript copy as automatically runtime-localizable', () => {
   const analysis = analyzeProject({
     files: [{ path: 'src/app.ts', source: 'const message: string = "欢迎"\n' }]
@@ -46,7 +84,8 @@ test('analyzeProject classifies static t/$t/this.$t calls as already localized w
         'const b = $t("greeting.world")',
         'const c = this.$t("greeting.again")'
       ].join('\n')
-    }]
+    }],
+    externalKeys: ['greeting.hello', 'greeting.world', 'greeting.again']
   })
   assert.strictEqual(analysis.runtimeMessages.length, 0)
   assert.strictEqual(analysis.localizedCallFindings.length, 3)
@@ -65,7 +104,8 @@ test('analyzeProject reports coverage totals that distinguish discovery from run
     files: [{
       path: 'src/mixed.js',
       source: 'const message = "你好"\nconst label = t("nav.home")\n'
-    }]
+    }],
+    externalKeys: ['nav.home']
   })
   assert.deepStrictEqual(analysis.coverage, {
     sourceDiscovery: { total: 2 },
@@ -79,8 +119,205 @@ test('analyzeProject reports coverage totals that distinguish discovery from run
       unresolved: 0,
       needsReview: 0,
       intentionallyIgnored: 0
-    }
+    },
+    explicitRequired: { total: 0 }
   })
+})
+
+test('analyzeProject classifies structured Vue content as explicit-required', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-analysis-structured-'))
+  installVue3(root)
+  const absolutePath = path.join(root, 'src', 'Notice.vue')
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  const source = [
+    '<template>',
+    '  <p>请阅读我们的<a href="/terms">服务条款</a>与<a href="/privacy">隐私政策</a></p>',
+    '  <p>完整静态段落</p>',
+    '</template>',
+    '<script>export default { name: "Notice" }</script>',
+    ''
+  ].join('\n')
+  fs.writeFileSync(absolutePath, source)
+
+  const analysis = analyzeProject({
+    files: [{ path: 'src/Notice.vue', source, absolutePath }],
+    config: { vueVersion: 3 }
+  })
+
+  assert.ok(analysis.runtimeMessages.some(item => item.text === '完整静态段落'))
+  assert.ok(!analysis.runtimeMessages.some(item => item.text === '请阅读我们的'))
+  const structured = analysis.explicitRequiredFindings.filter(item => item.reason === 'structured-fragmentation')
+  const texts = structured.map(item => item.text)
+  assert.ok(texts.includes('请阅读我们的'))
+  assert.ok(texts.includes('服务条款'))
+  assert.ok(texts.includes('隐私政策'))
+  assert.ok(structured.every(item => item.capability === 'explicit-required'))
+  assert.ok(structured.every(item => item.key === undefined))
+  const catalog = buildSourceCatalog(analysis)
+  assert.ok(Object.values(catalog).includes('完整静态段落'))
+  assert.ok(!Object.values(catalog).includes('请阅读我们的'))
+  assert.ok(!Object.values(catalog).includes('服务条款'))
+})
+
+test('analyzeProject classifies formatting and concatenation as explicit-required', () => {
+  const analysis = analyzeProject({
+    files: [{
+      path: 'src/build.js',
+      source: [
+        'const split = "你" + name + "好"',
+        'const label = "标题".repeat(2)',
+        'const plain = "完整静态"'
+      ].join('\n')
+    }]
+  })
+  assert.ok(analysis.runtimeMessages.some(item => item.text === '完整静态'))
+  const reasons = new Map(analysis.explicitRequiredFindings.map(item => [item.text, item.reason]))
+  assert.strictEqual(reasons.get('你'), 'concatenation')
+  assert.strictEqual(reasons.get('好'), 'concatenation')
+  assert.strictEqual(reasons.get('标题'), 'formatting')
+  assert.ok(!analysis.runtimeMessages.some(item => ['你', '好', '标题'].includes(item.text)))
+})
+
+test('analyzeProject keeps the explicit message manifest as the canonical source and placeholder contract', () => {
+  const analysis = analyzeProject({
+    files: [{
+      path: 'src/items.js',
+      source: "const text = t('items.deleted', { count })\n"
+    }],
+    explicitMessages: [
+      { key: 'items.deleted', source: '已删除 {count} 项' }
+    ]
+  })
+  assert.strictEqual(analysis.explicitRequiredFindings.length, 0)
+  assert.strictEqual(analysis.localizedCallFindings.length, 1)
+  assert.strictEqual(analysis.localizedCallFindings[0].key, 'items.deleted')
+  assert.strictEqual(analysis.localizedCallFindings[0].source, '已删除 {count} 项')
+  assert.deepStrictEqual(buildSourceCatalog(analysis), {
+    'items.deleted': '已删除 {count} 项'
+  })
+})
+
+test('analyzeProject shares one explicit key across compatible calls and rejects placeholder mismatches', () => {
+  const shared = analyzeProject({
+    files: [{
+      path: 'src/shared.js',
+      source: [
+        "const a = t('terms.notice', { terms, privacy })",
+        "const b = t('terms.notice', { privacy, terms })"
+      ].join('\n')
+    }],
+    explicitMessages: [
+      { key: 'terms.notice', source: '请阅读我们的{terms}与{privacy}' }
+    ]
+  })
+  assert.strictEqual(shared.localizedCallFindings.length, 2)
+  assert.deepStrictEqual(buildSourceCatalog(shared), {
+    'terms.notice': '请阅读我们的{terms}与{privacy}'
+  })
+
+  assert.throws(
+    () => analyzeProject({
+      files: [{
+        path: 'src/bad.js',
+        source: "const a = t('terms.notice', { link, policy })\n"
+      }],
+      explicitMessages: [
+        { key: 'terms.notice', source: '请阅读我们的{terms}与{privacy}' }
+      ]
+    }),
+    /placeholder mismatch|placeholder/
+  )
+})
+
+test('analyzeProject fails on unknown project keys and unused explicit declarations', () => {
+  assert.throws(
+    () => analyzeProject({
+      files: [{ path: 'src/unknown.js', source: "const a = t('missing.key')\n" }]
+    }),
+    /unknown project key|missing\.key/
+  )
+  assert.throws(
+    () => analyzeProject({
+      files: [{ path: 'src/plain.js', source: 'const a = "你好"\n' }],
+      explicitMessages: [{ key: 'unused.key', source: '未使用文案' }]
+    }),
+    /unused|unused\.key/
+  )
+})
+
+test('analyzeProject fails on conflicting source text and classifies pluralization helpers as explicit-required', () => {
+  assert.throws(
+    () => analyzeProject({
+      files: [{
+        path: 'src/conflict-source.js',
+        source: [
+          'const a = /* i18n-key: home.title */ "你好"',
+          'const b = /* i18n-key: home.title */ "欢迎"'
+        ].join('\n')
+      }]
+    }),
+    /conflicting source text|home\.title/
+  )
+  assert.throws(
+    () => analyzeProject({
+      files: [{
+        path: 'src/mismatch.js',
+        source: "const a = /* i18n-key: items.deleted */ \"你好\"\nconst b = t('items.deleted', { count })\n"
+      }],
+      explicitMessages: [{ key: 'items.deleted', source: '已删除 {count} 项' }]
+    }),
+    /source mismatch|items\.deleted/
+  )
+
+  const pluralized = analyzeProject({
+    files: [{
+      path: 'src/plural.js',
+      source: 'const label = pluralize("一项", "多项", count)\nconst plain = "完整静态"\n'
+    }]
+  })
+  assert.ok(pluralized.explicitRequiredFindings.some(item => (
+    item.reason === 'formatting' && (item.text === '一项' || item.text === '多项')
+  )))
+  assert.ok(pluralized.runtimeMessages.some(item => item.text === '完整静态'))
+  assert.ok(!pluralized.runtimeMessages.some(item => item.text === '一项' || item.text === '多项'))
+})
+
+test('analyzeProject allows external keys without creating project catalog entries', () => {
+  const analysis = analyzeProject({
+    files: [{
+      path: 'src/vendor.js',
+      source: "const a = t('vendor.external')\nconst b = \"你好\"\n"
+    }],
+    externalKeys: ['vendor.external']
+  })
+  assert.strictEqual(analysis.localizedCallFindings.length, 1)
+  assert.strictEqual(analysis.localizedCallFindings[0].key, 'vendor.external')
+  const catalog = buildSourceCatalog(analysis)
+  assert.ok(!Object.prototype.hasOwnProperty.call(catalog, 'vendor.external'))
+  assert.ok(Object.values(catalog).includes('你好'))
+})
+
+test('analyzeProject accepts a key directive on complete static copy and fails when it conflicts with a localized call', () => {
+  const selected = analyzeProject({
+    files: [{
+      path: 'src/keyed.js',
+      source: 'const message = /* i18n-key: home.title */ "你好"\n'
+    }]
+  })
+  assert.strictEqual(selected.runtimeMessages.length, 1)
+  assert.strictEqual(selected.runtimeMessages[0].key, 'home.title')
+  assert.strictEqual(selected.runtimeMessages[0].text, '你好')
+  assert.deepStrictEqual(buildSourceCatalog(selected), { 'home.title': '你好' })
+
+  assert.throws(
+    () => analyzeProject({
+      files: [{
+        path: 'src/conflict.js',
+        source: "const message = /* i18n-key: home.title */ t('home.other')\n"
+      }]
+    }),
+    /conflicts with localized-call|i18n-key/
+  )
 })
 
 test('analyzeProject classifies Vue template text and supported attributes as automatically runtime-localizable', () => {
@@ -115,7 +352,8 @@ test('analyzeProject classifies Vue template text and supported attributes as au
 
 test('buildSourceCatalog assigns deterministic text-hash keys for automatic messages', () => {
   const analysis = analyzeProject({
-    files: [{ path: 'src/app.js', source: 'const a = "你好"\nconst b = "你好"\nconst c = t("nav.home")\n' }]
+    files: [{ path: 'src/app.js', source: 'const a = "你好"\nconst b = "你好"\nconst c = t("nav.home")\n' }],
+    externalKeys: ['nav.home']
   })
   assert.deepStrictEqual(buildSourceCatalog(analysis), { [keyFor('你好')]: '你好' })
   const report = analysisReport(analysis)
@@ -171,7 +409,8 @@ test('analyzeProject classifies standalone HTML text and allowlisted attributes 
       unresolved: 2,
       needsReview: 0,
       intentionallyIgnored: 0
-    }
+    },
+    explicitRequired: { total: 0 }
   })
   assert.deepStrictEqual(buildSourceCatalog(analysis), {})
 })

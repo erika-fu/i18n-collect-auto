@@ -45,6 +45,10 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
   writeScanProject(root, {
     source: 'const message = "你好"\nconst label = t("nav.home")\n'
   })
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"], externalKeys: ["nav.home"] }\n'
+  )
 
   const result = run(['scan', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
@@ -65,7 +69,8 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
       unresolved: 0,
       needsReview: 0,
       intentionallyIgnored: 0
-    }
+    },
+    explicitRequired: { total: 0 }
   })
 
   const catalogPath = path.join(root, 'lang/catalog/source-catalog.json')
@@ -84,6 +89,51 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
   assert.strictEqual(analysis.localizedCallFindings.length, 1)
   assert.strictEqual(analysis.localizedCallFindings[0].key, 'nav.home')
   assert.deepStrictEqual(analysis.coverage, report.coverage)
+})
+
+test('scan rejects explicit-required fragment automation and keeps previous outputs unpublished', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-explicit-req-'))
+  writeScanProject(root, {
+    source: 'const message = `你好${name}世界`\n'
+  })
+  const result = run(['scan', '--json'], root)
+  assert.notStrictEqual(result.status, 0, result.stdout)
+  assert.match(result.stderr, /explicit-required|interpolation/)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, false)
+  assert.match(report.message, /explicit-required|interpolation/)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/analysis-report.json')))
+})
+
+test('scan validates explicit messages, unknown keys, and external keys', () => {
+  const okRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-explicit-ok-'))
+  writeScanProject(okRoot, {
+    source: "const text = t('items.deleted', { count })\nconst vendor = t('vendor.pack')\n",
+    files: {
+      'lang/catalog/explicit-messages.json': `${JSON.stringify({
+        version: 1,
+        messages: [{ key: 'items.deleted', source: '已删除 {count} 项' }]
+      }, null, 2)}\n`
+    }
+  })
+  fs.writeFileSync(
+    path.join(okRoot, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"], externalKeys: ["vendor.pack"] }\n'
+  )
+  const ok = run(['scan', '--json'], okRoot)
+  assert.strictEqual(ok.status, 0, ok.stderr)
+  const catalog = JSON.parse(fs.readFileSync(path.join(okRoot, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.deepStrictEqual(catalog, { 'items.deleted': '已删除 {count} 项' })
+  assert.ok(!Object.prototype.hasOwnProperty.call(catalog, 'vendor.pack'))
+
+  const unknownRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-unknown-'))
+  writeScanProject(unknownRoot, {
+    source: "const text = t('missing.key')\n"
+  })
+  const unknown = run(['scan', '--json'], unknownRoot)
+  assert.notStrictEqual(unknown.status, 0, unknown.stdout)
+  assert.match(unknown.stderr, /unknown project key|missing\.key/)
 })
 
 test('repeated scans over unchanged source produce byte-stable outputs', () => {

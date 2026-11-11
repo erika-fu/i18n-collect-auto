@@ -31,7 +31,7 @@ const FORMAT_METHODS = new Set([
   'repeat'
 ])
 
-const FORMAT_CALLEES = new Set(['format', 'sprintf', 'printf'])
+const FORMAT_CALLEES = new Set(['format', 'sprintf', 'printf', 'plural', 'pluralize', 'ngettext'])
 
 const SCRIPT_EXTENSIONS = new Set([
   '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'
