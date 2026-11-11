@@ -8,6 +8,11 @@
       <li class="badge badge--less">Less</li>
       <li class="badge badge--stylus">Stylus</li>
     </ul>
+    <p class="note">
+      Chinese CSS generated-content samples live in
+      <code>fixtures/StyleCollection.vue</code>
+      because Build replacement does not rewrite CSS.
+    </p>
   </section>
 </template>
 
@@ -29,12 +34,12 @@ $badge-color: #2c3e50;
   color: $badge-color;
 
   &::after {
-    content: "（SCSS 新）";
+    content: "(SCSS)";
     margin-left: 4px;
   }
 
-  // 注释不收集
-  --label: "变量不收集";
+  // comment ignored
+  --label: "var ignored";
 }
 </style>
 
@@ -45,11 +50,11 @@ $badge-color: #2c3e50
   color: $badge-color
 
   &::after
-    content: "（Sass 新）"
+    content: "(Sass)"
     margin-left: 4px
 
-  // 注释不收集
-  --label: "变量不收集"
+  // comment ignored
+  --label: "var ignored"
 </style>
 
 <style lang="less">
@@ -59,12 +64,12 @@ $badge-color: #2c3e50
   color: @badge-color;
 
   &::after {
-    content: "（Less 新）";
+    content: "(Less)";
     margin-left: 4px;
   }
 
-  // 注释不收集
-  --label: "变量不收集";
+  // comment ignored
+  --label: "var ignored";
 }
 </style>
 
@@ -75,9 +80,17 @@ badge-color = #2c3e50
   color badge-color
 
   &::after
-    content "（Stylus 新）"
+    content "(Stylus)"
     margin-left 4px
 
-  // 注释不收集
-  --label "变量不收集"
+  // comment ignored
+  --label "var ignored"
+</style>
+
+<style scoped>
+.note {
+  margin-top: 16px;
+  color: #52605a;
+  font-size: 12px;
+}
 </style>

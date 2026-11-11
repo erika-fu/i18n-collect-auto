@@ -8,11 +8,11 @@
 本仓库包含以下部分：
 
 - `packages/i18n-collect`：实际的 Webpack Loader / Plugin 包；
-- `apps/demo`：基于 Vue 2、Vue CLI、vue-loader 15 与 Vue I18n 8 的完整接入示例；
-- `apps/vue3-demo`：基于 Vue 3、Webpack 5、vue-loader 17 与 Vue I18n 9 的完整接入示例；
-- `apps/react-demo`：基于 React 与 Webpack 5 的完整接入示例。
+- `apps/demo`：Vue 2 / Vue CLI Build replacement 示例（vue-loader 15、Vue I18n 8）；
+- `apps/vue3-demo`：Vue 3 / Webpack 5 Build replacement 示例（vue-loader 17、Vue I18n 9）；
+- `apps/react-demo`：React 收集、显式本地化与 policy 示例。React JSX **不在**第一版 Build replacement 支持范围内。
 
-> 收集阶段负责发现和汇总待国际化文案，并且不改写业务源码。`translate` 通过项目自己的 translation provider 填写翻译目录，默认保留已有译文。`replace` 默认只做替换预览，只有显式 `--write` 才会把受支持的位置改成运行时本地化调用。本工具不内置第三方翻译 SDK，也不负责运行时语言切换。
+> 收集阶段负责发现和汇总待国际化文案，并且不改写业务源码。`translate` 通过项目自己的 translation provider 填写翻译目录，默认保留已有译文。`replace` 默认只做替换预览，只有显式 `--write` 才会把受支持的位置改成运行时本地化调用。`build` 做两阶段 Build replacement：磁盘源码保留中文，正式 bundle 使用 localization key。本工具不内置第三方翻译 SDK，也不负责安装 runtime、加载 locale、语言切换、fallback 或翻译完整性。
 
 ---
 
@@ -26,6 +26,7 @@
 - [迁移产物](#迁移产物)
 - [翻译命令](#翻译命令)
 - [源码替换](#源码替换)
+- [构建替换](#构建替换)
 - [组合命令](#组合命令)
 - [为什么采用这种实现](#为什么采用这种实现)
 - [输出产物与业务含义](#输出产物与业务含义)
@@ -404,6 +405,66 @@ React JSX、独立 HTML 和 CSS 生成内容不在替换范围内。对象键、
 - `packages/i18n-collect/fixtures/replacement/vue3`：Vue 3 模板文本和 `<script setup>` 绑定，并且已经有 `createI18n` 和导出的 `t`。
 - `packages/i18n-collect/fixtures/replacement/js`：通用 JavaScript。它同时包含排除指令、`i18n-key` 指令、否决 `src/legacy/**/*.js` 的 exclude glob，以及一个本地翻译提供方。该提供方没有 `network` 标记，因此测试不需要 API key，也不会发出站请求。
 
+源码替换是**可选的永久迁移**，不是启用 Build replacement 的前置条件。项目可以长期保留中文源码并用 `i18n-collect build`，也可以对部分或全部位置执行 `replace --write`，或两种方式混用。
+
+---
+
+## 构建替换
+
+`i18n-collect build` 通过项目现有的 Webpack 集成跑两阶段 Build replacement：
+
+1. **阶段 1 — 收集**：跑收集编译并发布稳定 catalog（以及哈希词典 / source map）。
+2. **阶段 2 — 替换编译**：读取该 catalog，用共享 Replacement Planner 在内存中改写匹配的 JS/TS/Vue SFC，成功后才发布正式 bundle。
+
+磁盘业务源码不被修改，也不写 `replacements.json`。已有显式本地化调用保持原样。新收集到的 occurrence 必须先在阶段 1 拿到稳定 localization key，阶段 2 才能消费——因此首次新增中文时，下一份正式 bundle 使用的是**同一周期**刚提交的 catalog；watch 也会串行化 collect-then-replace。
+
+```bash
+npx i18n-collect build
+npx i18n-collect build --watch
+npx i18n-collect build --json
+```
+
+需要在 `i18n-collect.config.js` 中启用：
+
+```js
+buildReplacement: {
+  enabled: true,
+  adapter: 'vue2', // 或 'vue3' / 'js'
+  runtimeModule: 'src/i18n-runtime.js',
+  runtimeExport: 't'
+}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `enabled` | 必须为 `true` 才能运行 `i18n-collect build` |
+| `adapter` | `js`、`vue2` 或 `vue3`，调用形状规则与源码替换相同 |
+| `runtimeModule` | 构建可能注入 helper 时导入的项目相对模块 |
+| `runtimeExport` | 该模块上的导出名（通常是 `t`） |
+
+### Runtime 模块契约
+
+Build replacement **不负责**：安装 runtime、加载 locale、语言切换、fallback、翻译完整性检查。项目需要自己提供兼容的 vue-i18n / `t` 集成、可加载的 locale catalog，以及语言切换 UI。Vue 2/3 demo 展示了如何与现有 catalog 加载组合：磁盘保留中文，正式 bundle 走 `$t` / `this.$t` / `t`，页面切换 `locale`。
+
+### 严格失败与诊断
+
+与源码替换默认的 skipped 模式不同，Build replacement 是 fail-closed：不受支持、orphaned、歧义、坐标不匹配、重叠或其他不安全位置都会带结构化诊断失败（路径、行列、semantic kind、localization key、源文案、原因）。JSON 报告含 `stage` 与 `occurrences`。收集失败保留上一版 catalog 与正式 bundle；替换失败保留上一版正式 bundle，不留下 staging 残留。
+
+React JSX、独立 HTML、CSS generated content 在第一版 Build replacement 范围外。启用 Build replacement 后若 catalog 仍含这些位置会直接失败；请把这类样例放在未进入 webpack entry 的 fixtures，或先迁移再启用。
+
+### Watch 与 CI
+
+`i18n-collect build --watch` 串行执行 collect → catalog 提交 → replacement → 发布正式 bundle。连续变更会合并；任一时刻最多一个协调周期。CI 直接跑 `i18n-collect build`（或 demo 的 `npm run build`），不要要求开发者手工先跑 collect。可与 `verify` / `check-policy` 组合。
+
+### 常见 Loader 顺序问题
+
+- 收集 loader 要排在后续脚本变换（`thread-loader`、Babel）之前，使 pitch 读到原始源码。
+- Vue 的 `type=template` / `type=script` / `type=style` 查询都要挂上收集 loader（见 demo）。
+- Build replacement 会在脚本链前插入替换 loader，并对 `.vue` 使用 `enforce: 'pre'`；自定义 webpack 时不要去掉。
+- HTMLWebpackPlugin 模板仍需文档中的 `force=true` 显式请求链。
+
+参考实现：`apps/demo`（Vue 2）、`apps/vue3-demo`（Vue 3）。源码替换示例仍在 `packages/i18n-collect/fixtures/replacement`。React 限制见 `apps/react-demo/README.md`。
+
 ---
 
 ## 组合命令
@@ -677,7 +738,7 @@ export default new VueI18n({
 
 每个区域先放入哈希词典，再放入该区域的键目录，因此目录里的本地化键优先。替换后的调用，例如 `$t('demo.visit.banner')`，从键目录取值。参数仍是文案 MD5 的旧调用，只在目录没有这个键时回退到 `lang/zh_hash.json`。空字符串是一条译文，不会继续回退。
 
-迁移页把区域切到 `en`，并演示稳定键生命周期。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个显式键来自同一句源文案 `欢迎`。`demo.shared.title` 同时保留 source-text 与 localized-call 出现。`demo.items.deleted` 在 `lang/catalog/explicit-messages.json` 声明为 `已删除 {count} 项`，经 `$t('demo.items.deleted', { count })` 解析为 “Deleted 3 items”。`demo.terms.notice` 是结构化显式消息 `请阅读我们的{terms}与{privacy}`，页面用 vue-i18n 组件插值渲染，译者可重排 `{terms}` 与 `{privacy}` 槽位，得到 “Please read our Terms of Service and Privacy Policy”。模板字符串页保留可自动收集的完整静态文案（如 `纯静态插值`），动态未读消息则经 `$t('demo.unread.count', { count })` 走显式清单；其余插值/拼接样例仍列在 `complete-static-copy-baseline.json` 中等待迁移。`apps/demo/src/lifecycle.js` 里两处 `请稍候` 各自拿到独立 automatic key，并都解析为 “Please wait”。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。多语言页位于 `src/pages/multilingual`，由 `runtime-multilingual-boundaries.json` 声明，只通过 `$t('demo.multilingual.title')` 等显式调用渲染，并在运行时切到英文。React demo 在 `src/multilingual` 之外保留中文优先自动收集，边界内面板则经薄封装 `t()` 解析 `react.multilingual.*`。`apps/demo/fixtures/keyed-migration` 在演示 Webpack 入口外镜像迁移生命周期。`packages/i18n-collect/test/demo-runtime-migration.test.js` 与 `demo-runtime-multilingual.test.js` 覆盖目录解析与边界校验；除常规 demo 构建命令外，不会改写已提交的 demo `lang` 产物。
+迁移页把区域切到 `en`，并演示稳定键生命周期。`demo.visit.banner` 显示 “Welcome aboard”，`demo.visit.farewell` 显示 “Welcome back”；这两个显式键来自同一句源文案 `欢迎`。`demo.shared.title` 同时保留 source-text 与 localized-call 出现。`demo.items.deleted` 在 `lang/catalog/explicit-messages.json` 声明为 `已删除 {count} 项`，经 `$t('demo.items.deleted', { count })` 解析为 “Deleted 3 items”。`demo.terms.notice` 是结构化显式消息 `请阅读我们的{terms}与{privacy}`，页面用 vue-i18n 组件插值渲染，译者可重排 `{terms}` 与 `{privacy}` 槽位，得到 “Please read our Terms of Service and Privacy Policy”。模板字符串页保留可自动收集的完整静态文案（如 `纯静态插值`），动态未读消息则经 `$t('demo.unread.count', { count })` 走显式清单；其余插值/拼接样例仍列在 `complete-static-copy-baseline.json` 中等待迁移。构建替换页保留磁盘中文（`demo.build.title` / `demo.build.body`），并通过现有 Vue I18n catalog 切换语言。迁移页里两处 `请稍候` 使用 `demo.wait.a` / `demo.wait.b`，并都解析为 “Please wait”。旧调用 `$t('47781b8a72bcbb7ecb1f955399a7e718')` 仍显示 `欢迎`。CSS 生成内容与独立 HTML 中文样例放在 demo `fixtures/` 下，因为 Build replacement 不改写这些位置。多语言页位于 `src/pages/multilingual`，由 `runtime-multilingual-boundaries.json` 声明，只通过 `$t('demo.multilingual.title')` 等显式调用渲染，并在运行时切到英文。React demo 在 `src/multilingual` 之外保留中文优先自动收集，边界内面板则经薄封装 `t()` 解析 `react.multilingual.*`；JSX 第一版不支持 Build replacement，见 `apps/react-demo/README.md`。`apps/demo/fixtures/keyed-migration` 在演示 Webpack 入口外镜像迁移生命周期。`packages/i18n-collect/test/demo-runtime-migration.test.js` 与 `demo-runtime-multilingual.test.js` 覆盖目录解析与边界校验；除常规 demo 构建命令外，不会改写已提交的 demo `lang` 产物。
 
 只有当每个本地化调用都传入本地化键、不再有调用传入 MD5，并且运行时会选中的每个区域的键目录都已经包含这些键时，才去掉哈希词典回退。在此之前，查找先读当前区域的键目录，仅当目录没有该键时才读 `lang/zh_hash.json`。去掉回退之后，收集仍会写出哈希词典。回退是运行时兼容层，不是收集产物。
 
@@ -720,9 +781,12 @@ module.exports = {
   targetLocales: [],
   translationFailure: 'partial',
   pruneOrphaned: false,
-  externalKeys: []
+  externalKeys: [],
+  buildReplacement: null
 }
 ```
+
+启用 Build replacement 时需设置 `adapter`、`runtimeModule`、`runtimeExport`，详见[构建替换](#构建替换)。`null` 或 `enabled: false` 时不能运行 `i18n-collect build`，收集与源码替换仍可用。
 
 该文件会被 Loader 登记为 Webpack dependency（不存在时登记为 missing dependency），因此在 watch 模式下新增或修改配置会触发正确失效。
 

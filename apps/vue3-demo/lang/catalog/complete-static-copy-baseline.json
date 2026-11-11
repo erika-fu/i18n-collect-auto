@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "violations": [
+    {
+      "reason": "concatenation",
+      "path": "src/App.vue",
+      "kind": "template-expression",
+      "start": {
+        "line": 13,
+        "column": 29
+      },
+      "end": {
+        "line": 13,
+        "column": 33
+      },
+      "text": "输入"
+    },
+    {
+      "reason": "concatenation",
+      "path": "src/App.vue",
+      "kind": "template-expression",
+      "start": {
+        "line": 13,
+        "column": 48
+      },
+      "end": {
+        "line": 13,
+        "column": 52
+      },
+      "text": "名称"
+    },
+    {
+      "reason": "interpolation",
+      "path": "src/App.vue",
+      "kind": "template-literal",
+      "start": {
+        "line": 15,
+        "column": 13
+      },
+      "end": {
+        "line": 15,
+        "column": 15
+      },
+      "text": "欢迎"
+    },
+    {
+      "reason": "interpolation",
+      "path": "src/App.vue",
+      "kind": "template-literal",
+      "start": {
+        "line": 15,
+        "column": 22
+      },
+      "end": {
+        "line": 15,
+        "column": 24
+      },
+      "text": "回来"
+    }
+  ]
+}

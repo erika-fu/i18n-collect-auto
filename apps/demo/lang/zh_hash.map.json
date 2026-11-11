@@ -1,7 +1,7 @@
 {
   "version": 1,
   "parserVersion": "babel-7",
-  "configHash": "0b45581a318d9c09078e6de75d2a4cc5",
+  "configHash": "1ad780351682eba611d6c42f74dedb56",
   "entries": [
     {
       "key": "09a7f8275557fb48e742487a54791b75",
@@ -11,42 +11,24 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 24,
-            "column": 12
+            "line": 22,
+            "column": 45
           },
           "end": {
-            "line": 24,
-            "column": 21
+            "line": 22,
+            "column": 54
           }
         },
         {
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 33,
-            "column": 20
+            "line": 31,
+            "column": 55
           },
           "end": {
-            "line": 33,
-            "column": 29
-          }
-        }
-      ]
-    },
-    {
-      "key": "1a2c609f4f9f408c8ed3c613c5834e5c",
-      "value": "独立样式",
-      "locations": [
-        {
-          "path": "src/base.css",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 2,
-            "column": 12
-          },
-          "end": {
-            "line": 2,
-            "column": 16
+            "line": 31,
+            "column": 64
           }
         }
       ]
@@ -74,15 +56,15 @@
       "value": "共享标题",
       "locations": [
         {
-          "path": "src/lifecycle.js",
+          "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 5,
-            "column": 61
+            "line": 36,
+            "column": 53
           },
           "end": {
-            "line": 5,
-            "column": 67
+            "line": 36,
+            "column": 59
           }
         }
       ]
@@ -95,11 +77,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 41,
+            "line": 43,
             "column": 31
           },
           "end": {
-            "line": 41,
+            "line": 43,
             "column": 38
           }
         },
@@ -107,11 +89,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 20,
+            "line": 18,
             "column": 13
           },
           "end": {
-            "line": 20,
+            "line": 18,
             "column": 20
           }
         }
@@ -122,15 +104,15 @@
       "value": "来自独立脚本的公共词条",
       "locations": [
         {
-          "path": "src/copy.js",
+          "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 1,
-            "column": 26
+            "line": 20,
+            "column": 18
           },
           "end": {
-            "line": 1,
-            "column": 39
+            "line": 20,
+            "column": 31
           }
         }
       ]
@@ -154,51 +136,9 @@
       ]
     },
     {
-      "key": "45f8558a01888df9993a2e211b97df45",
-      "value": "页面文案",
-      "locations": [
-        {
-          "path": "public/index.html",
-          "kind": "static-html-text",
-          "start": {
-            "line": 14,
-            "column": 20
-          },
-          "end": {
-            "line": 14,
-            "column": 24
-          }
-        }
-      ]
-    },
-    {
       "key": "47781b8a72bcbb7ecb1f955399a7e718",
       "value": "欢迎",
       "locations": [
-        {
-          "path": "src/lifecycle.js",
-          "kind": "script-string",
-          "start": {
-            "line": 1,
-            "column": 62
-          },
-          "end": {
-            "line": 1,
-            "column": 66
-          }
-        },
-        {
-          "path": "src/lifecycle.js",
-          "kind": "script-string",
-          "start": {
-            "line": 2,
-            "column": 66
-          },
-          "end": {
-            "line": 2,
-            "column": 70
-          }
-        },
         {
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
@@ -209,6 +149,30 @@
           "end": {
             "line": 4,
             "column": 49
+          }
+        },
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 34,
+            "column": 54
+          },
+          "end": {
+            "line": 34,
+            "column": 58
+          }
+        },
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 35,
+            "column": 58
+          },
+          "end": {
+            "line": 35,
+            "column": 62
           }
         }
       ]
@@ -268,24 +232,6 @@
       ]
     },
     {
-      "key": "54eacce0dcfb56755193d990468a3c63",
-      "value": "（Sass 新）",
-      "locations": [
-        {
-          "path": "src/pages/StylePage.vue",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 26,
-            "column": 14
-          },
-          "end": {
-            "line": 26,
-            "column": 22
-          }
-        }
-      ]
-    },
-    {
       "key": "60d0458ac6ebef0fff1331af196b3c82",
       "value": "姓名",
       "locations": [
@@ -294,11 +240,11 @@
           "kind": "html-text",
           "start": {
             "line": 6,
-            "column": 6
+            "column": 12
           },
           "end": {
             "line": 6,
-            "column": 8
+            "column": 14
           }
         }
       ]
@@ -329,11 +275,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 44,
+            "line": 46,
             "column": 30
           },
           "end": {
-            "line": 44,
+            "line": 46,
             "column": 36
           }
         },
@@ -341,12 +287,30 @@
           "path": "src/pages/StylePage.vue",
           "kind": "script-string",
           "start": {
-            "line": 13,
+            "line": 24,
             "column": 13
           },
           "end": {
-            "line": 13,
+            "line": 24,
             "column": 19
+          }
+        }
+      ]
+    },
+    {
+      "key": "687a0c8b97215ced971388696b99fb58",
+      "value": "构建替换",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 47,
+            "column": 30
+          },
+          "end": {
+            "line": 47,
+            "column": 36
           }
         }
       ]
@@ -377,11 +341,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 43,
+            "line": 45,
             "column": 31
           },
           "end": {
-            "line": 43,
+            "line": 45,
             "column": 38
           }
         },
@@ -407,30 +371,12 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 21,
+            "line": 19,
             "column": 15
           },
           "end": {
-            "line": 21,
+            "line": 19,
             "column": 29
-          }
-        }
-      ]
-    },
-    {
-      "key": "75d86ae2ea3caf3ec8c8813b4ef77a4d",
-      "value": "页面提示",
-      "locations": [
-        {
-          "path": "public/index.html",
-          "kind": "static-html-attribute",
-          "start": {
-            "line": 14,
-            "column": 14
-          },
-          "end": {
-            "line": 14,
-            "column": 18
           }
         }
       ]
@@ -458,27 +404,27 @@
       "value": "请稍候",
       "locations": [
         {
-          "path": "src/lifecycle.js",
+          "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 3,
-            "column": 21
+            "line": 37,
+            "column": 41
           },
           "end": {
-            "line": 3,
-            "column": 26
+            "line": 37,
+            "column": 46
           }
         },
         {
-          "path": "src/lifecycle.js",
+          "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 4,
-            "column": 21
+            "line": 38,
+            "column": 41
           },
           "end": {
-            "line": 4,
-            "column": 26
+            "line": 38,
+            "column": 46
           }
         }
       ]
@@ -509,11 +455,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 40,
+            "line": 42,
             "column": 29
           },
           "end": {
-            "line": 40,
+            "line": 42,
             "column": 33
           }
         },
@@ -536,15 +482,33 @@
       "value": "公共模板",
       "locations": [
         {
-          "path": "src/copy.js",
+          "path": "src/pages/ScriptPage.vue",
           "kind": "template-literal",
           "start": {
-            "line": 2,
-            "column": 28
+            "line": 21,
+            "column": 20
           },
           "end": {
-            "line": 2,
-            "column": 32
+            "line": 21,
+            "column": 24
+          }
+        }
+      ]
+    },
+    {
+      "key": "90d33d327a30d134a5e356b9acbba34d",
+      "value": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
+      "locations": [
+        {
+          "path": "src/pages/BuildPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 6,
+            "column": 30
+          },
+          "end": {
+            "line": 6,
+            "column": 72
           }
         }
       ]
@@ -581,6 +545,24 @@
           "end": {
             "line": 9,
             "column": 19
+          }
+        }
+      ]
+    },
+    {
+      "key": "ab5dc6ca3e8ef0d0100555f37ed5f00d",
+      "value": "构建替换演示",
+      "locations": [
+        {
+          "path": "src/pages/BuildPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 4,
+            "column": 32
+          },
+          "end": {
+            "line": 4,
+            "column": 38
           }
         }
       ]
@@ -647,11 +629,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 25,
+            "line": 23,
             "column": 14
           },
           "end": {
-            "line": 25,
+            "line": 23,
             "column": 18
           }
         }
@@ -665,11 +647,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 42,
+            "line": 44,
             "column": 32
           },
           "end": {
-            "line": 42,
+            "line": 44,
             "column": 39
           }
         },
@@ -750,11 +732,11 @@
           "kind": "html-text",
           "start": {
             "line": 4,
-            "column": 21
+            "column": 7
           },
           "end": {
             "line": 4,
-            "column": 24
+            "column": 10
           }
         }
       ]
@@ -764,15 +746,15 @@
       "value": "片段",
       "locations": [
         {
-          "path": "src/copy.js",
+          "path": "src/pages/ScriptPage.vue",
           "kind": "template-literal",
           "start": {
-            "line": 2,
-            "column": 36
+            "line": 21,
+            "column": 28
           },
           "end": {
-            "line": 2,
-            "column": 38
+            "line": 21,
+            "column": 30
           }
         }
       ]

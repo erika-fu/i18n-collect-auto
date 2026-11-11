@@ -14,11 +14,11 @@
           "kind": "html-text",
           "start": {
             "line": 6,
-            "column": 6
+            "column": 12
           },
           "end": {
             "line": 6,
-            "column": 8
+            "column": 14
           }
         }
       ],
@@ -35,11 +35,11 @@
             "kind": "html-text",
             "start": {
               "line": 6,
-              "column": 6
+              "column": 12
             },
             "end": {
               "line": 6,
-              "column": 8
+              "column": 14
             }
           }
         }
@@ -56,11 +56,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 42,
+            "line": 44,
             "column": 32
           },
           "end": {
-            "line": 42,
+            "line": 44,
             "column": 39
           }
         }
@@ -77,60 +77,17 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 42,
+              "line": 44,
               "column": 32
             },
             "end": {
-              "line": 42,
+              "line": 44,
               "column": 39
             }
           }
         }
       ],
       "status": "active"
-    },
-    "auto.01M6D71KFV1ANJX0CYQ844AY8P": {
-      "source": "（新）",
-      "fingerprint": "371fe16ca97a0403",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/pages/StylePage.vue",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 21,
-            "column": 12
-          },
-          "end": {
-            "line": 21,
-            "column": 15
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "a8181b6e43a27d96",
-          "semanticHost": "src/pages/StylePage.vue::style[index=0;lang=css]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/pages/StylePage.vue",
-            "kind": "css-generated-content",
-            "start": {
-              "line": 21,
-              "column": 12
-            },
-            "end": {
-              "line": 21,
-              "column": 15
-            }
-          }
-        }
-      ],
-      "status": "orphaned"
     },
     "auto.01M6D71KFV2R3HD4PWQ1P4AFQ2": {
       "source": "关闭面板",
@@ -185,11 +142,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 41,
+            "line": 43,
             "column": 31
           },
           "end": {
-            "line": 41,
+            "line": 43,
             "column": 38
           }
         }
@@ -206,11 +163,11 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 41,
+              "line": 43,
               "column": 31
             },
             "end": {
-              "line": 41,
+              "line": 43,
               "column": 38
             }
           }
@@ -255,49 +212,6 @@
             "end": {
               "line": 17,
               "column": 16
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6D71KFV2WMMB85A8MJQB1PP": {
-      "source": "同一句出现两次",
-      "fingerprint": "669397634338ed0c",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/pages/ScriptPage.vue",
-          "kind": "script-string",
-          "start": {
-            "line": 33,
-            "column": 20
-          },
-          "end": {
-            "line": 33,
-            "column": 29
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "f0d1d9f26efa07a0",
-          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
-          "childRole": "script-string",
-          "localContext": "sibling:4",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/pages/ScriptPage.vue",
-            "kind": "script-string",
-            "start": {
-              "line": 33,
-              "column": 20
-            },
-            "end": {
-              "line": 33,
-              "column": 29
             }
           }
         }
@@ -486,11 +400,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 21,
+            "line": 19,
             "column": 15
           },
           "end": {
-            "line": 21,
+            "line": 19,
             "column": 29
           }
         }
@@ -507,11 +421,11 @@
             "path": "src/pages/ScriptPage.vue",
             "kind": "script-string",
             "start": {
-              "line": 21,
+              "line": 19,
               "column": 15
             },
             "end": {
-              "line": 21,
+              "line": 19,
               "column": 29
             }
           }
@@ -562,49 +476,6 @@
       ],
       "status": "active"
     },
-    "auto.01M6D71KFVBJQ79XBNAFJ2RCKQ": {
-      "source": "请稍候",
-      "fingerprint": "20cfd1c3b4c849a9",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/lifecycle.js",
-          "kind": "script-string",
-          "start": {
-            "line": 3,
-            "column": 21
-          },
-          "end": {
-            "line": 3,
-            "column": 26
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "eb2f08b2c90c5d91",
-          "semanticHost": "src/lifecycle.js::script",
-          "childRole": "script-string",
-          "localContext": "sibling:2",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/lifecycle.js",
-            "kind": "script-string",
-            "start": {
-              "line": 3,
-              "column": 21
-            },
-            "end": {
-              "line": 3,
-              "column": 26
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
     "auto.01M6D71KFVCCCQZDF9XZE28KKW": {
       "source": "样式内容",
       "fingerprint": "9f95abc7ef8e0b5a",
@@ -615,11 +486,11 @@
           "path": "src/pages/StylePage.vue",
           "kind": "script-string",
           "start": {
-            "line": 13,
+            "line": 24,
             "column": 13
           },
           "end": {
-            "line": 13,
+            "line": 24,
             "column": 19
           }
         }
@@ -636,11 +507,11 @@
             "path": "src/pages/StylePage.vue",
             "kind": "script-string",
             "start": {
-              "line": 13,
+              "line": 24,
               "column": 13
             },
             "end": {
-              "line": 13,
+              "line": 24,
               "column": 19
             }
           }
@@ -685,92 +556,6 @@
             "end": {
               "line": 16,
               "column": 20
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6D71KFVFE9GT980YGWJP89B": {
-      "source": "片段",
-      "fingerprint": "908e56fe5ed8ba83",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/copy.js",
-          "kind": "template-literal",
-          "start": {
-            "line": 2,
-            "column": 36
-          },
-          "end": {
-            "line": 2,
-            "column": 38
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "83b6a630224c630a",
-          "semanticHost": "src/copy.js::script",
-          "childRole": "template-literal",
-          "localContext": "sibling:1",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/copy.js",
-            "kind": "template-literal",
-            "start": {
-              "line": 2,
-              "column": 36
-            },
-            "end": {
-              "line": 2,
-              "column": 38
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6D71KFVFMT7EAFNXZ88K73F": {
-      "source": "请稍候",
-      "fingerprint": "20cfd1c3b4c849a9",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/lifecycle.js",
-          "kind": "script-string",
-          "start": {
-            "line": 4,
-            "column": 21
-          },
-          "end": {
-            "line": 4,
-            "column": 26
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "74d600ce56f228b0",
-          "semanticHost": "src/lifecycle.js::script",
-          "childRole": "script-string",
-          "localContext": "sibling:3",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/lifecycle.js",
-            "kind": "script-string",
-            "start": {
-              "line": 4,
-              "column": 21
-            },
-            "end": {
-              "line": 4,
-              "column": 26
             }
           }
         }
@@ -863,49 +648,6 @@
       ],
       "status": "active"
     },
-    "auto.01M6D71KFVH6F947W2K1ENV56B": {
-      "source": "页面文案",
-      "fingerprint": "12abdae1e423cf79",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "public/index.html",
-          "kind": "static-html-text",
-          "start": {
-            "line": 14,
-            "column": 20
-          },
-          "end": {
-            "line": 14,
-            "column": 24
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "6cf989ddae2f59f4",
-          "semanticHost": "public/index.html::html",
-          "childRole": "static-html-text",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "public/index.html",
-            "kind": "static-html-text",
-            "start": {
-              "line": 14,
-              "column": 20
-            },
-            "end": {
-              "line": 14,
-              "column": 24
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
     "auto.01M6D71KFVHFBDPVH8JEJRQ0XB": {
       "source": "样式内容",
       "fingerprint": "9f95abc7ef8e0b5a",
@@ -916,11 +658,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 44,
+            "line": 46,
             "column": 30
           },
           "end": {
-            "line": 44,
+            "line": 46,
             "column": 36
           }
         }
@@ -937,11 +679,11 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 44,
+              "line": 46,
               "column": 30
             },
             "end": {
-              "line": 44,
+              "line": 46,
               "column": 36
             }
           }
@@ -1035,49 +777,6 @@
       ],
       "status": "active"
     },
-    "auto.01M6D71KFVK6EDXFYRX89WQ3PR": {
-      "source": "同一句出现两次",
-      "fingerprint": "669397634338ed0c",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/pages/ScriptPage.vue",
-          "kind": "script-string",
-          "start": {
-            "line": 24,
-            "column": 12
-          },
-          "end": {
-            "line": 24,
-            "column": 21
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "216a900115e5d3be",
-          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
-          "childRole": "script-string",
-          "localContext": "sibling:2",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/pages/ScriptPage.vue",
-            "kind": "script-string",
-            "start": {
-              "line": 24,
-              "column": 12
-            },
-            "end": {
-              "line": 24,
-              "column": 21
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
     "auto.01M6D71KFVK9P6JC5WSPD2BZFN": {
       "source": "静态段落里的中文",
       "fingerprint": "110405c48dc29f4e",
@@ -1121,49 +820,6 @@
       ],
       "status": "active"
     },
-    "auto.01M6D71KFVMFNJA1H610MMR0VR": {
-      "source": "独立样式",
-      "fingerprint": "c920fed11bdd636d",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/base.css",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 2,
-            "column": 12
-          },
-          "end": {
-            "line": 2,
-            "column": 16
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "23db210ff9d0ed5a",
-          "semanticHost": "src/base.css::style[index=0;lang=css]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/base.css",
-            "kind": "css-generated-content",
-            "start": {
-              "line": 2,
-              "column": 12
-            },
-            "end": {
-              "line": 2,
-              "column": 16
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
     "auto.01M6D71KFVP3XTY6YSWXHHAQPN": {
       "source": "关闭",
       "fingerprint": "3fd47edce45b3603",
@@ -1201,49 +857,6 @@
             "end": {
               "line": 15,
               "column": 32
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6D71KFVQ471R7X6AFG5JX9E": {
-      "source": "页面提示",
-      "fingerprint": "5269ad228225383d",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "public/index.html",
-          "kind": "static-html-attribute",
-          "start": {
-            "line": 14,
-            "column": 14
-          },
-          "end": {
-            "line": 14,
-            "column": 18
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "43a46b12fc050623",
-          "semanticHost": "public/index.html::html",
-          "childRole": "static-html-attribute",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "public/index.html",
-            "kind": "static-html-attribute",
-            "start": {
-              "line": 14,
-              "column": 14
-            },
-            "end": {
-              "line": 14,
-              "column": 18
             }
           }
         }
@@ -1379,49 +992,6 @@
       ],
       "status": "active"
     },
-    "auto.01M6D71KFVRDDE96H6YRWETYF6": {
-      "source": "你有",
-      "fingerprint": "533fa2b46a36380d",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-literal",
-          "start": {
-            "line": 24,
-            "column": 14
-          },
-          "end": {
-            "line": 24,
-            "column": 16
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "8c8f9813b98110ee",
-          "semanticHost": "src/pages/LiteralPage.vue::script[lang=js]",
-          "childRole": "template-literal",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/pages/LiteralPage.vue",
-            "kind": "template-literal",
-            "start": {
-              "line": 24,
-              "column": 14
-            },
-            "end": {
-              "line": 24,
-              "column": 16
-            }
-          }
-        }
-      ],
-      "status": "orphaned"
-    },
     "auto.01M6D71KFVS4FT9GGP4GE39CNR": {
       "source": "的名字呀",
       "fingerprint": "9c8f2143e32d30a3",
@@ -1518,32 +1088,32 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 25,
+            "line": 23,
             "column": 14
           },
           "end": {
-            "line": 25,
+            "line": 23,
             "column": 18
           }
         }
       ],
       "occurrences": [
         {
-          "id": "6f5b22f664f3ab8d",
+          "id": "f0d1d9f26efa07a0",
           "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
           "childRole": "script-string",
-          "localContext": "sibling:3",
+          "localContext": "sibling:4",
           "origin": "derived",
           "representation": "source-text",
           "location": {
             "path": "src/pages/ScriptPage.vue",
             "kind": "script-string",
             "start": {
-              "line": 25,
+              "line": 23,
               "column": 14
             },
             "end": {
-              "line": 25,
+              "line": 23,
               "column": 18
             }
           }
@@ -1561,11 +1131,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 43,
+            "line": 45,
             "column": 31
           },
           "end": {
-            "line": 43,
+            "line": 45,
             "column": 38
           }
         }
@@ -1582,11 +1152,11 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 43,
+              "line": 45,
               "column": 31
             },
             "end": {
-              "line": 43,
+              "line": 45,
               "column": 38
             }
           }
@@ -1690,11 +1260,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 40,
+            "line": 42,
             "column": 29
           },
           "end": {
-            "line": 40,
+            "line": 42,
             "column": 33
           }
         }
@@ -1711,141 +1281,12 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 40,
+              "line": 42,
               "column": 29
             },
             "end": {
-              "line": 40,
+              "line": 42,
               "column": 33
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6D71KFVWNB1WE4RWJA3F1D3": {
-      "source": "条未读消息",
-      "fingerprint": "e0b9ed900a7ee326",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-literal",
-          "start": {
-            "line": 24,
-            "column": 29
-          },
-          "end": {
-            "line": 24,
-            "column": 34
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "a3de68c4984bfd93",
-          "semanticHost": "src/pages/LiteralPage.vue::script[lang=js]",
-          "childRole": "template-literal",
-          "localContext": "sibling:1",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/pages/LiteralPage.vue",
-            "kind": "template-literal",
-            "start": {
-              "line": 24,
-              "column": 29
-            },
-            "end": {
-              "line": 24,
-              "column": 34
-            }
-          }
-        }
-      ],
-      "status": "orphaned"
-    },
-    "auto.01M6D71KFVX0VRPX4VDDB7N8WA": {
-      "source": "来自独立脚本的公共词条",
-      "fingerprint": "f7389c0bddffc0cf",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/copy.js",
-          "kind": "script-string",
-          "start": {
-            "line": 1,
-            "column": 26
-          },
-          "end": {
-            "line": 1,
-            "column": 39
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "eb40fe421472e45d",
-          "semanticHost": "src/copy.js::script",
-          "childRole": "script-string",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/copy.js",
-            "kind": "script-string",
-            "start": {
-              "line": 1,
-              "column": 26
-            },
-            "end": {
-              "line": 1,
-              "column": 39
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6D71KFVYZDMF5HBSK4KJ3MW": {
-      "source": "公共模板",
-      "fingerprint": "92d7f24ee3dea089",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/copy.js",
-          "kind": "template-literal",
-          "start": {
-            "line": 2,
-            "column": 28
-          },
-          "end": {
-            "line": 2,
-            "column": 32
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "a3eaf10236b9b62c",
-          "semanticHost": "src/copy.js::script",
-          "childRole": "template-literal",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/copy.js",
-            "kind": "template-literal",
-            "start": {
-              "line": 2,
-              "column": 28
-            },
-            "end": {
-              "line": 2,
-              "column": 32
             }
           }
         }
@@ -1905,11 +1346,11 @@
           "path": "src/pages/ScriptPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 20,
+            "line": 18,
             "column": 13
           },
           "end": {
-            "line": 20,
+            "line": 18,
             "column": 20
           }
         }
@@ -1926,11 +1367,11 @@
             "path": "src/pages/ScriptPage.vue",
             "kind": "script-string",
             "start": {
-              "line": 20,
+              "line": 18,
               "column": 13
             },
             "end": {
-              "line": 20,
+              "line": 18,
               "column": 20
             }
           }
@@ -1949,11 +1390,11 @@
           "kind": "html-text",
           "start": {
             "line": 4,
-            "column": 21
+            "column": 7
           },
           "end": {
             "line": 4,
-            "column": 24
+            "column": 10
           }
         }
       ],
@@ -1970,10 +1411,182 @@
             "kind": "html-text",
             "start": {
               "line": 4,
-              "column": 21
+              "column": 7
             },
             "end": {
               "line": 4,
+              "column": 10
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M74J50DVDD5XBWWJ0W851DM8": {
+      "source": "构建替换",
+      "fingerprint": "9f922dda0ae48be5",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/App.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 47,
+            "column": 30
+          },
+          "end": {
+            "line": 47,
+            "column": 36
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "a0dab56fed3e3a1f",
+          "semanticHost": "src/App.vue::script[lang=js]",
+          "childRole": "script-string",
+          "localContext": "sibling:5",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/App.vue",
+            "kind": "script-string",
+            "start": {
+              "line": 47,
+              "column": 30
+            },
+            "end": {
+              "line": 47,
+              "column": 36
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M74J50DVGMXTFKSFG0TXVQWX": {
+      "source": "片段",
+      "fingerprint": "908e56fe5ed8ba83",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "template-literal",
+          "start": {
+            "line": 21,
+            "column": 28
+          },
+          "end": {
+            "line": 21,
+            "column": 30
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "4cad4a60580255da",
+          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
+          "childRole": "template-literal",
+          "localContext": "sibling:1",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/ScriptPage.vue",
+            "kind": "template-literal",
+            "start": {
+              "line": 21,
+              "column": 28
+            },
+            "end": {
+              "line": 21,
+              "column": 30
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M74J50DVJFF9D554ZWVJCJZN": {
+      "source": "来自独立脚本的公共词条",
+      "fingerprint": "f7389c0bddffc0cf",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 20,
+            "column": 18
+          },
+          "end": {
+            "line": 20,
+            "column": 31
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "216a900115e5d3be",
+          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
+          "childRole": "script-string",
+          "localContext": "sibling:2",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/ScriptPage.vue",
+            "kind": "script-string",
+            "start": {
+              "line": 20,
+              "column": 18
+            },
+            "end": {
+              "line": 20,
+              "column": 31
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "auto.01M74J50DVRE2F0AW04RXB0QQD": {
+      "source": "公共模板",
+      "fingerprint": "92d7f24ee3dea089",
+      "origin": "derived",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "template-literal",
+          "start": {
+            "line": 21,
+            "column": 20
+          },
+          "end": {
+            "line": 21,
+            "column": 24
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "af86e1a600a87766",
+          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
+          "childRole": "template-literal",
+          "localContext": "sibling:0",
+          "origin": "derived",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/ScriptPage.vue",
+            "kind": "template-literal",
+            "start": {
+              "line": 21,
+              "column": 20
+            },
+            "end": {
+              "line": 21,
               "column": 24
             }
           }
@@ -1981,43 +1594,129 @@
       ],
       "status": "active"
     },
-    "auto.01M6NGAKBAG4GFJR3AXXJ6TQFV": {
-      "source": "（Sass 新）",
-      "fingerprint": "4fc834b9e7a293df",
-      "origin": "derived",
+    "demo.build.body": {
+      "source": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
+      "fingerprint": "8b21da8cdb201615",
+      "origin": "explicit",
       "representation": "source-text",
       "locations": [
         {
-          "path": "src/pages/StylePage.vue",
-          "kind": "css-generated-content",
+          "path": "src/pages/BuildPage.vue",
+          "kind": "html-text",
           "start": {
-            "line": 26,
-            "column": 14
+            "line": 6,
+            "column": 30
           },
           "end": {
-            "line": 26,
-            "column": 22
+            "line": 6,
+            "column": 72
           }
         }
       ],
       "occurrences": [
         {
-          "id": "59d3cca735d9b369",
-          "semanticHost": "src/pages/StylePage.vue::style[index=0;lang=sass]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
+          "id": "ff62bd3200874457",
+          "semanticHost": "src/pages/BuildPage.vue::template[lang=html]",
+          "childRole": "html-text",
+          "localContext": "sibling:1",
+          "origin": "explicit",
           "representation": "source-text",
           "location": {
-            "path": "src/pages/StylePage.vue",
-            "kind": "css-generated-content",
+            "path": "src/pages/BuildPage.vue",
+            "kind": "html-text",
             "start": {
-              "line": 26,
-              "column": 14
+              "line": 6,
+              "column": 30
             },
             "end": {
-              "line": 26,
-              "column": 22
+              "line": 6,
+              "column": 72
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.build.localeLabel": {
+      "source": "当前语言：中文",
+      "fingerprint": "e8d025f8a8223339",
+      "origin": "explicit",
+      "representation": "localized-call",
+      "locations": [
+        {
+          "path": "src/pages/BuildPage.vue",
+          "kind": "template-expression",
+          "start": {
+            "line": 7,
+            "column": 38
+          },
+          "end": {
+            "line": 7,
+            "column": 62
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "93ed7d527c8a870e",
+          "semanticHost": "src/pages/BuildPage.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:0",
+          "origin": "explicit",
+          "representation": "localized-call",
+          "location": {
+            "path": "src/pages/BuildPage.vue",
+            "kind": "template-expression",
+            "start": {
+              "line": 7,
+              "column": 38
+            },
+            "end": {
+              "line": 7,
+              "column": 62
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.build.title": {
+      "source": "构建替换演示",
+      "fingerprint": "24cf2bbf6634a31e",
+      "origin": "explicit",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/BuildPage.vue",
+          "kind": "html-text",
+          "start": {
+            "line": 4,
+            "column": 32
+          },
+          "end": {
+            "line": 4,
+            "column": 38
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "1229275a73f893a9",
+          "semanticHost": "src/pages/BuildPage.vue::template[lang=html]",
+          "childRole": "html-text",
+          "localContext": "sibling:0",
+          "origin": "explicit",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/BuildPage.vue",
+            "kind": "html-text",
+            "start": {
+              "line": 4,
+              "column": 32
+            },
+            "end": {
+              "line": 4,
+              "column": 38
             }
           }
         }
@@ -2228,6 +1927,92 @@
       ],
       "status": "active"
     },
+    "demo.script.hint": {
+      "source": "同一句出现两次",
+      "fingerprint": "669397634338ed0c",
+      "origin": "explicit",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 22,
+            "column": 45
+          },
+          "end": {
+            "line": 22,
+            "column": 54
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "6f5b22f664f3ab8d",
+          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
+          "childRole": "script-string",
+          "localContext": "sibling:3",
+          "origin": "explicit",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/ScriptPage.vue",
+            "kind": "script-string",
+            "start": {
+              "line": 22,
+              "column": 45
+            },
+            "end": {
+              "line": 22,
+              "column": 54
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.script.result": {
+      "source": "同一句出现两次",
+      "fingerprint": "669397634338ed0c",
+      "origin": "explicit",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 31,
+            "column": 55
+          },
+          "end": {
+            "line": 31,
+            "column": 64
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "c9b072420c7544bd",
+          "semanticHost": "src/pages/ScriptPage.vue::script[lang=js]",
+          "childRole": "script-string",
+          "localContext": "sibling:5",
+          "origin": "explicit",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/ScriptPage.vue",
+            "kind": "script-string",
+            "start": {
+              "line": 31,
+              "column": 55
+            },
+            "end": {
+              "line": 31,
+              "column": 64
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
     "demo.shared.title": {
       "source": "共享标题",
       "fingerprint": "ec2a6eec0596d4e8",
@@ -2235,15 +2020,15 @@
       "representation": "source-text",
       "locations": [
         {
-          "path": "src/lifecycle.js",
+          "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 5,
-            "column": 61
+            "line": 36,
+            "column": 53
           },
           "end": {
-            "line": 5,
-            "column": 67
+            "line": 36,
+            "column": 59
           }
         },
         {
@@ -2261,22 +2046,22 @@
       ],
       "occurrences": [
         {
-          "id": "b10a01f88b2d2303",
-          "semanticHost": "src/lifecycle.js::script",
+          "id": "0fb2ab84c6199a79",
+          "semanticHost": "src/pages/MigrationPage.vue::script[lang=js]",
           "childRole": "script-string",
-          "localContext": "sibling:4",
+          "localContext": "sibling:2",
           "origin": "explicit",
           "representation": "source-text",
           "location": {
-            "path": "src/lifecycle.js",
+            "path": "src/pages/MigrationPage.vue",
             "kind": "script-string",
             "start": {
-              "line": 5,
-              "column": 61
+              "line": 36,
+              "column": 53
             },
             "end": {
-              "line": 5,
-              "column": 67
+              "line": 36,
+              "column": 59
             }
           }
         },
@@ -2471,15 +2256,15 @@
       "representation": "source-text",
       "locations": [
         {
-          "path": "src/lifecycle.js",
+          "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 1,
-            "column": 62
+            "line": 34,
+            "column": 54
           },
           "end": {
-            "line": 1,
-            "column": 66
+            "line": 34,
+            "column": 58
           }
         },
         {
@@ -2497,22 +2282,22 @@
       ],
       "occurrences": [
         {
-          "id": "da23f8779697754d",
-          "semanticHost": "src/lifecycle.js::script",
+          "id": "bc59060842eae762",
+          "semanticHost": "src/pages/MigrationPage.vue::script[lang=js]",
           "childRole": "script-string",
           "localContext": "sibling:0",
           "origin": "explicit",
           "representation": "source-text",
           "location": {
-            "path": "src/lifecycle.js",
+            "path": "src/pages/MigrationPage.vue",
             "kind": "script-string",
             "start": {
-              "line": 1,
-              "column": 62
+              "line": 34,
+              "column": 54
             },
             "end": {
-              "line": 1,
-              "column": 66
+              "line": 34,
+              "column": 58
             }
           }
         },
@@ -2546,15 +2331,15 @@
       "representation": "source-text",
       "locations": [
         {
-          "path": "src/lifecycle.js",
+          "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 2,
-            "column": 66
+            "line": 35,
+            "column": 58
           },
           "end": {
-            "line": 2,
-            "column": 70
+            "line": 35,
+            "column": 62
           }
         },
         {
@@ -2572,22 +2357,22 @@
       ],
       "occurrences": [
         {
-          "id": "e394db3b904df3d8",
-          "semanticHost": "src/lifecycle.js::script",
+          "id": "66b14a0f076dfafb",
+          "semanticHost": "src/pages/MigrationPage.vue::script[lang=js]",
           "childRole": "script-string",
           "localContext": "sibling:1",
           "origin": "explicit",
           "representation": "source-text",
           "location": {
-            "path": "src/lifecycle.js",
+            "path": "src/pages/MigrationPage.vue",
             "kind": "script-string",
             "start": {
-              "line": 2,
-              "column": 66
+              "line": 35,
+              "column": 58
             },
             "end": {
-              "line": 2,
-              "column": 70
+              "line": 35,
+              "column": 62
             }
           }
         },
@@ -2608,6 +2393,92 @@
             "end": {
               "line": 7,
               "column": 55
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.wait.a": {
+      "source": "请稍候",
+      "fingerprint": "20cfd1c3b4c849a9",
+      "origin": "explicit",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 37,
+            "column": 41
+          },
+          "end": {
+            "line": 37,
+            "column": 46
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "94fee6afcbefe4b4",
+          "semanticHost": "src/pages/MigrationPage.vue::script[lang=js]",
+          "childRole": "script-string",
+          "localContext": "sibling:3",
+          "origin": "explicit",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "script-string",
+            "start": {
+              "line": 37,
+              "column": 41
+            },
+            "end": {
+              "line": 37,
+              "column": 46
+            }
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "demo.wait.b": {
+      "source": "请稍候",
+      "fingerprint": "20cfd1c3b4c849a9",
+      "origin": "explicit",
+      "representation": "source-text",
+      "locations": [
+        {
+          "path": "src/pages/MigrationPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 38,
+            "column": 41
+          },
+          "end": {
+            "line": 38,
+            "column": 46
+          }
+        }
+      ],
+      "occurrences": [
+        {
+          "id": "55ca5460ad37a0ae",
+          "semanticHost": "src/pages/MigrationPage.vue::script[lang=js]",
+          "childRole": "script-string",
+          "localContext": "sibling:4",
+          "origin": "explicit",
+          "representation": "source-text",
+          "location": {
+            "path": "src/pages/MigrationPage.vue",
+            "kind": "script-string",
+            "start": {
+              "line": 38,
+              "column": 41
+            },
+            "end": {
+              "line": 38,
+              "column": 46
             }
           }
         }

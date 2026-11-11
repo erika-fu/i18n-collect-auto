@@ -11,17 +11,15 @@
 </template>
 
 <script>
-import { literalNote, sharedCopy } from '../copy'
-
 export default {
   name: 'ScriptPage',
   data () {
     return {
       title: '脚本字符串',
       message: '这是一段写在脚本里的中文',
-      sharedCopy,
-      literalNote,
-      hint: '同一句出现两次',
+      sharedCopy: '来自独立脚本的公共词条',
+      literalNote: `公共模板${1}片段`,
+      hint: /* i18n-key: demo.script.hint */ '同一句出现两次',
       action: '保存',
       result: '',
       saved: false
@@ -30,7 +28,7 @@ export default {
   methods: {
     save () {
       // 这是注释里的中文，不应进入收集结果
-      this.result = '同一句出现两次'
+      this.result = /* i18n-key: demo.script.result */ '同一句出现两次'
       this.saved = true
     }
   }

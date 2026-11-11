@@ -1,26 +1,19 @@
 const assert = require('assert')
+const { spawnSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 const test = require('node:test')
-const webpack = require('webpack')
 
 const demoRoot = path.resolve(__dirname, '../../../apps/vue3-demo')
+const bin = path.join(__dirname, '../bin/i18n-collect.js')
 
-function compile(config) {
-  return new Promise((resolve, reject) => {
-    const compiler = webpack(config)
-    compiler.run((error, stats) => {
-      compiler.close(closeError => {
-        if (error) reject(error)
-        else if (closeError) reject(closeError)
-        else resolve(stats)
-      })
-    })
+function runBuild() {
+  return spawnSync(process.execPath, [bin, 'build', '--json'], {
+    cwd: demoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1', NODE_ENV: 'production' },
+    timeout: 300000
   })
-}
-
-function messages(stats) {
-  return stats.toJson({ errors: true }).errors.map(error => error.message).join('\n')
 }
 
 function readJson(relativePath) {
@@ -33,18 +26,13 @@ function sourceSlice(relativePath, location) {
   return line.slice(location.start.column, location.end.column)
 }
 
-function snapshotIdentities(stats) {
-  return [...stats.compilation.modules]
-    .map(mod => mod.buildInfo && mod.buildInfo.i18nCollect && mod.buildInfo.i18nCollect.snapshot)
-    .filter(Boolean)
-    .map(snapshot => snapshot.identity)
-}
+test('the Vue 3 demo production build covers replaceable source kinds used by Build replacement', { timeout: 300000 }, () => {
+  const appBefore = fs.readFileSync(path.join(demoRoot, 'src/App.vue'))
+  const result = runBuild()
+  assert.strictEqual(result.status, 0, result.stderr || result.stdout)
+  assert.ok(result.stdout.includes('"ok": true') || result.stdout.includes('"ok":true'), result.stdout)
+  assert.deepStrictEqual(fs.readFileSync(path.join(demoRoot, 'src/App.vue')), appBefore)
 
-test('the Vue 3 demo production build covers every supported source kind and style language', { timeout: 60000 }, async () => {
-  const config = require('../../../apps/vue3-demo/webpack.config')
-  const stats = await compile(config)
-
-  assert.strictEqual(stats.hasErrors(), false, messages(stats))
   for (const relativePath of [
     'lang/zh_hash.json',
     'lang/zh_hash.map.json',
@@ -71,14 +59,7 @@ test('the Vue 3 demo production build covers every supported source kind and sty
     { value: '插值字符串', source: "'插值字符串'", kind: 'template-expression', path: 'src/App.vue' },
     { value: '欢迎', kind: 'template-expression', path: 'src/App.vue' },
     { value: '回来', kind: 'template-expression', path: 'src/App.vue' },
-    { value: '样式提示', kind: 'css-generated-content', path: 'src/App.vue' },
-    { value: 'Vue 3 SCSS 样式', kind: 'css-generated-content', path: 'src/App.vue' },
-    { value: 'Vue 3 Sass 样式', kind: 'css-generated-content', path: 'src/App.vue' },
-    { value: 'Vue 3 Less 样式', kind: 'css-generated-content', path: 'src/App.vue' },
-    { value: 'Vue 3 Stylus 样式', kind: 'css-generated-content', path: 'src/App.vue' },
-    { value: '外部样式提示', kind: 'css-generated-content', path: 'src/base.css' },
-    { value: 'Vue 三静态页面文案', kind: 'static-html-text', path: 'public/index.html' },
-    { value: 'Vue 三静态属性', kind: 'static-html-attribute', path: 'public/index.html' }
+    { value: '构建替换演示', kind: 'html-text', path: 'src/App.vue' }
   ]
 
   for (const item of expected) {
@@ -95,24 +76,18 @@ test('the Vue 3 demo production build covers every supported source kind and sty
   assert.strictEqual(values.has('内部标记不收集'), false)
   assert.strictEqual(values.has('普通指令不收集'), false)
   for (const value of [
-    'SCSS 变量不收集',
-    'Sass 变量不收集',
-    'Less 变量不收集',
-    'Stylus 变量不收集'
+    '样式提示',
+    '外部样式提示',
+    'Vue 3 SCSS 样式',
+    'Vue 三静态页面文案',
+    'Vue 三静态属性'
   ]) {
     assert.strictEqual(values.has(value), false, value)
   }
-  assert.deepStrictEqual(snapshotIdentities(stats).filter(identity => (
-    identity.startsWith('src/App.vue::style')
-  )).sort(), [
-    'src/App.vue::style[index=0;lang=css]',
-    'src/App.vue::style[index=1;lang=scss]',
-    'src/App.vue::style[index=2;lang=sass]',
-    'src/App.vue::style[index=3;lang=less]',
-    'src/App.vue::style[index=4;lang=stylus]'
-  ])
+
   assert.strictEqual(catalog['vue3.heading'], '原生 Vue 三模板')
   assert.strictEqual(catalog['vue3.htmlNotice'], '已通过 Vue I18n 本地化')
+  assert.strictEqual(catalog['vue3.build.title'], '构建替换演示')
   assert.strictEqual(metadata.entries['vue3.heading'].representation, 'source-text')
   assert.strictEqual(metadata.entries['vue3.htmlNotice'].representation, 'localized-call')
   assert.ok(metadata.entries['vue3.htmlNotice'].locations.some(location => (
@@ -120,4 +95,12 @@ test('the Vue 3 demo production build covers every supported source kind and sty
     location.kind === 'template-expression' &&
     sourceSlice(location.path, location) === "'vue3.htmlNotice'"
   )))
+
+  const fixtureStyle = fs.readFileSync(path.join(demoRoot, 'fixtures/StyleCollection.vue'), 'utf8')
+  assert.match(fixtureStyle, /样式提示/)
+  assert.match(fixtureStyle, /Vue 3 SCSS 样式/)
+  const fixtureHtml = fs.readFileSync(path.join(demoRoot, 'fixtures/StaticHtmlSnippet.html'), 'utf8')
+  assert.match(fixtureHtml, /Vue 三静态页面文案/)
+  const fixtureCss = fs.readFileSync(path.join(demoRoot, 'fixtures/StandaloneStyle.css'), 'utf8')
+  assert.match(fixtureCss, /外部样式提示/)
 })

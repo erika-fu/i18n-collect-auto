@@ -38,7 +38,7 @@ body {
 }
 
 .eyebrow::after {
-  content: "外部样式提示";
+  content: "external style";
   margin-left: 8px;
   color: #1f7a5a;
 }

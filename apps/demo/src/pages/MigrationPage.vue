@@ -26,18 +26,16 @@
 </template>
 
 <script>
-import { bannerSource, farewellSource, sharedTitle, waitA, waitB } from '../lifecycle'
-
 export default {
   name: 'MigrationPage',
   data () {
     return {
       previousLocale: 'zh',
-      bannerSource,
-      farewellSource,
-      sharedTitle,
-      waitA,
-      waitB,
+      bannerSource: /* i18n-key: demo.visit.banner */ '欢迎',
+      farewellSource: /* i18n-key: demo.visit.farewell */ '欢迎',
+      sharedTitle: /* i18n-key: demo.shared.title */ '共享标题',
+      waitA: /* i18n-key: demo.wait.a */ '请稍候',
+      waitB: /* i18n-key: demo.wait.b */ '请稍候',
       waitKeyA: '',
       waitKeyB: '',
       deletedCount: 3
@@ -46,12 +44,8 @@ export default {
   created () {
     this.previousLocale = this.$i18n.locale
     this.$i18n.locale = 'en'
-    const zhMessages = this.$i18n.messages.zh || {}
-    const waitKeys = Object.keys(zhMessages).filter(key => (
-      /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/.test(key) && zhMessages[key] === waitA
-    )).sort()
-    this.waitKeyA = waitKeys[0] || ''
-    this.waitKeyB = waitKeys[1] || ''
+    this.waitKeyA = 'demo.wait.a'
+    this.waitKeyB = 'demo.wait.b'
   },
   beforeDestroy () {
     this.$i18n.locale = this.previousLocale

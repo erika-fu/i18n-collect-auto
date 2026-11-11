@@ -1321,7 +1321,7 @@ test('a style index change evicts the previous identity', { timeout: 20000 }, as
 })
 
 test('the Vue 2 demo collects generated content from every supported style language', { timeout: 20000 }, async () => {
-  const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/src/pages/StylePage.vue'), 'utf8')
+  const fixture = fs.readFileSync(path.resolve(__dirname, '../../../apps/demo/fixtures/StyleCollection.vue'), 'utf8')
   const expected = [
     ['scss', '（SCSS 新）'],
     ['sass', '（Sass 新）'],
@@ -1335,14 +1335,14 @@ test('the Vue 2 demo collects generated content from every supported style langu
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-demo-style-languages-'))
   installVue2(root)
   fs.mkdirSync(path.join(root, 'src'))
-  const vue = path.join(root, 'src/StylePage.vue')
+  const vue = path.join(root, 'src/StyleCollection.vue')
   const entry = path.join(root, 'src/main.js')
   fs.writeFileSync(vue, fixture)
   fs.writeFileSync(entry, [
     ...expected.map(([lang], index) => (
-      `require("./StylePage.vue?vue&type=style&index=${index}&lang=${lang}")`
+      `require("./StyleCollection.vue?vue&type=style&index=${index}&lang=${lang}")`
     )),
-    'require("./StylePage.vue?vue&type=template&lang=html")',
+    'require("./StyleCollection.vue?vue&type=template&lang=html")',
     ''
   ].join('\n'))
   const pass = path.join(root, 'pass-loader.js')
@@ -1371,7 +1371,7 @@ test('the Vue 2 demo collects generated content from every supported style langu
   for (const [, value] of expected) {
     const generated = readOutput(root).map.entries.find(item => item.value === value)
     assert.strictEqual(generated.locations[0].kind, 'css-generated-content')
-    assert.strictEqual(generated.locations[0].path, 'src/StylePage.vue')
+    assert.strictEqual(generated.locations[0].path, 'src/StyleCollection.vue')
   }
 })
 

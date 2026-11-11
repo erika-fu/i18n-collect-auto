@@ -1,2 +1,4 @@
-export const sharedCopy = '来自独立脚本的公共词条'
-export const literalNote = `公共模板${1}片段`
+// Standalone module Chinese samples moved into ScriptPage.vue so the Vue 2
+// Build replacement adapter can rewrite them with this.$t. Keep this file as a
+// pointer for docs and older links.
+export {}

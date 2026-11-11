@@ -54,10 +54,10 @@ test('the committed demo catalogs resolve the stable key lifecycle page', () => 
     ['localized-call', 'source-text']
   )
 
-  const waitKeys = automaticKeysFor(zh, WAIT)
-  assert.strictEqual(waitKeys.length, 2)
-  assert.strictEqual(meta.entries[waitKeys[0]].origin, 'derived')
-  assert.strictEqual(meta.entries[waitKeys[1]].origin, 'derived')
+  assert.strictEqual(zh['demo.wait.a'], WAIT)
+  assert.strictEqual(zh['demo.wait.b'], WAIT)
+  assert.strictEqual(meta.entries['demo.wait.a'].origin, 'explicit')
+  assert.strictEqual(meta.entries['demo.wait.b'].origin, 'explicit')
   assert.strictEqual(en['demo.visit.banner'], 'Welcome aboard')
   assert.strictEqual(en['demo.visit.farewell'], 'Welcome back')
   assert.strictEqual(en['demo.shared.title'], 'Shared title')
@@ -65,15 +65,15 @@ test('the committed demo catalogs resolve the stable key lifecycle page', () => 
   assert.strictEqual(en['demo.terms.notice'], 'Please read our {terms} and {privacy}')
   assert.strictEqual(en['demo.terms.link'], 'Terms of Service')
   assert.strictEqual(en['demo.privacy.link'], 'Privacy Policy')
-  assert.strictEqual(en[waitKeys[0]], 'Please wait')
-  assert.strictEqual(en[waitKeys[1]], 'Please wait')
+  assert.strictEqual(en['demo.wait.a'], 'Please wait')
+  assert.strictEqual(en['demo.wait.b'], 'Please wait')
 
   const messages = demoLocaleMessages(en, hashDictionary)
   assert.strictEqual(resolveDemoMessage('demo.visit.banner', en, hashDictionary), 'Welcome aboard')
   assert.strictEqual(resolveDemoMessage('demo.shared.title', en, hashDictionary), 'Shared title')
   assert.strictEqual(resolveDemoMessage('demo.items.deleted', en, hashDictionary), 'Deleted {count} items')
   assert.strictEqual(resolveDemoMessage('demo.terms.notice', en, hashDictionary), 'Please read our {terms} and {privacy}')
-  assert.strictEqual(resolveDemoMessage(waitKeys[0], en, hashDictionary), 'Please wait')
+  assert.strictEqual(resolveDemoMessage('demo.wait.a', en, hashDictionary), 'Please wait')
   assert.strictEqual(resolveDemoMessage(WELCOME_MD5, en, hashDictionary), WELCOME)
   assert.strictEqual(messages[WELCOME_MD5], WELCOME)
 
@@ -97,8 +97,8 @@ test('the committed demo catalogs resolve the stable key lifecycle page', () => 
     }),
     'Please read our Terms of Service and Privacy Policy'
   )
-  assert.strictEqual(vm.$t(waitKeys[0]), 'Please wait')
-  assert.strictEqual(vm.$t(waitKeys[1]), 'Please wait')
+  assert.strictEqual(vm.$t('demo.wait.a'), 'Please wait')
+  assert.strictEqual(vm.$t('demo.wait.b'), 'Please wait')
   assert.strictEqual(vm.$t(WELCOME_MD5), WELCOME)
   vm.$destroy()
 })

@@ -1,0 +1,16 @@
+{
+  "auto.01M6MP07D35GCEAJY0T04ETS3F": "back",
+  "auto.01M6MP07D3AFJ2NYABDWA91SX6": "name",
+  "auto.01M6MP07D3E164VAVEN8NX3XMY": "Interpolation string",
+  "auto.01M6MP07D3G74W1FZN9S3YPMNH": "Script copy",
+  "auto.01M6MP07D3KNA3F944YYEYYME0": "Save profile",
+  "auto.01M6MP07D3P9X2E6HXQW3EJQF8": "Welcome",
+  "auto.01M6MP07D3QJ124K9JYKAPDP74": "Enter",
+  "auto.01M6MP07D3W6G8YHPD3N6F8JBC": "profile name",
+  "auto.01M6MPKGE261F9PH8N8DQXXKK3": "Script template copy",
+  "vue3.build.body": "Disk sources keep Chinese; the formal bundle renders through localization keys.",
+  "vue3.build.title": "Build replacement demo",
+  "vue3.build.localeLabel": "Current locale: Chinese",
+  "vue3.heading": "Native Vue 3 template",
+  "vue3.htmlNotice": "Localized through Vue I18n"
+}

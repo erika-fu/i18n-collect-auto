@@ -142,11 +142,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 35,
+            "line": 49,
             "column": 18
           },
           "end": {
-            "line": 35,
+            "line": 49,
             "column": 24
           }
         }
@@ -163,55 +163,12 @@
             "path": "src/App.vue",
             "kind": "script-string",
             "start": {
-              "line": 35,
+              "line": 49,
               "column": 18
             },
             "end": {
-              "line": 35,
+              "line": 49,
               "column": 24
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6MP07D3GRQ42J406H66YJME": {
-      "source": "样式提示",
-      "fingerprint": "1e212c98536ca2f4",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/App.vue",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 44,
-            "column": 12
-          },
-          "end": {
-            "line": 44,
-            "column": 16
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "72aa6786b23573a4",
-          "semanticHost": "src/App.vue::style[index=0;lang=css]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/App.vue",
-            "kind": "css-generated-content",
-            "start": {
-              "line": 44,
-              "column": 12
-            },
-            "end": {
-              "line": 44,
-              "column": 16
             }
           }
         }
@@ -390,49 +347,6 @@
       ],
       "status": "active"
     },
-    "auto.01M6MPKGE208J25F42PNBK1GNC": {
-      "source": "外部样式提示",
-      "fingerprint": "a5e6d5ec68106861",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/base.css",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 41,
-            "column": 12
-          },
-          "end": {
-            "line": 41,
-            "column": 18
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "23db210ff9d0ed5a",
-          "semanticHost": "src/base.css::style[index=0;lang=css]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/base.css",
-            "kind": "css-generated-content",
-            "start": {
-              "line": 41,
-              "column": 12
-            },
-            "end": {
-              "line": 41,
-              "column": 18
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
     "auto.01M6MPKGE261F9PH8N8DQXXKK3": {
       "source": "脚本模板文案",
       "fingerprint": "8caab579ca2d5820",
@@ -443,11 +357,11 @@
           "path": "src/App.vue",
           "kind": "template-literal",
           "start": {
-            "line": 36,
+            "line": 50,
             "column": 27
           },
           "end": {
-            "line": 36,
+            "line": 50,
             "column": 33
           }
         }
@@ -464,11 +378,11 @@
             "path": "src/App.vue",
             "kind": "template-literal",
             "start": {
-              "line": 36,
+              "line": 50,
               "column": 27
             },
             "end": {
-              "line": 36,
+              "line": 50,
               "column": 33
             }
           }
@@ -476,258 +390,129 @@
       ],
       "status": "active"
     },
-    "auto.01M6MPKGE2F9EB1ZX4HSXXMYJW": {
-      "source": "Vue 三静态页面文案",
-      "fingerprint": "362ccb27c1fa9157",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "public/index.html",
-          "kind": "static-html-text",
-          "start": {
-            "line": 9,
-            "column": 25
-          },
-          "end": {
-            "line": 9,
-            "column": 36
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "6cf989ddae2f59f4",
-          "semanticHost": "public/index.html::html",
-          "childRole": "static-html-text",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "public/index.html",
-            "kind": "static-html-text",
-            "start": {
-              "line": 9,
-              "column": 25
-            },
-            "end": {
-              "line": 9,
-              "column": 36
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6MPKGE2Q0M2D30KQJHTWZD1": {
-      "source": "Vue 三静态属性",
-      "fingerprint": "e411ff389bd83a7c",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "public/index.html",
-          "kind": "static-html-attribute",
-          "start": {
-            "line": 9,
-            "column": 14
-          },
-          "end": {
-            "line": 9,
-            "column": 23
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "43a46b12fc050623",
-          "semanticHost": "public/index.html::html",
-          "childRole": "static-html-attribute",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "public/index.html",
-            "kind": "static-html-attribute",
-            "start": {
-              "line": 9,
-              "column": 14
-            },
-            "end": {
-              "line": 9,
-              "column": 23
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6NQAX4T0P303YN2MDPD0BB6": {
-      "source": "Vue 3 SCSS 样式",
-      "fingerprint": "9610bbfcbdac13a5",
-      "origin": "derived",
+    "vue3.build.body": {
+      "source": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
+      "fingerprint": "8b21da8cdb201615",
+      "origin": "explicit",
       "representation": "source-text",
       "locations": [
         {
           "path": "src/App.vue",
-          "kind": "css-generated-content",
+          "kind": "html-text",
           "start": {
-            "line": 57,
-            "column": 14
+            "line": 21,
+            "column": 32
           },
           "end": {
-            "line": 57,
-            "column": 27
+            "line": 21,
+            "column": 74
           }
         }
       ],
       "occurrences": [
         {
-          "id": "335fe8761154e269",
-          "semanticHost": "src/App.vue::style[index=1;lang=scss]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
+          "id": "03f31859eb0646f7",
+          "semanticHost": "src/App.vue::template[lang=html]",
+          "childRole": "html-text",
+          "localContext": "sibling:2",
+          "origin": "explicit",
           "representation": "source-text",
           "location": {
             "path": "src/App.vue",
-            "kind": "css-generated-content",
+            "kind": "html-text",
             "start": {
-              "line": 57,
-              "column": 14
+              "line": 21,
+              "column": 32
             },
             "end": {
-              "line": 57,
-              "column": 27
+              "line": 21,
+              "column": 74
             }
           }
         }
       ],
       "status": "active"
     },
-    "auto.01M6NQAX4T356M2KMR1YEMQ7DW": {
-      "source": "Vue 3 Sass 样式",
-      "fingerprint": "5aefb456f30fda70",
-      "origin": "derived",
-      "representation": "source-text",
+    "vue3.build.localeLabel": {
+      "source": "当前语言：中文",
+      "fingerprint": "e8d025f8a8223339",
+      "origin": "explicit",
+      "representation": "localized-call",
       "locations": [
         {
           "path": "src/App.vue",
-          "kind": "css-generated-content",
+          "kind": "template-expression",
           "start": {
-            "line": 67,
-            "column": 14
+            "line": 22,
+            "column": 40
           },
           "end": {
-            "line": 67,
-            "column": 27
+            "line": 22,
+            "column": 64
           }
         }
       ],
       "occurrences": [
         {
-          "id": "b60b56c14a2e15a0",
-          "semanticHost": "src/App.vue::style[index=2;lang=sass]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
+          "id": "478ed83b71f1ad1a",
+          "semanticHost": "src/App.vue::template[lang=html]",
+          "childRole": "template-expression",
+          "localContext": "sibling:4",
+          "origin": "explicit",
+          "representation": "localized-call",
           "location": {
             "path": "src/App.vue",
-            "kind": "css-generated-content",
+            "kind": "template-expression",
             "start": {
-              "line": 67,
-              "column": 14
+              "line": 22,
+              "column": 40
             },
             "end": {
-              "line": 67,
-              "column": 27
+              "line": 22,
+              "column": 64
             }
           }
         }
       ],
       "status": "active"
     },
-    "auto.01M6NQAX4TCSP1XWBKNGTY2ESD": {
-      "source": "Vue 3 Stylus 样式",
-      "fingerprint": "0d69fd8f81d43245",
-      "origin": "derived",
+    "vue3.build.title": {
+      "source": "构建替换演示",
+      "fingerprint": "24cf2bbf6634a31e",
+      "origin": "explicit",
       "representation": "source-text",
       "locations": [
         {
           "path": "src/App.vue",
-          "kind": "css-generated-content",
+          "kind": "html-text",
           "start": {
-            "line": 85,
-            "column": 13
+            "line": 19,
+            "column": 33
           },
           "end": {
-            "line": 85,
-            "column": 28
+            "line": 19,
+            "column": 39
           }
         }
       ],
       "occurrences": [
         {
-          "id": "079ec591fed6faa6",
-          "semanticHost": "src/App.vue::style[index=4;lang=stylus]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
+          "id": "40e7812215d8bcfb",
+          "semanticHost": "src/App.vue::template[lang=html]",
+          "childRole": "html-text",
+          "localContext": "sibling:1",
+          "origin": "explicit",
           "representation": "source-text",
           "location": {
             "path": "src/App.vue",
-            "kind": "css-generated-content",
+            "kind": "html-text",
             "start": {
-              "line": 85,
-              "column": 13
+              "line": 19,
+              "column": 33
             },
             "end": {
-              "line": 85,
-              "column": 28
-            }
-          }
-        }
-      ],
-      "status": "active"
-    },
-    "auto.01M6NQAX4TW0DV8J5QTSW2HJP0": {
-      "source": "Vue 3 Less 样式",
-      "fingerprint": "b23ef77b44515492",
-      "origin": "derived",
-      "representation": "source-text",
-      "locations": [
-        {
-          "path": "src/App.vue",
-          "kind": "css-generated-content",
-          "start": {
-            "line": 75,
-            "column": 14
-          },
-          "end": {
-            "line": 75,
-            "column": 27
-          }
-        }
-      ],
-      "occurrences": [
-        {
-          "id": "cd6f1109b742e8f8",
-          "semanticHost": "src/App.vue::style[index=3;lang=less]",
-          "childRole": "css-generated-content",
-          "localContext": "sibling:0",
-          "origin": "derived",
-          "representation": "source-text",
-          "location": {
-            "path": "src/App.vue",
-            "kind": "css-generated-content",
-            "start": {
-              "line": 75,
-              "column": 14
-            },
-            "end": {
-              "line": 75,
-              "column": 27
+              "line": 19,
+              "column": 39
             }
           }
         }

@@ -1,0 +1,3 @@
+.eyebrow::after {
+  content: "外部样式提示";
+}

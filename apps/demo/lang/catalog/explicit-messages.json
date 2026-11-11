@@ -28,6 +28,10 @@
     {
       "key": "demo.multilingual.body",
       "source": "你好，{name}。此页仅通过显式本地化渲染。"
+    },
+    {
+      "key": "demo.build.localeLabel",
+      "source": "当前语言：中文"
     }
   ]
 }

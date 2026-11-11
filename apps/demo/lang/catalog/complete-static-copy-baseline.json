@@ -3,29 +3,29 @@
   "violations": [
     {
       "reason": "interpolation",
-      "path": "src/copy.js",
+      "path": "src/pages/ScriptPage.vue",
       "kind": "template-literal",
       "start": {
-        "line": 2,
-        "column": 28
+        "line": 21,
+        "column": 20
       },
       "end": {
-        "line": 2,
-        "column": 32
+        "line": 21,
+        "column": 24
       },
       "text": "公共模板"
     },
     {
       "reason": "interpolation",
-      "path": "src/copy.js",
+      "path": "src/pages/ScriptPage.vue",
       "kind": "template-literal",
       "start": {
-        "line": 2,
-        "column": 36
+        "line": 21,
+        "column": 28
       },
       "end": {
-        "line": 2,
-        "column": 38
+        "line": 21,
+        "column": 30
       },
       "text": "片段"
     },

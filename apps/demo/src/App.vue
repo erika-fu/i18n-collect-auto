@@ -18,6 +18,7 @@ import ScriptPage from './pages/ScriptPage.vue'
 import LiteralPage from './pages/LiteralPage.vue'
 import MarkupPage from './pages/MarkupPage.vue'
 import StylePage from './pages/StylePage.vue'
+import BuildPage from './pages/BuildPage.vue'
 import MigrationPage from './pages/MigrationPage.vue'
 import MultilingualPage from './pages/multilingual/MultilingualPage.vue'
 
@@ -27,6 +28,7 @@ const pages = {
   literal: LiteralPage,
   markup: MarkupPage,
   style: StylePage,
+  build: BuildPage,
   migration: MigrationPage,
   multilingual: MultilingualPage
 }
@@ -42,6 +44,7 @@ export default {
         { id: 'literal', label: '模板字符串' },
         { id: 'markup', label: '文本与属性' },
         { id: 'style', label: '样式内容' },
+        { id: 'build', label: '构建替换' },
         { id: 'migration', label: 'Migration' },
         { id: 'multilingual', label: 'Multilingual' }
       ]

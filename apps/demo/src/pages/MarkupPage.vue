@@ -3,7 +3,7 @@
     <h2>{{ title }}</h2>
     <p>静态段落里的中文</p>
     <label>
-      姓名
+      <span>姓名</span>
       <input
         placeholder="请输入姓名"
         title="姓名提示"

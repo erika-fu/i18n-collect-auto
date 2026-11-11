@@ -1,11 +1,11 @@
 # i18n-collect
 
-This repository collects Chinese user-facing copy during a webpack 5 build and can carry that copy into a keyed translation catalog and into source replacement. It contains Vue 2, Vue 3, and React demos alongside the `i18n-collect` package. Collection does not rewrite application source. Source replacement is a separate command and stays a replacement preview unless `--write` is set.
+This repository collects Chinese user-facing copy during a webpack 5 build and can carry that copy into a keyed translation catalog, into optional Source replacement, and into Build replacement. It contains Vue 2, Vue 3, and React demos alongside the `i18n-collect` package. Collection does not rewrite application source. Source replacement is a separate command and stays a replacement preview unless `--write` is set. Build replacement rewrites only the in-memory webpack graph and the formal bundle; disk sources stay Chinese.
 
 - `packages/i18n-collect` exports `myloader` and `myplugin`.
-- `apps/demo` is the Vue 2 / Vue CLI demo. It uses vue-loader 15 and vue-i18n 8.
-- `apps/vue3-demo` is the Vue 3 / standalone Webpack 5 demo. It uses vue-loader 17 and vue-i18n 9.
-- `apps/react-demo` is the React / standalone Webpack 5 demo.
+- `apps/demo` is the Vue 2 / Vue CLI demo with Build replacement (`vue2` adapter, vue-i18n 8).
+- `apps/vue3-demo` is the Vue 3 / standalone Webpack 5 demo with Build replacement (`vue3` adapter, vue-i18n 9).
+- `apps/react-demo` is the React / standalone Webpack 5 demo for collection, explicit localization, and policy. React JSX is outside Build replacement for v1.
 
 The loader owns collection. The plugin owns the collection session, aggregation, and output. The plugin does not read business source and does not scan the project. A resource that never enters the loader is absent from the result. A failed round does not publish a partial result.
 
@@ -25,6 +25,8 @@ npm run build-react-demo
 npm run regression
 ```
 
+`npm run build` and `npm run build-vue3-demo` run two-phase `i18n-collect build` (collect, then Build replacement). They do not require a manual collect step first. Watch variants are `npm run watch -w i18n-auto-webpack-demo` and `npm run watch -w i18n-auto-webpack-vue3-demo` (`i18n-collect build --watch`).
+
 `npm test` runs the package tests, including the migration workflow against `packages/i18n-collect/fixtures/replacement`. Those tests use temporary directories and a local fake translation provider. They do not leave changes in the demo `lang` directories, and they do not need an API key, a vendor SDK, or an outbound network request.
 
 `npm run regression` runs the package suite, all three production demo builds, and hybrid localization verification.
@@ -33,10 +35,11 @@ Refresh checked-in dictionaries and source maps with the appropriate production 
 
 ```
 npm run update-demo-collection
+npm run update-vue3-demo-collection
 npm run update-react-demo-collection
 ```
 
-The first command runs `vue-cli-service build` for the Vue demo; the second runs the React demo's Webpack production build. These are the only workflows that update their respective committed collection files.
+The Vue commands run `i18n-collect build` for each Vue demo; the React command runs the React demo's Webpack production build. These are the only workflows that update their respective committed collection files.
 
 ### Hybrid-localization quality gate
 
@@ -294,7 +297,7 @@ The hash collection output stays so existing hash consumers keep working. Transl
 
 `apps/demo/src/lang/index.js` builds Vue I18n messages with `demoLocaleMessages`. For each locale it copies `lang/zh_hash.json` and then copies that locale's keyed catalog on top, so a localization key in the catalog wins. A replacement call such as `$t('demo.visit.banner')` resolves from the catalog. A call whose argument is still the MD5 of collected text resolves from the hash dictionary when the catalog has no such key.
 
-The migration page selects the `en` locale and exercises the stable key lifecycle. `demo.visit.banner` is "Welcome aboard" and `demo.visit.farewell` is "Welcome back", even though both explicit keys were collected from the same source text `欢迎`. `demo.shared.title` keeps a source-text occurrence beside a localized-call occurrence. `demo.items.deleted` is declared in `lang/catalog/explicit-messages.json` as `已删除 {count} 项` and resolves through `$t('demo.items.deleted', { count })` to "Deleted 3 items". `demo.terms.notice` is the structured explicit message `请阅读我们的{terms}与{privacy}`; the page renders it with vue-i18n component interpolation so translators can reorder the `{terms}` and `{privacy}` slots, producing "Please read our Terms of Service and Privacy Policy". Two `请稍候` occurrences in `apps/demo/src/lifecycle.js` receive independent automatic keys and both resolve to "Please wait". The legacy call `$t('47781b8a72bcbb7ecb1f955399a7e718')` still shows `欢迎`. The literal page keeps automatically collected complete static copy such as `纯静态插值`, while the dynamic unread message uses `$t('demo.unread.count', { count })` backed by the explicit manifest; remaining interpolation and concatenation samples stay listed in `complete-static-copy-baseline.json` until migrated. The multilingual page under `src/pages/multilingual` is declared in `runtime-multilingual-boundaries.json` and renders only through explicit calls such as `$t('demo.multilingual.title')`, switching to English at runtime. The React demo keeps Chinese-first copy outside `src/multilingual` for automatic collection, while that boundary panel resolves `react.multilingual.*` through a thin `t()` helper. `apps/demo/fixtures/keyed-migration` mirrors the migration lifecycle outside the demo webpack entry. `packages/i18n-collect/test/demo-runtime-migration.test.js` and `demo-runtime-multilingual.test.js` cover catalog resolution and boundary validation without rewriting committed demo `lang` outputs except through the usual demo build commands.
+The Build replacement page keeps Chinese on disk (`demo.build.title` / `demo.build.body`) and switches locales through the existing Vue I18n catalogs. The migration page selects the `en` locale and exercises the stable key lifecycle. `demo.visit.banner` is "Welcome aboard" and `demo.visit.farewell` is "Welcome back", even though both explicit keys were collected from the same source text `欢迎`. `demo.shared.title` keeps a source-text occurrence beside a localized-call occurrence. `demo.items.deleted` is declared in `lang/catalog/explicit-messages.json` as `已删除 {count} 项` and resolves through `$t('demo.items.deleted', { count })` to "Deleted 3 items". `demo.terms.notice` is the structured explicit message `请阅读我们的{terms}与{privacy}`; the page renders it with vue-i18n component interpolation so translators can reorder the `{terms}` and `{privacy}` slots, producing "Please read our Terms of Service and Privacy Policy". Two `请稍候` occurrences use `demo.wait.a` and `demo.wait.b` and both resolve to "Please wait". The legacy call `$t('47781b8a72bcbb7ecb1f955399a7e718')` still shows `欢迎`. The literal page keeps automatically collected complete static copy such as `纯静态插值`, while the dynamic unread message uses `$t('demo.unread.count', { count })` backed by the explicit manifest; remaining interpolation and concatenation samples stay listed in `complete-static-copy-baseline.json` until migrated. The multilingual page under `src/pages/multilingual` is declared in `runtime-multilingual-boundaries.json` and renders only through explicit calls such as `$t('demo.multilingual.title')`, switching to English at runtime. CSS generated content and standalone HTML Chinese samples live under demo `fixtures/` because Build replacement does not rewrite those positions. The React demo keeps Chinese-first copy outside `src/multilingual` for automatic collection, while that boundary panel resolves `react.multilingual.*` through a thin `t()` helper; see `apps/react-demo/README.md` for the JSX Build replacement limit. `apps/demo/fixtures/keyed-migration` mirrors the migration lifecycle outside the demo webpack entry. `packages/i18n-collect/test/demo-runtime-migration.test.js`, `demo-runtime-multilingual.test.js`, and `demo-build-replacement.test.js` cover catalog resolution, boundary validation, and Build replacement without rewriting committed demo `lang` outputs except through the usual demo build commands.
 
 Remove the hash-dictionary fallback only when every localization call passes a localization key and no call still passes an MD5. Each locale the runtime can select must already contain those keys in its keyed catalog. Until then, lookup reads the active locale's catalog first and reads `lang/zh_hash.json` only for a key that catalog does not contain. An empty catalog string is a translation and does not fall through. Collection keeps writing the hash dictionary after this fallback is removed. The fallback is the runtime compatibility layer, not the collection output.
 
@@ -321,6 +324,8 @@ Supported script positions are variable initializers, assignments, returns, thro
 
 React JSX, standalone HTML, and CSS generated content are outside replacement scope. Object keys, switch cases, and other unsupported positions are skipped with a source location and a reason. An already localized `t()`, `$t()`, or `this.$t()` call is recognized and left unchanged, so a repeated run does not nest it. `--strict` turns every skipped candidate into failure and writes nothing. Already localized calls are not skipped.
 
+Source replacement is an optional permanent migration. It is not a prerequisite for Build replacement. Preview and `--write` stay available on their own so a project can keep Chinese on disk with Build replacement, migrate some or all locations with `--write`, or mix both.
+
 Each call uses the localization key recorded for that occurrence. Identical text at separate locations becomes separate calls unless those occurrences share an explicit key. A location whose current text does not match, an orphaned occurrence, and an unsupported position are left unchanged. Overlapping occurrence claims are skipped, and neither claim is rewritten. A location named in `identity-ambiguities.json` is skipped; other locations in that file are still replaced, and an already localized call there is not counted as a skip. An existing localization call stays as it is, including a legacy call whose argument is the MD5 of the collected text. Replace does not modify the hash dictionary or its source map.
 
 `--write` prepares every changed source file, the keyed catalogs, and replacement metadata, then commits that set together. If the commit fails, those files are restored to their previous content. The next replace restores a journal it still finds before it plans another write. Exit 0 means the preview or the write finished. Exit 1 is a configuration failure, including a missing runtime integration. Exit 6 means the replacement files could not be saved. Exit 7 means strict mode found a skipped candidate.
@@ -330,6 +335,72 @@ These fixtures show the supported adapters:
 - `packages/i18n-collect/fixtures/replacement/vue2` is the Vue 2 example: template text, an allowlisted attribute, and an Options API instance method, with vue-i18n 8 already integrated.
 - `packages/i18n-collect/fixtures/replacement/vue3` is the Vue 3 example: template text and a `<script setup>` binding, with `createI18n` and an exported `t` already present.
 - `packages/i18n-collect/fixtures/replacement/js` is the generic JavaScript example. It also shows an exclusion directive, an `i18n-key` directive, an exclude glob that vetoes `src/legacy/**/*.js`, and a local translation provider. That provider does not set `network`, so a test can call it with no API key and no outbound request.
+
+## Build replacement
+
+`i18n-collect build` runs a two-phase Build replacement through the project's existing webpack integration.
+
+1. **Phase 1 — collection.** Runs the collector webpack compilation and publishes a stable catalog (and hash dictionary / source map).
+2. **Phase 2 — replacement compilation.** Reads that catalog, rewrites matching JavaScript / TypeScript / Vue SFC modules in memory with the shared Replacement Planner, and publishes the formal bundle only after success.
+
+Disk sources are not modified. `replacements.json` is not written. Explicit localized calls are left intact. A newly collected occurrence must receive its stable localization key in phase 1 before phase 2 may consume it — that is why the first time you add Chinese, the next published bundle uses the catalog from the same cycle (and why watch mode serializes collect-then-replace).
+
+```
+npx i18n-collect build
+npx i18n-collect build --watch
+npx i18n-collect build --json
+```
+
+Requires `buildReplacement` in `i18n-collect.config.js`:
+
+```js
+buildReplacement: {
+  enabled: true,
+  adapter: 'vue2', // or 'vue3' or 'js'
+  runtimeModule: 'src/i18n-runtime.js',
+  runtimeExport: 't'
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `enabled` | Must be `true` to run `i18n-collect build`. |
+| `adapter` | `js`, `vue2`, or `vue3`. Same call-shape rules as Source replacement. |
+| `runtimeModule` | Project-relative module the build may import for helper injection. |
+| `runtimeExport` | Export name from that module (usually `t`). |
+
+### Runtime module contract
+
+Build replacement does **not** install runtime libraries, load locales, switch languages, implement fallback, or check translation completeness. The project must already provide:
+
+- A compatible vue-i18n (or `t` export for `js`) integration in application bootstrap.
+- Locale catalogs the runtime can load (for example `lang/catalog/zh.json` and `lang/catalog/en.json`).
+- Any language-switch UI and fallback policy.
+
+The Vue demos show one way to combine Build replacement with existing catalog loading: Chinese stays in SFCs; the formal bundle calls `$t` / `this.$t` / `t`; the app switches `locale` against those catalogs.
+
+### Fail-closed behavior and diagnostics
+
+Unlike Source replacement's default skipped mode, Build replacement fails closed. Unsupported, orphaned, ambiguous, mismatched, overlapping, or otherwise unsafe collected positions abort the build with structured diagnostics (path, line/column, semantic kind, localization key, source text, reason). JSON reports include `stage` and `occurrences`. A failed collection keeps the previous catalog and formal bundle. A failed replacement keeps the previous formal bundle and leaves no staging leftovers.
+
+React JSX, standalone HTML, and CSS generated content are outside Build replacement for v1. Enabling Build replacement in a project that still collects those positions fails the build; keep such samples in fixtures outside the webpack entry, or migrate them before enabling Build replacement.
+
+### Watch
+
+`i18n-collect build --watch` runs a serial collect-then-replace loop. Each cycle commits the catalog before replacement compilation and only then publishes the formal bundle. Invalidations are coalesced; at most one coordinated cycle runs at a time. Adding Chinese mid-watch yields a new key in that cycle's catalog and a refreshed formal bundle — not a temporary bundle on a stale catalog.
+
+### CI
+
+In CI, run `i18n-collect build` (or the demo `npm run build` scripts) as the production entry. Do not require developers to run `collect` manually first. Pair with `i18n-collect verify` / `check-policy` where hybrid-localization gates apply. Commit formal catalog outputs when your workflow treats them as versioned artifacts.
+
+### Common loader-order issues
+
+- Place the collector before later script transforms (`thread-loader`, Babel) so pitch reads original source.
+- For Vue, keep collector rules on `type=template`, `type=script`, and `type=style` block queries as in the demos.
+- Build replacement inserts its loader ahead of the collector for scripts and as a `enforce: 'pre'` rule for `.vue` SFCs; do not strip those when customizing webpack.
+- HTMLWebpackPlugin templates still need the explicit `force=true` request chain documented below.
+
+Vue 2 and Vue 3 demos under `apps/demo` and `apps/vue3-demo` are the reference end-to-end setups. Source replacement fixtures under `packages/i18n-collect/fixtures/replacement` remain the reference for optional permanent migration.
 
 ## Workflow command
 
@@ -364,9 +435,12 @@ One `i18n-collect.config.js` at the project root supplies the defaults below. Lo
   targetLocales: [],
   translationFailure: 'partial',
   pruneOrphaned: false,
-  externalKeys: []
+  externalKeys: [],
+  buildReplacement: null
 }
 ```
+
+When `buildReplacement` is enabled it must set `adapter`, `runtimeModule`, and `runtimeExport` as described under Build replacement. `null` or `enabled: false` leaves `i18n-collect build` unavailable while collection and Source replacement continue to work.
 
 `catalogDir` is a project-relative directory. `sourceLocale` is a locale tag such as `zh` or `zh-CN` and names the source-locale catalog file. `catalogFormat` names the format adapter. The catalog files must not coincide with `outputPath` or `sourceMapFilename`. The catalog fields (`catalogDir`, `sourceLocale`, `catalogFormat`, `pruneOrphaned`, `externalKeys`) and the translation fields do not take part in the source map's `configHash`.
 

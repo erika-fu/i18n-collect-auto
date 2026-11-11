@@ -1,5 +1,5 @@
-export const bannerSource = /* i18n-key: demo.visit.banner */ '欢迎'
-export const farewellSource = /* i18n-key: demo.visit.farewell */ '欢迎'
-export const waitA = '请稍候'
-export const waitB = '请稍候'
-export const sharedTitle = /* i18n-key: demo.shared.title */ '共享标题'
+// Stable-key lifecycle samples moved into MigrationPage.vue data() so the Vue 2
+// Build replacement adapter can rewrite them with this.$t. The keyed-migration
+// fixture under fixtures/keyed-migration still exercises the same lifecycle
+// outside the webpack entry.
+export {}
