@@ -189,3 +189,6 @@ The dry-run result of source replacement. It reports the per-file source that wo
 
 **Source replacement**:
 A rewrite of a supported collected location into a runtime localization call that names its localization key. Collection does not do this. The replace command's default is a replacement preview. Source files change only when the caller sets `--write`.
+
+**Build replacement**:
+A build-time rewrite of a supported collected location into a runtime localization call that names its localization key. It changes only the in-memory module and emitted build output; the source file remains unchanged. It uses the same replacement rules as source replacement and leaves explicit localized calls intact. A newly collected occurrence must receive its stable localization key before a build replacement may consume it.

@@ -3,7 +3,9 @@ const path = require('path')
 const { upgradeCatalogMetadata } = require('../mycommon/catalog')
 const { catalogFiles, identityFiles, loadConfig } = require('../mycommon/config')
 const { commitFiles, recoverCommits } = require('../mycommon/output')
-const { SCRIPT_EXTENSIONS, exportsLocalizationFunction, planPreview, runtimeCalls } = require('../mycommon/replace-preview')
+const { SCRIPT_EXTENSIONS, exportsLocalizationFunction, runtimeCalls } = require('../mycommon/replace-preview')
+const { ReplacementPlanner } = require('../mycommon/replacement-planner')
+const { parseTemplate } = require('../myloader/template-parser')
 
 const EXIT = {
   ok: 0,
@@ -272,15 +274,16 @@ function projectExportsT(root) {
 function assertRuntime(root, adapter) {
   if (adapter === 'js') {
     if (!projectExportsT(root)) throw commandError('configuration', RUNTIME.js)
-    return
+    return { adapter, localizationFunction: true }
   }
   const version = majorVersion(packageVersion(root, 'vue-i18n'))
   const runtime = projectRuntime(root)
   if (adapter === 'vue2') {
     if (version !== 8 || !runtime.vue2) throw commandError('configuration', RUNTIME.vue2)
-    return
+    return { adapter, localizationFunction: true, vueVersion: 2 }
   }
   if (version == null || version < 9 || !runtime.vue3) throw commandError('configuration', RUNTIME.vue3)
+  return { adapter, localizationFunction: true, vueVersion: 3 }
 }
 
 function insideRoot(root, projectPath) {
@@ -305,6 +308,33 @@ function readSources(root, items) {
     sources.set(projectPath, stat.isFile() ? fs.readFileSync(full, 'utf8') : null)
   }
   return sources
+}
+
+function plannerResources(root, config, adapter, items, sources) {
+  const templatePaths = new Set(items
+    .filter(item => (
+      item.location.kind === 'html-text' ||
+      item.location.kind === 'html-attribute' ||
+      item.location.kind === 'template-expression'
+    ))
+    .map(item => item.location.path))
+  return new Map([...sources].map(([projectPath, source]) => {
+    if (adapter === 'js' || source == null || !templatePaths.has(projectPath) || path.posix.extname(projectPath).toLowerCase() !== '.vue') {
+      return [projectPath, source]
+    }
+    return [projectPath, {
+      source,
+      template: parseTemplate({
+        source,
+        resource: {
+          absolutePath: path.resolve(root, projectPath),
+          projectPath
+        },
+        standalone: false,
+        config: { vueVersion: config.vueVersion }
+      })
+    }]
+  }))
 }
 
 function recordedId(item) {
@@ -521,19 +551,20 @@ function replace(args) {
     const config = loadConfig({ root })
     recoverCommits(path.join(config.root, config.catalogDir))
     const metadata = readMetadata(config.root, config)
-    assertRuntime(config.root, parsed.adapter)
     const items = catalogItems(metadata)
     const active = withoutOrphaned(items)
     const ambiguities = readAmbiguities(config.root, config)
     const sources = readSources(config.root, items)
     const recorded = readRecorded(config.root, config)
-    const planned = reconcileRecorded(planPreview({
+    const occurrences = withReportedAmbiguities(active.open, ambiguities)
+    const planner = new ReplacementPlanner({
       adapter: parsed.adapter,
-      items: withReportedAmbiguities(active.open, ambiguities),
-      sources,
-      styleExtensions: new Set(config.styleExtensions.map(extension => String(extension).toLowerCase())),
-      root: config.root,
-      vueVersion: config.vueVersion
+      styleExtensions: config.styleExtensions,
+      runtime: assertRuntime(config.root, parsed.adapter)
+    })
+    const planned = reconcileRecorded(planner.plan({
+      occurrences,
+      resources: plannerResources(config.root, config, parsed.adapter, occurrences, sources)
     }), sources, recorded)
     planned.skipped = sortDetails([
       ...planned.skipped,

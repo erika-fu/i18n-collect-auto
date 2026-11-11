@@ -1,7 +1,6 @@
 const path = require('path')
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
-const { parseTemplate } = require('../myloader/template-parser')
 
 const PARSE = { sourceType: 'unambiguous', plugins: ['jsx', 'typescript'] }
 const SCRIPT_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'])
@@ -577,27 +576,11 @@ function byPosition(left, right) {
   return left.kind < right.kind ? -1 : left.kind > right.kind ? 1 : 0
 }
 
-function previewFile(projectPath, source, items, adapter, styleExtensions, options) {
+function previewFile(projectPath, source, items, adapter, styleExtensions, template) {
   const klass = fileClass(projectPath, styleExtensions)
   const blocks = source == null ? [] : prepareScript(source, klass)
-  const hasTemplateItems = items.some(item => (
-    item.location.kind === 'html-text' ||
-    item.location.kind === 'html-attribute' ||
-    item.location.kind === 'template-expression'
-  ))
-  const template = source != null && klass === 'vue' && adapter !== 'js' && hasTemplateItems
-    ? parseTemplate({
-        source,
-        resource: {
-          absolutePath: path.resolve(options.root || process.cwd(), projectPath),
-          projectPath
-        },
-        standalone: false,
-        config: { vueVersion: options.vueVersion }
-      })
-    : { regions: [] }
   const decisions = items.map(item => {
-    const decision = decide(source, item, adapter, klass, blocks, template)
+    const decision = decide(source, item, adapter, klass, blocks, template || { regions: [] })
     if (!item.reportedAmbiguity || decision.action !== 'replace') return decision
     const detail = { ...decision.detail, reason: 'occurrence identity is ambiguous' }
     delete detail.call
@@ -609,11 +592,12 @@ function previewFile(projectPath, source, items, adapter, styleExtensions, optio
     replacements: decisions.filter(decision => decision.action === 'replace').map(decision => decision.detail),
     skipped: decisions.filter(decision => decision.action === 'skip').map(decision => decision.detail),
     recognized: decisions.filter(decision => decision.action === 'keep').map(decision => decision.detail),
+    edits,
     preview: preview != null && preview !== source ? { path: projectPath, content: preview } : null
   }
 }
 
-function planPreview({ adapter, items, sources, styleExtensions, root, vueVersion }) {
+function planPreview({ adapter, items, sources, templates = new Map(), styleExtensions }) {
   const grouped = new Map()
   for (const item of items) {
     const list = grouped.get(item.location.path) || []
@@ -623,6 +607,7 @@ function planPreview({ adapter, items, sources, styleExtensions, root, vueVersio
   const replacements = []
   const skipped = []
   const recognized = []
+  const edits = []
   const previews = []
   for (const projectPath of [...grouped.keys()].sort()) {
     const result = previewFile(
@@ -631,18 +616,24 @@ function planPreview({ adapter, items, sources, styleExtensions, root, vueVersio
       grouped.get(projectPath),
       adapter,
       styleExtensions,
-      { root, vueVersion }
+      templates.get(projectPath)
     )
     replacements.push(...result.replacements)
     skipped.push(...result.skipped)
     recognized.push(...result.recognized)
+    edits.push(...result.edits.map(edit => ({ path: projectPath, ...edit })))
     if (result.preview) previews.push(result.preview)
   }
   replacements.sort(byPosition)
   skipped.sort(byPosition)
   recognized.sort(byPosition)
+  edits.sort((left, right) => (
+    left.path < right.path ? -1
+      : left.path > right.path ? 1
+        : left.start - right.start || left.end - right.end
+  ))
   previews.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
-  return { replacements, skipped, recognized, previews }
+  return { replacements, skipped, recognized, edits, previews }
 }
 
 function isFunctionNode(node) {
