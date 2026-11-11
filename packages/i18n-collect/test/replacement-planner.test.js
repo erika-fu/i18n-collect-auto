@@ -59,6 +59,37 @@ test('planner recognizes an existing localization call without nesting it', () =
   assert.strictEqual(result.recognized[0].call, "t('home.hello')")
 })
 
+test('planner recognizes a localized-call key argument after collection rebuilt the location', () => {
+  const source = "function render(t) { return t('home.hello') }"
+  const extracted = extractScript({
+    source,
+    resource: { projectPath: 'src/app.js' },
+    config: {}
+  }).find(entry => entry.representation === 'localized-call' && entry.key === 'home.hello')
+  assert.ok(extracted, 'expected a localized-call occurrence for home.hello')
+  const result = planReplacement({
+    adapter: 'js',
+    runtime: { localizationFunction: true },
+    occurrences: [{
+      key: 'home.hello',
+      source: '你好',
+      location: {
+        path: 'src/app.js',
+        kind: extracted.locations[0].kind,
+        start: extracted.locations[0].start,
+        end: extracted.locations[0].end
+      }
+    }],
+    resources: { 'src/app.js': source }
+  })
+
+  assert.strictEqual(result.replacements.length, 0)
+  assert.strictEqual(result.skipped.length, 0)
+  assert.strictEqual(result.recognized.length, 1)
+  assert.strictEqual(result.recognized[0].call, "t('home.hello')")
+  assert.strictEqual(result.recognized[0].source, '你好')
+})
+
 test('planner reports missing resource content as a skip', () => {
   const result = planReplacement({
     adapter: 'js',

@@ -485,8 +485,14 @@ function decideScript(source, item, adapter, blocks, base, helper) {
   if (!block) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
   if (block.error) return { action: 'skip', detail: detailOf(base, { reason: 'source could not be parsed' }) }
   const info = block.nodes.get(`${start}:${end}`)
-  if (!info || info.value !== item.source) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
-  if (info.localized) return { action: 'keep', detail: detailOf(base, { call: formatCall(info.localized, item.key) }) }
+  if (!info) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
+  // Prefer an existing localization call. After Source replacement and a later
+  // collection round, the occurrence location points at the key argument while
+  // catalog source text remains Chinese — match either form and never nest.
+  if (info.localized && (info.value === item.source || info.value === item.key)) {
+    return { action: 'keep', detail: detailOf(base, { call: formatCall(info.localized, item.key) }) }
+  }
+  if (info.value !== item.source) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
   if (info.jsx) return { action: 'skip', detail: detailOf(base, { reason: 'React JSX is outside replacement scope' }) }
   if (info.objectKey) return { action: 'skip', detail: detailOf(base, { reason: 'object key is not a supported semantic position' }) }
   if (info.switchCase) return { action: 'skip', detail: detailOf(base, { reason: 'switch case is not a supported semantic position' }) }

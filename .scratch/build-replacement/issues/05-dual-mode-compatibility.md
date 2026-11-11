@@ -4,18 +4,18 @@
 
 **Blocked by:** 03 — 扩展 Vue 3 Build replacement; 04 — 扩展 Vue 2 Build replacement.
 
-**Status:** ready-for-agent
+**Status:** implemented (local; awaiting commit)
 
-- [ ] CLI preview、CLI `--write` 和 Build replacement 对相同 occurrence 使用共享 Planner，并产生相同的 adapter call 决策。
-- [ ] Build replacement 不写 replacement metadata；只有 Source replacement 成功提交后才更新该审计记录。
-- [ ] 先运行 Build replacement、再运行 Source replacement 时，preview 和实际写入结果与未进行过构建转换时一致。
-- [ ] 先运行 `replace --write`、再运行两阶段 build 时，collection 将显式调用识别为 localized-call，Build replacement 不再次包装。
-- [ ] 同一文件中显式 localized call 与 source-text occurrence 可以共存，并各自保持正确 catalog identity。
-- [ ] 已有 replacement metadata 的项目可以升级并使用 Build replacement，不要求删除或重建历史记录。
-- [ ] 相同中文的不同 occurrence 继续保留各自 localization key；明确共享 key 的 occurrence 继续共享同一调用。
-- [ ] legacy MD5 调用保持现有兼容行为，不被 Build replacement 误识别为项目 keyed occurrence。
-- [ ] orphaned、retired、external key 和显式 message 的现有 catalog 生命周期不因双模式而改变。
-- [ ] CLI JSON/human report、退出码和事务恢复行为保持向后兼容。
-- [ ] 端到端测试覆盖 JS、Vue 2、Vue 3 的两种执行顺序、混合文件、重复运行和 catalog 再收集。
-- [ ] 完整 package 测试通过，并证明没有出现两套 planner 规则分叉。
+- [x] CLI preview、CLI `--write` 和 Build replacement 对相同 occurrence 使用共享 Planner，并产生相同的 adapter call 决策。
+- [x] Build replacement 不写 replacement metadata；只有 Source replacement 成功提交后才更新该审计记录。
+- [x] 先运行 Build replacement、再运行 Source replacement 时，preview 和实际写入结果与未进行过构建转换时一致。
+- [x] 先运行 `replace --write`、再运行两阶段 build 时，collection 将显式调用识别为 localized-call，Build replacement 不再次包装。
+- [x] 同一文件中显式 localized call 与 source-text occurrence 可以共存，并各自保持正确 catalog identity。
+- [x] 已有 replacement metadata 的项目可以升级并使用 Build replacement，不要求删除或重建历史记录。
+- [x] 相同中文的不同 occurrence 继续保留各自 localization key；明确共享 key 的 occurrence 继续共享同一调用。
+- [x] legacy MD5 调用保持现有兼容行为，不被 Build replacement 误识别为项目 keyed occurrence。
+- [x] orphaned、retired、external key 和显式 message 的现有 catalog 生命周期不因双模式而改变。
+- [x] CLI JSON/human report、退出码和事务恢复行为保持向后兼容。
+- [x] 端到端测试覆盖 JS、Vue 2、Vue 3 的两种执行顺序、混合文件、重复运行和 catalog 再收集。
+- [x] 完整 package 测试通过，并证明没有出现两套 planner 规则分叉。
 
