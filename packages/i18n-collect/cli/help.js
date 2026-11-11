@@ -29,7 +29,9 @@ Exit codes:
 const TRANSLATE_HELP = `i18n-collect translate
 
 Fill missing target-locale catalog entries from a project translation provider.
-Existing target text stays unless --retranslate is set. This command does not rewrite application source.
+Existing target text stays unless --retranslate is set. Target keys absent from the current
+source catalog are reported as stale and kept unless --prune is set. This command does not
+rewrite application source.
 
 Usage:
   i18n-collect translate [options]
@@ -39,6 +41,7 @@ Options:
   --provider <path>   Project-relative provider module. Replaces translationProvider.
   --locale <tag>      Target locale. Repeat to set several. Replaces targetLocales.
   --retranslate       Replace existing target text with a new provider draft.
+  --prune             Remove stale target keys and their review state.
   --failure <policy>  Replace translationFailure. Policies: partial, strict.
   --allow-network     Allow a network provider to send source text outside the project.
   --json              Print the translation report as JSON on stdout.
@@ -52,6 +55,7 @@ Provider contract:
   Selection: a missing target entry is always selected. An existing entry is selected only with --retranslate.
   A successful draft creates a missing entry or replaces a selected existing entry, and records the current source fingerprint with review "current".
   An existing entry whose recorded source fingerprint differs from the current source is kept and marked "needs-review". --retranslate may replace it; a successful draft then clears the mark.
+  A target key absent from the current source catalog is stale: reported, kept by default, and removed from the target catalog and review state only with --prune.
   Failure policy: partial, the default, writes successful drafts and review marks, then exits 4 and lists failed pairs. strict writes nothing when any pair fails, so the catalogs stay as they were.
   Return { drafts: [{ key, locale, text }], failures?: [{ key, locale, message }] }.
   A failure for a pair suppresses its draft. A requested pair with neither is a failure.

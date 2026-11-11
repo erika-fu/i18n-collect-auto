@@ -140,17 +140,16 @@ test('readRetirementConfirmations loads durable retirement keys', () => {
   assert.deepStrictEqual(readRetirementConfirmations(path.join(root, 'missing.json')), [])
 })
 
-test('planTranslation keeps orphaned translations and prunes retired keys from targets and review state', () => {
+test('planTranslation reports stale target keys and prunes them only when requested', () => {
   const fingerprint = fingerprintOf('你好')
-  const plan = planTranslation({
+  const kept = planTranslation({
     entries: {
       'home.live': { source: '在线', fingerprint: fingerprintOf('在线') }
     },
-    retainedKeys: ['home.live', 'home.orphan'],
     targets: {
       en: {
         'home.live': 'Live',
-        'home.orphan': 'Orphan',
+        'home.stale': 'Stale',
         'home.retired': 'Gone'
       }
     },
@@ -159,25 +158,67 @@ test('planTranslation keeps orphaned translations and prunes retired keys from t
       locales: {
         en: {
           'home.live': { sourceFingerprint: fingerprintOf('在线'), review: 'current' },
-          'home.orphan': { sourceFingerprint: fingerprint, review: 'current' },
+          'home.stale': { sourceFingerprint: fingerprint, review: 'current' },
           'home.retired': { sourceFingerprint: fingerprint, review: 'needs-review' }
         }
       }
     },
     locales: ['en']
   })
-  assert.deepStrictEqual(plan.nextTargets.en, {
+  assert.deepStrictEqual(kept.nextTargets.en, {
     'home.live': 'Live',
-    'home.orphan': 'Orphan'
+    'home.stale': 'Stale',
+    'home.retired': 'Gone'
   })
-  assert.strictEqual(plan.nextState.locales.en['home.retired'], undefined)
-  assert.deepStrictEqual(plan.pruned, [{ key: 'home.retired', locale: 'en' }])
-  assert.deepStrictEqual(plan.kept, [
+  assert.deepStrictEqual(kept.stale, [
+    { key: 'home.retired', locale: 'en' },
+    { key: 'home.stale', locale: 'en' }
+  ])
+  assert.deepStrictEqual(kept.pruned, [])
+
+  const pruned = planTranslation({
+    entries: {
+      'home.live': { source: '在线', fingerprint: fingerprintOf('在线') }
+    },
+    targets: {
+      en: {
+        'home.live': 'Live',
+        'home.stale': 'Stale',
+        'home.retired': 'Gone'
+      }
+    },
+    state: {
+      version: 1,
+      locales: {
+        en: {
+          'home.live': { sourceFingerprint: fingerprintOf('在线'), review: 'current' },
+          'home.stale': { sourceFingerprint: fingerprint, review: 'current' },
+          'home.retired': { sourceFingerprint: fingerprint, review: 'needs-review' }
+        }
+      }
+    },
+    locales: ['en'],
+    prune: true
+  })
+  assert.deepStrictEqual(pruned.nextTargets.en, {
+    'home.live': 'Live'
+  })
+  assert.strictEqual(pruned.nextState.locales.en['home.retired'], undefined)
+  assert.strictEqual(pruned.nextState.locales.en['home.stale'], undefined)
+  assert.deepStrictEqual(pruned.stale, [
+    { key: 'home.retired', locale: 'en' },
+    { key: 'home.stale', locale: 'en' }
+  ])
+  assert.deepStrictEqual(pruned.pruned, [
+    { key: 'home.retired', locale: 'en' },
+    { key: 'home.stale', locale: 'en' }
+  ])
+  assert.deepStrictEqual(pruned.kept, [
     { key: 'home.live', locale: 'en' }
   ])
-  const serialized = JSON.parse(serializeState(plan.nextState))
+  const serialized = JSON.parse(serializeState(pruned.nextState))
   assert.strictEqual(serialized.locales.en['home.retired'], undefined)
-  assert.strictEqual(serialized.locales.en['home.orphan'].review, 'current')
+  assert.strictEqual(serialized.locales.en['home.stale'], undefined)
 })
 
 test('a source fingerprint change keeps the existing translation and marks needs-review', () => {

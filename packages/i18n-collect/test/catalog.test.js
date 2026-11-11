@@ -767,7 +767,6 @@ test('changing an automatic occurrence to an explicit key orphans the former aut
 
   const plan = planTranslation({
     entries: { 'home.hello': next.entries['home.hello'] },
-    retainedKeys: ['home.hello', automaticKey],
     targets: { en: { [automaticKey]: 'Hello' } },
     state: {
       version: 1,
@@ -784,6 +783,8 @@ test('changing an automatic occurrence to an explicit key orphans the former aut
   })
   assert.strictEqual(plan.nextTargets.en[automaticKey], 'Hello')
   assert.strictEqual(plan.nextTargets.en['home.hello'], undefined)
+  assert.deepStrictEqual(plan.stale, [{ key: automaticKey, locale: 'en' }])
+  assert.deepStrictEqual(plan.pruned, [])
 })
 
 test('incompatible message patterns or placeholder contracts under one key fail with every occurrence reported', () => {

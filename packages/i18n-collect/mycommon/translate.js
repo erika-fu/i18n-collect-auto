@@ -21,16 +21,18 @@ function pairId(key, locale) {
 // Missing target entries are sent to the provider. Existing text stays unless retranslate
 // is set. A kept entry with no review record adopts the current source fingerprint.
 // A kept entry whose recorded fingerprint differs is marked needs-review and keeps its text.
-// retainedKeys (active + orphaned) keeps translation history; other target keys are pruned.
-function planTranslation({ entries, targets, state, locales, retranslate = false, retainedKeys = null }) {
+// Target keys absent from the current source catalog are reported as stale and kept unless
+// prune is set, which removes those stale entries and their review state.
+function planTranslation({ entries, targets, state, locales, retranslate = false, prune = false }) {
   const nextState = cloneState(state)
   const nextTargets = {}
   for (const locale of locales) nextTargets[locale] = { ...(targets[locale] || {}) }
   const items = new Map()
   const pending = []
   const kept = []
+  const stale = []
   const pruned = []
-  const retained = retainedKeys == null ? null : new Set(retainedKeys)
+  const sourceKeys = new Set(Object.keys(entries))
 
   for (const key of Object.keys(entries).sort()) {
     const entry = entries[key]
@@ -58,18 +60,18 @@ function planTranslation({ entries, targets, state, locales, retranslate = false
     }
   }
 
-  if (retained) {
-    for (const locale of locales) {
-      for (const key of Object.keys(nextTargets[locale]).sort()) {
-        if (retained.has(key)) continue
-        delete nextTargets[locale][key]
-        if (nextState.locales[locale]) delete nextState.locales[locale][key]
-        pruned.push({ key, locale })
-      }
+  for (const locale of locales) {
+    for (const key of Object.keys(nextTargets[locale]).sort()) {
+      if (sourceKeys.has(key)) continue
+      stale.push({ key, locale })
+      if (!prune) continue
+      delete nextTargets[locale][key]
+      if (nextState.locales[locale]) delete nextState.locales[locale][key]
+      pruned.push({ key, locale })
     }
   }
 
-  return { items: [...items.values()], pending, nextTargets, nextState, kept, pruned }
+  return { items: [...items.values()], pending, nextTargets, nextState, kept, pruned, stale }
 }
 
 function needsReview(state, entries, locales) {

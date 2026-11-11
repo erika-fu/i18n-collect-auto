@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
-const { entryStatus, upgradeCatalogMetadata } = require('../mycommon/catalog')
+const { fingerprintOf } = require('../mycommon/catalog')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { catalogFiles, loadConfig, translationSettings } = require('../mycommon/config')
 const { commitFiles, recoverCommits, unchanged } = require('../mycommon/output')
@@ -53,6 +53,7 @@ function parseTranslateArgs(args) {
     json: false,
     locales: null,
     provider: null,
+    prune: false,
     retranslate: false
   }
   for (let index = 0; index < args.length; index++) {
@@ -80,6 +81,9 @@ function parseTranslateArgs(args) {
     } else if (flag === '--retranslate') {
       if (inline !== null) throw commandError('configuration', 'unknown option "--retranslate"')
       parsed.retranslate = true
+    } else if (flag === '--prune') {
+      if (inline !== null) throw commandError('configuration', 'unknown option "--prune"')
+      parsed.prune = true
     } else if (flag === '--failure') parsed.failure = value('--failure')
     else if (flag === '--allow-network') {
       if (inline !== null) throw commandError('configuration', 'unknown option "--allow-network"')
@@ -138,40 +142,19 @@ function readState(root, relative) {
   return value
 }
 
-function alignedEntries(messages, metadata, metadataFile) {
-  let entries
-  try {
-    const upgraded = upgradeCatalogMetadata(metadata)
-    entries = upgraded && upgraded.entries
-  } catch (error) {
-    throw commandError('configuration', error.message || `catalog metadata ${metadataFile} is not a supported catalog schema`)
+function sourceEntries(messages) {
+  if (!messages || typeof messages !== 'object' || Array.isArray(messages)) {
+    throw commandError('configuration', 'source catalog must be an object')
   }
-  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
-    throw commandError('configuration', `catalog metadata ${metadataFile} is not a supported catalog schema`)
-  }
-  const active = {}
-  const retainedKeys = []
-  for (const key of Object.keys(entries).sort()) {
-    const entry = entries[key]
-    retainedKeys.push(key)
-    if (entryStatus(entry) === 'orphaned') continue
-    active[key] = entry
-  }
-  const messageKeys = Object.keys(messages).sort()
-  const entryKeys = Object.keys(active).sort()
-  if (messageKeys.join('\0') !== entryKeys.join('\0')) {
-    throw commandError('configuration', 'source catalog and catalog metadata name different keys')
-  }
-  for (const key of entryKeys) {
-    const entry = active[key]
-    if (!entry || messages[key] !== entry.source) {
-      throw commandError('configuration', `source catalog and catalog metadata disagree on "${key}"`)
+  const entries = {}
+  for (const key of Object.keys(messages).sort()) {
+    const source = messages[key]
+    if (typeof source !== 'string') {
+      throw commandError('configuration', `source catalog key "${key}" must be a string`)
     }
-    if (typeof entry.fingerprint !== 'string' || entry.fingerprint.length === 0) {
-      throw commandError('configuration', `catalog metadata entry "${key}" has no source fingerprint`)
-    }
+    entries[key] = { source, fingerprint: fingerprintOf(source) }
   }
-  return { active, retainedKeys }
+  return entries
 }
 
 function loadProvider(root, specifier) {
@@ -232,9 +215,11 @@ async function authorizeNetwork(provider, parsed, terminal) {
 
 function humanReport(report) {
   const pruned = report.pruned || []
+  const stale = report.stale || []
   const lines = [
-    `Created ${report.created.length}, replaced ${report.replaced.length}, kept ${report.kept.length}, marked ${report.needsReview.length} for review, pruned ${pruned.length}, failed ${report.failures.length}.`,
+    `Created ${report.created.length}, replaced ${report.replaced.length}, kept ${report.kept.length}, marked ${report.needsReview.length} for review, stale ${stale.length}, pruned ${pruned.length}, failed ${report.failures.length}.`,
     `Retranslate: ${report.retranslate ? 'yes' : 'no'}`,
+    `Prune: ${report.prune ? 'yes' : 'no'}`,
     `Policy: ${report.policy}`,
     `Applied: ${report.applied ? 'yes' : 'no'}`,
     `Locales: ${report.locales.join(', ')}`,
@@ -250,6 +235,7 @@ function humanReport(report) {
   list('Replaced', report.replaced)
   list('Kept', report.kept)
   list('Needs review', report.needsReview)
+  list('Stale', stale)
   list('Pruned', pruned)
   if (!report.applied) lines.push('Catalogs were left unchanged.')
   list('Withheld', report.withheld)
@@ -290,15 +276,7 @@ async function execute(parsed, terminal) {
   const files = catalogFiles(config)
   const messages = readMessages(root, files.messages, adapter, 'source catalog')
   if (!messages) throw commandError('configuration', `missing source catalog: ${files.messages}`)
-  const metadataFile = path.join(root, files.metadata)
-  if (!fs.existsSync(metadataFile)) throw commandError('configuration', `missing catalog metadata: ${files.metadata}`)
-  let metadata
-  try {
-    metadata = readJsonFile(metadataFile)
-  } catch (error) {
-    throw commandError('configuration', `cannot read catalog metadata ${files.metadata}: ${error.message}`)
-  }
-  const { active: entries, retainedKeys } = alignedEntries(messages, metadata, files.metadata)
+  const entries = sourceEntries(messages)
   recoverCommits(path.join(root, config.catalogDir))
   const targets = {}
   for (const locale of config.targetLocales) {
@@ -309,11 +287,11 @@ async function execute(parsed, terminal) {
   const state = readState(root, stateRelative)
   const plan = planTranslation({
     entries,
-    retainedKeys,
     targets,
     state,
     locales: config.targetLocales,
-    retranslate: parsed.retranslate
+    retranslate: parsed.retranslate,
+    prune: parsed.prune
   })
   const provider = loadProvider(root, config.translationProvider)
   let created = []
@@ -363,11 +341,13 @@ async function execute(parsed, terminal) {
     needsReview: needsReview(blocked ? state : plan.nextState, entries, config.targetLocales),
     ok: failures.length === 0,
     policy: config.translationFailure,
+    prune: parsed.prune,
     pruned: blocked ? [] : plan.pruned,
     replaced: blocked ? [] : replaced,
     retranslate: parsed.retranslate,
     review: stateRelative,
     sourceLocale: config.sourceLocale,
+    stale: blocked ? [] : plan.stale,
     withheld
   }
   const stdout = parsed.json ? jsonText(report) : humanReport(report)
