@@ -7,8 +7,40 @@ const { ReplacementPlanner } = require('./replacement-planner')
 const { parseTemplate } = require('../myloader/template-parser')
 
 const PARSE = { sourceType: 'unambiguous', plugins: ['jsx', 'typescript'] }
-const TEMPLATE_KINDS = new Set(['html-text', 'html-attribute', 'template-expression'])
-const MISMATCH = 'catalog location does not match the current source'
+
+function sortOccurrences(items) {
+  return [...items].sort((left, right) => {
+    if (left.path !== right.path) return left.path < right.path ? -1 : 1
+    if (left.start.line !== right.start.line) return left.start.line - right.start.line
+    if (left.start.column !== right.start.column) return left.start.column - right.start.column
+    if (left.kind !== right.kind) return left.kind < right.kind ? -1 : 1
+    return left.key < right.key ? -1 : left.key > right.key ? 1 : 0
+  })
+}
+
+function occurrenceFailureMessage(occurrences) {
+  if (!occurrences.length) return 'build replacement failed'
+  if (occurrences.length === 1) {
+    const item = occurrences[0]
+    return `${item.path}:${item.start.line}:${item.start.column} ${item.reason}`
+  }
+  return `build replacement failed with ${occurrences.length} unsafe occurrences`
+}
+
+function buildReplacementError(occurrences, message) {
+  const sorted = sortOccurrences(occurrences)
+  const error = new Error(message || occurrenceFailureMessage(sorted))
+  error.name = 'BuildReplacementError'
+  error.kind = 'build'
+  error.stage = 'replacement'
+  error.occurrences = sorted
+  return error
+}
+
+function failureFromSkipped(planned) {
+  if (!planned || !Array.isArray(planned.skipped) || planned.skipped.length === 0) return null
+  return buildReplacementError(planned.skipped)
+}
 
 function positionAt(source, index) {
   let line = 1
@@ -274,14 +306,6 @@ function chooseVueHelperName(source, runtimeExport) {
   return chooseHelperName(bindings)
 }
 
-function templateMismatchError(planned) {
-  const mismatch = planned.skipped.find(item => (
-    TEMPLATE_KINDS.has(item.kind) && item.reason === MISMATCH
-  ))
-  if (!mismatch) return null
-  return new Error(MISMATCH)
-}
-
 function transformScriptBuildReplacement({
   source,
   root,
@@ -314,6 +338,10 @@ function transformScriptBuildReplacement({
     occurrences,
     resources: new Map([[projectPath, source]])
   })
+  const skippedFailure = failureFromSkipped(planned)
+  if (skippedFailure) {
+    return { code: source, map: null, changed: false, planned, helperName, error: skippedFailure }
+  }
   const fileEdits = planned.edits
     .filter(edit => edit.path === projectPath)
     .map(({ start, end, text }) => ({ start, end, text }))
@@ -391,9 +419,9 @@ function transformVueBuildReplacement({
     resources: new Map([[projectPath, { source, template }]])
   })
 
-  const mismatch = templateMismatchError(planned)
-  if (mismatch) {
-    return { code: source, map: null, changed: false, planned, helperName, error: mismatch }
+  const skippedFailure = failureFromSkipped(planned)
+  if (skippedFailure) {
+    return { code: source, map: null, changed: false, planned, helperName, error: skippedFailure }
   }
 
   const fileEdits = planned.edits
@@ -501,6 +529,8 @@ function transformBuildReplacement({
 }
 
 module.exports = {
+  buildReplacementError,
   composeSourceMaps,
+  sortOccurrences,
   transformBuildReplacement
 }

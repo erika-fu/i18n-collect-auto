@@ -476,7 +476,7 @@ test('repeated Build replacement stays idempotent on disk and does not nest call
   assert.doesNotMatch(bundleSecond, /t\(t\(|你好/)
 })
 
-test('orphaned catalog keys survive Build replacement and stay outside Source replacement writes', { timeout: 120000 }, () => {
+test('orphaned catalog keys fail Build replacement while Source replacement still skips them', { timeout: 120000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-orphan-'))
   writeJsProject(root, {
     source: [
@@ -497,7 +497,13 @@ test('orphaned catalog keys survive Build replacement and stay outside Source re
   ].join('\n'))
 
   const build = run(['build', '--json'], root)
-  assert.strictEqual(build.status, 0, build.stderr)
+  assert.strictEqual(build.status, 3, build.stderr)
+  const body = JSON.parse(build.stdout)
+  assert.strictEqual(body.stage, 'replacement')
+  assert.ok(body.occurrences.some(item => (
+    item.key === orphanKey
+    && item.reason === 'orphaned occurrence is outside the current collection'
+  )))
   const meta = readJson(root, 'lang/catalog/catalog.meta.json')
   assert.strictEqual(meta.entries[orphanKey].status, 'orphaned')
   assert.strictEqual(meta.entries[helloKey].status, 'active')
@@ -510,6 +516,9 @@ test('orphaned catalog keys survive Build replacement and stay outside Source re
   assert.ok(report.replacements.every(item => item.key !== orphanKey))
   assert.strictEqual(report.replacements.length, 1)
   assert.strictEqual(report.replacements[0].key, helloKey)
+
+  const strict = run(['replace', '--adapter', 'js', '--strict', '--json'], root)
+  assert.strictEqual(strict.status, 7)
 })
 
 function writeVue3DualProject(root, vueSource) {

@@ -1,5 +1,14 @@
 const fs = require('fs')
 const path = require('path')
+const {
+  cleanupBundleArtifacts,
+  extractBuildReplacementOccurrences,
+  formatHumanFailure,
+  formatJsonFailure,
+  preflightBuildReplacement,
+  publishFormalBundle,
+  stageFormalBundle
+} = require('../mycommon/build-replacement-contract')
 const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
 const I18nBuildReplacementPlugin = require('../myplugin/build-replacement')
@@ -30,10 +39,26 @@ function outcome(code, stdout, stderr) {
 }
 
 function failure(error, json) {
+  const occurrences = Array.isArray(error && error.occurrences) ? error.occurrences : null
+  if (occurrences && occurrences.length > 0) {
+    const body = formatJsonFailure(occurrences, error.message)
+    return outcome(
+      EXIT.build,
+      json ? jsonText(body) : '',
+      formatHumanFailure(occurrences)
+    )
+  }
   const kind = error && EXIT[error.kind] ? error.kind : 'build'
   const message = error && error.message ? error.message : String(error)
+  const stage = error && error.stage
+    ? error.stage
+    : kind === 'collection'
+      ? 'collection'
+      : kind === 'configuration'
+        ? 'configuration'
+        : 'replacement'
   const stdout = json
-    ? jsonText({ command: 'build', failure: kind, message, ok: false })
+    ? jsonText({ command: 'build', failure: kind, stage, message, ok: false })
     : ''
   return outcome(EXIT[kind], stdout, `${kind}: ${message}\n`)
 }
@@ -94,9 +119,34 @@ function cloneWebpackConfig(config) {
   }
 }
 
+function classifyReplacementBuild(error, stats) {
+  const occurrences = extractBuildReplacementOccurrences(error, stats)
+  if (occurrences.length > 0) {
+    const failureError = new Error(
+      occurrences.length === 1
+        ? occurrences[0].reason
+        : `replacement failed with ${occurrences.length} unsafe occurrences`
+    )
+    failureError.kind = 'build'
+    failureError.stage = 'replacement'
+    failureError.occurrences = occurrences
+    return failureError
+  }
+  const failed = classifyBuild(error, stats)
+  if (failed) {
+    failed.stage = failed.stage || 'replacement'
+    return failed
+  }
+  if (stats && stats.hasErrors()) {
+    return commandError('build', 'webpack reported a build failure')
+  }
+  return null
+}
+
 async function runReplacementCompilation(root, parsed, config) {
   const previous = process.cwd()
   let restoreNetwork = null
+  let staging = null
   process.chdir(root)
   clearCollectionOverrides()
   try {
@@ -121,6 +171,7 @@ async function runReplacementCompilation(root, parsed, config) {
     if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded)) {
       throw commandError('configuration', 'build accepts one webpack configuration object')
     }
+    preflightBuildReplacement(root, config)
     const webpackConfig = cloneWebpackConfig(loaded)
     webpackConfig.watch = false
     webpackConfig.cache = false
@@ -129,19 +180,17 @@ async function runReplacementCompilation(root, parsed, config) {
       root,
       adapter: config.buildReplacement && config.buildReplacement.adapter
     }))
+    staging = stageFormalBundle(webpackConfig, root)
     const pluginOptions = pluginOptionsFrom(webpackConfig)
     const resolved = loadConfig({ root, pluginOptions })
     const { error, stats } = await runCompiler(webpackConfig)
-    const failed = classifyBuild(error, stats)
+    const failed = classifyReplacementBuild(error, stats)
     if (failed) throw failed
-    if (stats && stats.hasErrors()) throw commandError('build', 'webpack reported a build failure')
-    const outputPath = webpackConfig.output && webpackConfig.output.path
-      ? webpackConfig.output.path
-      : path.join(root, 'dist')
+    publishFormalBundle(staging)
+    const published = staging
+    staging = null
+    const outputPath = published.formalPath
     const filename = (webpackConfig.output && webpackConfig.output.filename) || 'bundle.js'
-    const bundleFile = path.isAbsolute(filename)
-      ? filename
-      : path.join(outputPath, Array.isArray(filename) ? filename[0] : String(filename).replace(/\[.+?\]/g, '*'))
     let bundle = projectRelative(root, path.join(outputPath, String(filename)))
     if (String(filename).includes('[')) {
       bundle = projectRelative(root, outputPath)
@@ -152,7 +201,6 @@ async function runReplacementCompilation(root, parsed, config) {
     return {
       adapter: resolved.buildReplacement.adapter,
       bundle,
-      bundleFile,
       outputPath,
       runtimeExport: resolved.buildReplacement.runtimeExport,
       runtimeModule: resolved.buildReplacement.runtimeModule
@@ -161,6 +209,7 @@ async function runReplacementCompilation(root, parsed, config) {
     if (restoreNetwork) restoreNetwork()
     clearCollectionOverrides()
     process.chdir(previous)
+    cleanupBundleArtifacts(root, staging && staging.stagingPath)
   }
 }
 
@@ -196,6 +245,7 @@ async function build(args) {
         const body = JSON.parse(phase1.stdout)
         body.command = 'build'
         body.phase = 'collection'
+        body.stage = 'collection'
         return outcome(phase1.code, jsonText(body), phase1.stderr)
       } catch (error) {
         return phase1
@@ -206,10 +256,6 @@ async function build(args) {
 
   try {
     const config = loadConfig({ root })
-    const metadataPath = path.join(root, catalogFiles(config).metadata)
-    if (!fs.existsSync(metadataPath)) {
-      throw commandError('collection', 'collection finished without a catalog')
-    }
     const replacement = await runReplacementCompilation(root, parsed, config)
     const collection = json
       ? collectionReportFrom(phase1.stdout, true)

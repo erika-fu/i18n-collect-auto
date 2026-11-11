@@ -137,7 +137,7 @@ test('existing localized calls are recognized without wrapping again', () => {
   assert.strictEqual(result.changed, false)
 })
 
-test('unsupported positions are left alone', () => {
+test('unsupported positions fail closed without applying partial edits', () => {
   const source = [
     'import { t } from "./i18n.js"',
     'const table = { "你好": 1 }',
@@ -151,19 +151,37 @@ test('unsupported positions are left alone', () => {
     occurrence('c', '欢迎', source)
   ]
   const result = transform(source, { occurrences: items })
-  assert.match(result.code, /\{\s*"你好":\s*1\s*\}/)
-  assert.match(result.code, /case "世界"/)
-  assert.match(result.code, /t\('c'\)|t\("c"\)|\w+\('c'\)/)
+  assert.ok(result.error)
+  assert.strictEqual(result.changed, false)
+  assert.strictEqual(result.code, source)
+  const reasons = result.error.occurrences.map(item => ({ key: item.key, reason: item.reason }))
+  assert.deepStrictEqual(reasons, [
+    { key: 'a', reason: 'object key is not a supported semantic position' },
+    { key: 'b', reason: 'switch case is not a supported semantic position' }
+  ])
+  for (const item of result.error.occurrences) {
+    assert.strictEqual(item.path, 'src/app.js')
+    assert.ok(item.kind)
+    assert.ok(item.source)
+    assert.ok(item.start)
+    assert.ok(item.end)
+    assert.ok(item.reason)
+  }
 })
 
-test('JSX text is not silently rewritten', () => {
+test('JSX occurrences fail the build replacement instead of keeping Chinese', () => {
   const source = 'import { t } from "./i18n.js"\nexport const node = <span>{"你好"}</span>\n'
   const result = transform(source, {
     projectPath: 'src/app.jsx',
     occurrences: [occurrence('home.hello', '你好', source, 'src/app.jsx')]
   })
-  assert.match(result.code, /"你好"/)
-  assert.doesNotMatch(result.code, /t\('home\.hello'\)/)
+  assert.ok(result.error)
+  assert.strictEqual(result.changed, false)
+  assert.strictEqual(result.code, source)
+  assert.strictEqual(result.error.occurrences.length, 1)
+  assert.strictEqual(result.error.occurrences[0].reason, 'React JSX is outside replacement scope')
+  assert.strictEqual(result.error.occurrences[0].key, 'home.hello')
+  assert.strictEqual(result.error.occurrences[0].path, 'src/app.jsx')
 })
 
 test('existing runtimeExport bindings are reused when the export is not named t', () => {
@@ -560,7 +578,7 @@ test('Vue 2 build replacement keeps template literal static segments as $t calls
   assert.doesNotMatch(result.code, /前缀/)
 })
 
-test('Vue 2 build replacement skips top-level, arrow methods, and nested functions', () => {
+test('Vue 2 build replacement fails closed for top-level, arrow methods, and nested functions', () => {
   const source = [
     '<template>',
     '  <p>欢迎</p>',
@@ -588,15 +606,12 @@ test('Vue 2 build replacement skips top-level, arrow methods, and nested functio
       你好: 'home.hello'
     })
   })
-  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
-  assert.match(result.code, /const top = '顶层'/)
-  assert.match(result.code, /arrow:\s*\(\)\s*=>\s*'箭头'/)
-  assert.match(result.code, /return '内部'/)
-  assert.match(result.code, /return this\.\$t\('home\.hello'\)/)
-  assert.doesNotMatch(result.code, /this\.\$t\('home\.top'\)|t\('home\.top'\)/)
-  assert.doesNotMatch(result.code, /this\.\$t\('home\.arrow'\)|t\('home\.arrow'\)/)
-  assert.doesNotMatch(result.code, /this\.\$t\('home\.inner'\)|t\('home\.inner'\)/)
-  assert.doesNotMatch(result.code, /import\s*\{/)
+  assert.ok(result.error)
+  assert.strictEqual(result.changed, false)
+  assert.strictEqual(result.code, source)
+  const keys = result.error.occurrences.map(item => item.key).sort()
+  assert.deepStrictEqual(keys, ['home.arrow', 'home.inner', 'home.top'])
+  assert.ok(result.error.occurrences.every(item => typeof item.reason === 'string' && item.reason.length > 0))
 })
 
 test('Vue 2 build replacement recognizes existing localized calls without nesting', () => {

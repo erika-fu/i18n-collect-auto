@@ -1,29 +1,15 @@
 const path = require('path')
 const { readCatalogMetadataFile } = require('../mycommon/catalog')
+const {
+  buildReplacementError,
+  transformBuildReplacement
+} = require('../mycommon/build-replace')
+const {
+  catalogOccurrences,
+  ORPHANED
+} = require('../mycommon/build-replacement-contract')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
-const { transformBuildReplacement } = require('../mycommon/build-replace')
 const { SCRIPT_EXTENSIONS } = require('../mycommon/replace-preview')
-
-function catalogOccurrences(metadata) {
-  const items = []
-  if (!metadata || !metadata.entries) return items
-  for (const key of Object.keys(metadata.entries).sort()) {
-    const entry = metadata.entries[key]
-    if (!entry || entry.status === 'orphaned' || typeof entry.source !== 'string') continue
-    if (!Array.isArray(entry.occurrences)) continue
-    for (const occurrence of entry.occurrences) {
-      const location = occurrence && occurrence.location
-      if (!location || typeof location.path !== 'string') continue
-      items.push({
-        key,
-        source: entry.source,
-        location,
-        reportedAmbiguity: false
-      })
-    }
-  }
-  return items
-}
 
 function supportedResource(projectPath, adapter) {
   const extension = path.posix.extname(projectPath).toLowerCase()
@@ -33,6 +19,28 @@ function supportedResource(projectPath, adapter) {
 
 function looksLikeVueSfc(source) {
   return typeof source === 'string' && /<(?:template|script|style)\b/i.test(source)
+}
+
+function activeOccurrences(metadata, projectPath) {
+  const orphaned = []
+  const open = []
+  for (const item of catalogOccurrences(metadata)) {
+    if (item.location.path !== projectPath) continue
+    if (item.status === 'orphaned') {
+      orphaned.push({
+        path: item.location.path,
+        key: item.key,
+        kind: item.location.kind,
+        source: item.source,
+        start: item.location.start,
+        end: item.location.end,
+        reason: ORPHANED
+      })
+    } else {
+      open.push(item)
+    }
+  }
+  return { open, orphaned }
 }
 
 function loader(source, sourceMap, meta) {
@@ -61,12 +69,21 @@ function loader(source, sourceMap, meta) {
       callback(new Error('i18n-collect build replacement requires a published catalog'))
       return
     }
+    const selected = activeOccurrences(metadata, projectPath)
+    if (selected.orphaned.length > 0) {
+      callback(buildReplacementError(selected.orphaned))
+      return
+    }
+    if (selected.open.length === 0) {
+      callback(null, source, sourceMap, meta)
+      return
+    }
     const result = transformBuildReplacement({
       source: Buffer.isBuffer(source) ? source.toString('utf8') : source,
       root,
       projectPath,
       resourcePath,
-      occurrences: catalogOccurrences(metadata),
+      occurrences: selected.open,
       adapter: build.adapter,
       runtimeModule: build.runtimeModule,
       runtimeExport: build.runtimeExport,

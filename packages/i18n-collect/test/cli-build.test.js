@@ -108,6 +108,7 @@ test('build help describes the two-phase Build replacement command', () => {
   assert.match(result.stdout, /Phase 2/)
   assert.match(result.stdout, /buildReplacement/)
   assert.match(result.stdout, /does not modify|not modified/i)
+  assert.match(result.stdout, /fail-closed|unsafe collected positions/i)
 })
 
 test('build requires buildReplacement to be enabled', { timeout: 20000 }, () => {
@@ -476,4 +477,171 @@ test('build replaces Vue 2 SFC content in memory without rewriting disk sources'
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/Home.vue')), homeBefore)
   assertUnchanged(before, root)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
+})
+
+function leftoverArtifacts(root) {
+  const names = []
+  const visit = directory => {
+    if (!fs.existsSync(directory)) return
+    for (const name of fs.readdirSync(directory)) {
+      if (
+        name.startsWith('.i18n-build-staging-')
+        || name.includes('.i18n-build-bak-')
+        || name.startsWith('.commit-')
+        || name.startsWith('.tmp-')
+        || name.startsWith('.bak-')
+      ) {
+        names.push(path.join(directory, name))
+      }
+      const file = path.join(directory, name)
+      if (fs.statSync(file).isDirectory() && name !== 'node_modules') visit(file)
+    }
+  }
+  visit(root)
+  return names.sort()
+}
+
+test('build fails closed for unsupported semantic positions with structured diagnostics', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-strict-pos-'))
+  writeBuildProject(root, {
+    source: [
+      'module.exports = {',
+      '  table: { "你好": 1 },',
+      '  label: "欢迎"',
+      '}',
+      ''
+    ].join('\n')
+  })
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 3, result.stderr)
+  const body = JSON.parse(result.stdout)
+  assert.strictEqual(body.ok, false)
+  assert.strictEqual(body.command, 'build')
+  assert.strictEqual(body.stage, 'replacement')
+  assert.strictEqual(body.failure, 'build')
+  assert.ok(Array.isArray(body.occurrences))
+  assert.ok(body.occurrences.length >= 1)
+  const unsupported = body.occurrences.find(item => item.reason.includes('object key'))
+  assert.ok(unsupported)
+  assert.strictEqual(unsupported.path, 'src/app.js')
+  assert.strictEqual(typeof unsupported.key, 'string')
+  assert.strictEqual(unsupported.kind, 'script-string')
+  assert.strictEqual(unsupported.source, '你好')
+  assert.ok(unsupported.start)
+  assert.ok(unsupported.end)
+  assert.match(result.stderr, /object key is not a supported semantic position/)
+  assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
+  assert.deepStrictEqual(leftoverArtifacts(root), [])
+})
+
+test('build sorts multiple replacement failures deterministically', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-strict-sort-'))
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/i18n.js'), 'function t(key) { return key }\nmodule.exports = { t }\n')
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = { "你好": 1 }\n')
+  fs.writeFileSync(path.join(root, 'src/other.js'), 'module.exports = { "世界": 1 }\n')
+  fs.writeFileSync(path.join(root, 'src/entry.js'), 'module.exports = {\n  a: require("./app"),\n  b: require("./other")\n}\n')
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), [
+    'module.exports = {',
+    '  buildReplacement: {',
+    '    enabled: true,',
+    '    adapter: "js",',
+    '    runtimeModule: "src/i18n.js",',
+    '    runtimeExport: "t"',
+    '  }',
+    '}',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
+const MyI18nPlugin = require(${JSON.stringify(plugin)})
+module.exports = {
+  context: __dirname,
+  mode: 'development',
+  devtool: false,
+  entry: './src/entry.js',
+  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist'), clean: true },
+  module: { rules: [{ test: /\\.[cm]?[jt]sx?$/, loader: ${JSON.stringify(loader)} }] },
+  plugins: [new MyI18nPlugin()]
+}
+`)
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 3, result.stderr)
+  const body = JSON.parse(result.stdout)
+  assert.ok(body.occurrences.length >= 2)
+  const keys = body.occurrences.map(item => `${item.path}:${item.start.line}:${item.start.column}:${item.reason}`)
+  assert.deepStrictEqual(keys, [...keys].sort())
+  assert.ok(body.occurrences[0].path <= body.occurrences[1].path)
+})
+
+test('build keeps the previous formal bundle when replacement fails', { timeout: 90000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-keep-bundle-'))
+  writeBuildProject(root)
+  const first = run(['build', '--json'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
+  const previousCatalog = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = { "你好": 1 }\n')
+  const second = run(['build', '--json'], root)
+  assert.strictEqual(second.status, 3, second.stderr)
+  const body = JSON.parse(second.stdout)
+  assert.strictEqual(body.stage, 'replacement')
+  assert.ok(body.occurrences.some(item => item.reason.includes('object key')))
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'dist/bundle.js')), previousBundle)
+  assert.notDeepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), previousCatalog)
+  assert.deepStrictEqual(leftoverArtifacts(root), [])
+})
+
+test('build keeps previous catalog and formal bundle when collection fails', { timeout: 90000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-keep-collection-'))
+  writeBuildProject(root)
+  const first = run(['build', '--json'], root)
+  assert.strictEqual(first.status, 0, first.stderr)
+  const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
+  const previousCatalog = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n')
+  fs.writeFileSync(path.join(root, 'src/other.js'), 'module.exports = /* i18n-key: shared.title */ "主页"\n')
+  const second = run(['build', '--json'], root)
+  assert.strictEqual(second.status, 2, second.stderr)
+  const body = JSON.parse(second.stdout)
+  assert.strictEqual(body.stage || body.phase, 'collection')
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'dist/bundle.js')), previousBundle)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), previousCatalog)
+  assert.deepStrictEqual(leftoverArtifacts(root), [])
+})
+
+test('build fails for CSS generated content instead of keeping Chinese', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-css-'))
+  const cssLoader = require.resolve('css-loader')
+  writeBuildProject(root, {
+    source: 'require("./badge.css")\nmodule.exports = "欢迎"\n',
+    files: {
+      'src/badge.css': '.badge::before { content: "你好"; }\n'
+    }
+  })
+  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
+const MyI18nPlugin = require(${JSON.stringify(plugin)})
+module.exports = {
+  context: __dirname,
+  mode: 'development',
+  devtool: false,
+  entry: './src/app.js',
+  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist'), clean: true },
+  module: {
+    rules: [
+      { test: /\\.[cm]?[jt]sx?$/, loader: ${JSON.stringify(loader)} },
+      { test: /\\.css$/, use: [${JSON.stringify(cssLoader)}, ${JSON.stringify(loader)}] }
+    ]
+  },
+  plugins: [new MyI18nPlugin()]
+}
+`)
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 3, `${result.stderr}\n${result.stdout}`)
+  const body = JSON.parse(result.stdout)
+  assert.strictEqual(body.stage, 'replacement')
+  assert.ok(body.occurrences.some(item => (
+    item.reason === 'CSS generated content is outside replacement scope'
+    && item.source === '你好'
+  )))
+  assert.deepStrictEqual(leftoverArtifacts(root), [])
 })

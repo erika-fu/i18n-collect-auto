@@ -269,6 +269,10 @@ Phase 1 runs collection compilation and publishes a stable catalog.
 Phase 2 reads that catalog, rewrites matching JavaScript, TypeScript, and Vue SFC modules
 in memory, and emits the formal bundle. Application source files are not modified.
 Requires buildReplacement.enabled in i18n-collect.config.js with adapter js, vue2, or vue3.
+Build replacement is fail-closed: unsupported, orphaned, ambiguous, mismatched, or otherwise
+unsafe collected positions abort the build with structured diagnostics. A failed collection
+keeps the previous catalog and formal bundle. A failed replacement keeps the previous formal
+bundle and leaves no staging leftovers. Unlike source replace, there is no skipped mode.
 
 Usage:
   i18n-collect build [options]
@@ -287,7 +291,7 @@ Exit codes:
   0  build finished
   1  configuration failure
   2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
-  3  build failure
+  3  build / replacement failure, including unsafe collected positions
 `
 
 function helpFor(command) {
