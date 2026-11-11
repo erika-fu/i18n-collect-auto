@@ -4,10 +4,19 @@ const fs = require('fs')
 const path = require('path')
 const test = require('node:test')
 const { demoLocaleMessages } = require('../../../apps/demo/src/lang/resolve')
+const {
+  assertSourcesUnchanged,
+  leftoverArtifacts,
+  snapshotSources
+} = require('./source-snapshot')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const vue2Root = path.resolve(__dirname, '../../../apps/demo')
 const vue3Root = path.resolve(__dirname, '../../../apps/vue3-demo')
+const SOURCE_OPTIONS = {
+  skipNames: ['node_modules', 'dist', 'lang'],
+  extensions: /\.(vue|js|jsx|css|html)$/
+}
 
 function run(args, cwd) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -25,32 +34,25 @@ function parseJsonReport(stdout) {
   return JSON.parse(stdout.slice(start, end + 1))
 }
 
-function listSourceFiles(root) {
+function snapshotDemoSources(root) {
   const files = []
   const visit = directory => {
+    if (!fs.existsSync(directory)) return
     for (const name of fs.readdirSync(directory)) {
-      if (name === 'node_modules' || name === 'dist' || name === 'lang') continue
+      if (SOURCE_OPTIONS.skipNames.includes(name)) continue
       const file = path.join(directory, name)
       if (fs.statSync(file).isDirectory()) visit(file)
-      else if (/\.(vue|js|jsx|css|html)$/.test(name)) files.push(file)
+      else if (SOURCE_OPTIONS.extensions.test(name)) files.push(file)
     }
   }
   visit(path.join(root, 'src'))
-  if (fs.existsSync(path.join(root, 'public'))) visit(path.join(root, 'public'))
-  return files.sort()
-}
-
-function snapshotSources(root) {
-  return new Map(listSourceFiles(root).map(file => [file, fs.readFileSync(file)]))
-}
-
-function assertSourcesUnchanged(before, root) {
-  const after = snapshotSources(root)
-  assert.strictEqual(after.size, before.size)
-  for (const [file, contents] of before) {
-    assert.ok(after.has(file), `missing ${path.relative(root, file)}`)
-    assert.deepStrictEqual(after.get(file), contents, `changed ${path.relative(root, file)}`)
+  visit(path.join(root, 'public'))
+  const selected = new Map()
+  for (const file of files.sort()) {
+    const stat = fs.statSync(file)
+    selected.set(file, { content: fs.readFileSync(file), mtimeMs: stat.mtimeMs })
   }
+  return selected
 }
 
 function findBundle(root) {
@@ -88,9 +90,9 @@ test('Vue 3 demo package scripts expose two-phase build and serial watch Build r
 })
 
 test('Vue 2 demo Build replacement keeps disk Chinese and localizes the formal bundle', { timeout: 300000 }, () => {
-  const before = snapshotSources(vue2Root)
+  const before = snapshotDemoSources(vue2Root)
   const home = path.join(vue2Root, 'src/pages/HomePage.vue')
-  const homeSource = fs.readFileSync(home, 'utf8')
+  const homeSource = before.get(home).content.toString('utf8')
   assert.match(homeSource, /插值/)
   const result = run(['build', '--json'], vue2Root)
   assert.strictEqual(result.status, 0, result.stderr || result.stdout)
@@ -99,6 +101,7 @@ test('Vue 2 demo Build replacement keeps disk Chinese and localizes the formal b
   assert.strictEqual(report.adapter, 'vue2')
   assert.strictEqual(fs.readFileSync(home, 'utf8'), homeSource)
   assertSourcesUnchanged(before, vue2Root)
+  assert.deepStrictEqual(leftoverArtifacts(vue2Root), [])
   assert.ok(!fs.existsSync(path.join(vue2Root, 'lang/catalog/replacements.json')))
   const metadata = JSON.parse(fs.readFileSync(path.join(vue2Root, 'lang/catalog/catalog.meta.json'), 'utf8'))
   const titleKey = Object.keys(metadata.entries).find(key => metadata.entries[key].source === '插值')
@@ -111,9 +114,9 @@ test('Vue 2 demo Build replacement keeps disk Chinese and localizes the formal b
 })
 
 test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal bundle', { timeout: 300000 }, () => {
-  const before = snapshotSources(vue3Root)
+  const before = snapshotDemoSources(vue3Root)
   const app = path.join(vue3Root, 'src/App.vue')
-  const appSource = fs.readFileSync(app, 'utf8')
+  const appSource = before.get(app).content.toString('utf8')
   assert.match(appSource, /原生 Vue 三模板/)
   const result = run(['build', '--json'], vue3Root)
   assert.strictEqual(result.status, 0, result.stderr || result.stdout)
@@ -122,6 +125,7 @@ test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal b
   assert.strictEqual(report.adapter, 'vue3')
   assert.strictEqual(fs.readFileSync(app, 'utf8'), appSource)
   assertSourcesUnchanged(before, vue3Root)
+  assert.deepStrictEqual(leftoverArtifacts(vue3Root), [])
   assert.ok(!fs.existsSync(path.join(vue3Root, 'lang/catalog/replacements.json')))
   const metadata = JSON.parse(fs.readFileSync(path.join(vue3Root, 'lang/catalog/catalog.meta.json'), 'utf8'))
   assert.strictEqual(metadata.entries['vue3.heading'].source, '原生 Vue 三模板')
@@ -130,6 +134,27 @@ test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal b
   // Catalog JSON is bundled for runtime lookup, so Chinese source text may still
   // appear there. The disk SFC stays Chinese while the call site uses the key.
   assert.match(appSource, /原生 Vue 三模板/)
+})
+
+test('Vue demo rebuild leaves business sources and formal outputs byte-stable', { timeout: 600000 }, () => {
+  for (const root of [vue2Root, vue3Root]) {
+    const sourcesBefore = snapshotDemoSources(root)
+    const first = run(['build', '--json'], root)
+    assert.strictEqual(first.status, 0, first.stderr || first.stdout)
+    assertSourcesUnchanged(sourcesBefore, root)
+    const formalAfterFirst = snapshotSources(path.join(root, 'lang'), { skipNames: ['node_modules'] })
+    const second = run(['build', '--json'], root)
+    assert.strictEqual(second.status, 0, second.stderr || second.stdout)
+    assertSourcesUnchanged(sourcesBefore, root)
+    for (const [file, entry] of formalAfterFirst) {
+      assert.deepStrictEqual(
+        fs.readFileSync(file),
+        entry.content,
+        `formal output changed on rebuild ${path.relative(root, file)}`
+      )
+    }
+    assert.deepStrictEqual(leftoverArtifacts(root), [])
+  }
 })
 
 test('Vue demos combine Build replacement keys with runtime catalog locale switching', () => {

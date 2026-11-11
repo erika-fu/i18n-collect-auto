@@ -86,7 +86,7 @@ Declare parameterized messages that are not complete static copy in `<catalogDir
 
 `i18n-collect verify` is the per-project quality gate: it snapshots formal outputs (hash dictionary, source map, source-locale catalog, catalog metadata), runs the same webpack collection as `collect`, restores those files and fails as `stale` when their bytes would change, then runs `check-policy`. Exit categories stay distinct: `stale` means commit refreshed formal outputs; `policy` means migrate or update the complete-static-copy baseline (runtime-multilingual literals cannot be grandfathered); `collection` / `build` / `configuration` remain hard failures. The baseline never suppresses collection failures, identity ambiguities, invalid metadata, or stale formal outputs.
 
-In this repository, `npm run verify` is the local, review, and CI entry point. It verifies the React demo with `i18n-collect verify`, checks Vue demo formal freshness via its production build plus `check-policy`, runs the package tests, and builds the React demo. Remediation hints are printed with each category.
+In this repository, `npm run verify` is the local, review, and CI entry point. It verifies the React demo with `i18n-collect verify`, checks Vue 2 and Vue 3 demo formal freshness via each production build plus `check-policy`, runs the package tests, and builds the React demo. `npm run regression` runs the package suite and all three demo builds first, then calls the same verify script with `--skip-package-tests`. Remediation hints are printed with each category.
 
 ## Complete-static-copy policy check failed
 

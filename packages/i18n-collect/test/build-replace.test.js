@@ -224,6 +224,43 @@ test('transform emits a source map that maps generated code back to the original
   assert.ok(original.line >= 1)
 })
 
+test('downstream compile errors map through the emitted source map to the original disk source', async () => {
+  const source = [
+    'export function label() {',
+    '  return "你好"',
+    '}',
+    ''
+  ].join('\n')
+  const result = transform(source)
+  assert.ok(result.map)
+  assert.deepStrictEqual(result.map.sources, ['src/app.js'])
+  const generatedLines = result.code.split('\n')
+  const generatedLine = generatedLines.findIndex(line => /\('home\.hello'\)/.test(line)) + 1
+  assert.ok(generatedLine > 0)
+  const generatedColumn = generatedLines[generatedLine - 1].indexOf("t('home.hello')")
+  assert.ok(generatedColumn >= 0)
+
+  // Downstream compilers report positions against the replaced buffer. Their
+  // diagnostics must resolve through the loader source map to the disk path.
+  const consumer = await new SourceMapConsumer(result.map)
+  const original = consumer.originalPositionFor({ line: generatedLine, column: generatedColumn })
+  assert.strictEqual(original.source, 'src/app.js')
+  assert.strictEqual(original.line, 2)
+
+  const { SourceMapGenerator } = require('source-map')
+  const downstream = new SourceMapGenerator({ file: 'app.out.js' })
+  downstream.addMapping({
+    generated: { line: 1, column: 0 },
+    original: { line: generatedLine, column: generatedColumn },
+    source: 'src/app.js'
+  })
+  downstream.applySourceMap(consumer, 'src/app.js')
+  const remapped = await new SourceMapConsumer(downstream.toJSON())
+  const reported = remapped.originalPositionFor({ line: 1, column: 0 })
+  assert.strictEqual(reported.source, 'src/app.js')
+  assert.strictEqual(reported.line, 2)
+})
+
 function vueScriptEntries(projectPath, source) {
   const resource = { projectPath }
   const entries = []

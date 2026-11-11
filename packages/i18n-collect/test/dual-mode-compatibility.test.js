@@ -54,18 +54,27 @@ function projectFiles(root) {
 }
 
 function snapshotFiles(root) {
-  return new Map(projectFiles(root).map(file => [file, fs.readFileSync(file)]))
+  return new Map(projectFiles(root).map(file => {
+    const stat = fs.statSync(file)
+    return [file, { content: fs.readFileSync(file), mtimeMs: stat.mtimeMs }]
+  }))
 }
 
 function assertUnchanged(before, root, ignore = []) {
   const ignored = new Set(ignore.map(file => path.resolve(root, file)))
   const after = snapshotFiles(root)
-  for (const [file, contents] of before) {
+  for (const [file, entry] of before) {
     if (ignored.has(file) || file.startsWith(path.join(root, 'dist')) || file.startsWith(path.join(root, 'lang'))) {
       continue
     }
     assert.ok(after.has(file), `missing ${file}`)
-    assert.deepStrictEqual(after.get(file), contents, `changed ${path.relative(root, file)}`)
+    const next = after.get(file)
+    const contents = entry.content || entry
+    const mtimeMs = entry.mtimeMs
+    assert.deepStrictEqual(next.content, contents, `changed ${path.relative(root, file)}`)
+    if (mtimeMs != null) {
+      assert.strictEqual(next.mtimeMs, mtimeMs, `mtime changed ${path.relative(root, file)}`)
+    }
   }
 }
 

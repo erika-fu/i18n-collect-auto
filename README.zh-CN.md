@@ -315,7 +315,7 @@ npx i18n-collect verify
 npx i18n-collect verify --json
 ```
 
-`i18n-collect verify` 会先跑一轮收集：正式产物（词典、来源映射、源语言目录、目录元数据）字节若与已提交文件不一致，会先恢复再以 `stale` 失败；通过后再跑 `check-policy`。收集失败、键冲突、身份歧义、无效元数据仍是硬失败，baseline 不能掩盖。本仓库用 `npm run verify` 作为本地 / 评审 / CI 入口：校验 React demo、用 Vue demo 生产构建检查正式产物新鲜度并跑策略、跑包测试、再构建 React demo。
+`i18n-collect verify` 会先跑一轮收集：正式产物（词典、来源映射、源语言目录、目录元数据）字节若与已提交文件不一致，会先恢复再以 `stale` 失败；通过后再跑 `check-policy`。收集失败、键冲突、身份歧义、无效元数据仍是硬失败，baseline 不能掩盖。本仓库用 `npm run verify` 作为本地 / 评审 / CI 入口：校验 React demo；用 Vue 2 与 Vue 3 demo 生产构建检查正式产物新鲜度并跑策略；跑包测试；再构建 React demo。`npm run regression` 会先跑完整包测试，再构建三个 demo，并以 `--skip-package-tests` 调用同一验证脚本，避免包测试跑两遍；在干净工作区连续跑两次应都退出 0，且业务源文件与已提交正式产物字节保持不变。
 
 | 失败类别 | 典型退出码 | 作者应做什么 |
 | --- | --- | --- |
@@ -653,7 +653,7 @@ npm run verify
 npm run regression
 ```
 
-三个 `apps/*-demo` 项目都是实际可运行的参考实现。`npm run verify` 是混合本地化质量门禁；`npm run regression` 依次运行完整包测试、Vue 2、Vue 3 与 React 生产构建，再运行混合本地化验证。
+三个 `apps/*-demo` 项目都是实际可运行的参考实现。`npm run verify` 是混合本地化质量门禁；`npm run regression` 是可重复的全量回归入口：完整包测试、Vue 2 / Vue 3 / React 生产构建，再跑混合本地化验证（跳过第二次包测试）。
 
 ### 2. 注册 Plugin
 

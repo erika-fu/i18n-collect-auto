@@ -6,6 +6,7 @@ const path = require('path')
 const test = require('node:test')
 const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
+const { leftoverArtifacts } = require('./source-snapshot')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -42,18 +43,27 @@ function projectFiles(root) {
 }
 
 function snapshotFiles(root) {
-  return new Map(projectFiles(root).map(file => [file, fs.readFileSync(file)]))
+  return new Map(projectFiles(root).map(file => {
+    const stat = fs.statSync(file)
+    return [file, { content: fs.readFileSync(file), mtimeMs: stat.mtimeMs }]
+  }))
 }
 
 function assertUnchanged(before, root, ignore = []) {
   const ignored = new Set(ignore.map(file => path.resolve(root, file)))
   const after = snapshotFiles(root)
-  for (const [file, contents] of before) {
+  for (const [file, entry] of before) {
     if (ignored.has(file) || file.startsWith(path.join(root, 'dist')) || file.startsWith(path.join(root, 'lang'))) {
       continue
     }
     assert.ok(after.has(file), `missing ${file}`)
-    assert.deepStrictEqual(after.get(file), contents, `changed ${path.relative(root, file)}`)
+    const next = after.get(file)
+    const contents = entry.content || entry
+    const mtimeMs = entry.mtimeMs
+    assert.deepStrictEqual(next.content, contents, `changed ${path.relative(root, file)}`)
+    if (mtimeMs != null) {
+      assert.strictEqual(next.mtimeMs, mtimeMs, `mtime changed ${path.relative(root, file)}`)
+    }
   }
 }
 
@@ -140,7 +150,10 @@ test('build publishes a stable key into the formal bundle without rewriting sour
   assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
   assert.doesNotMatch(bundle, /你好/)
   assertUnchanged(before, root)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), before.get(path.join(root, 'src/app.js')).toString())
+  assert.strictEqual(
+    fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'),
+    before.get(path.join(root, 'src/app.js')).content.toString()
+  )
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
 
@@ -480,28 +493,6 @@ test('build replaces Vue 2 SFC content in memory without rewriting disk sources'
   assertUnchanged(before, root)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
-
-function leftoverArtifacts(root) {
-  const names = []
-  const visit = directory => {
-    if (!fs.existsSync(directory)) return
-    for (const name of fs.readdirSync(directory)) {
-      if (
-        name.startsWith('.i18n-build-staging-')
-        || name.includes('.i18n-build-bak-')
-        || name.startsWith('.commit-')
-        || name.startsWith('.tmp-')
-        || name.startsWith('.bak-')
-      ) {
-        names.push(path.join(directory, name))
-      }
-      const file = path.join(directory, name)
-      if (fs.statSync(file).isDirectory() && name !== 'node_modules') visit(file)
-    }
-  }
-  visit(root)
-  return names.sort()
-}
 
 test('build fails closed for unsupported semantic positions with structured diagnostics', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-strict-pos-'))

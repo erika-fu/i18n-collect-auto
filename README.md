@@ -29,7 +29,7 @@ npm run regression
 
 `npm test` runs the package tests, including the migration workflow against `packages/i18n-collect/fixtures/replacement`. Those tests use temporary directories and a local fake translation provider. They do not leave changes in the demo `lang` directories, and they do not need an API key, a vendor SDK, or an outbound network request.
 
-`npm run regression` runs the package suite, all three production demo builds, and hybrid localization verification.
+`npm run regression` is the repeatable full-regression entry: package suite, all three production demo builds, then hybrid localization verification (skipping a second package-test pass). Run it twice on a clean workspace; both runs must exit 0 with unchanged business sources and committed formal output bytes.
 
 Refresh checked-in dictionaries and source maps with the appropriate production build:
 
@@ -46,9 +46,12 @@ The Vue commands run `i18n-collect build` for each Vue demo; the React command r
 `npm run verify` is the reproducible local, review, and CI entry point for this repository. It:
 
 1. Runs `i18n-collect verify` on the React demo (collection freshness + hybrid policy).
-2. Builds the Vue demo, fails if formal outputs would change (restoring committed bytes), then runs `check-policy` there.
-3. Runs the package test suite.
-4. Runs the React demo production build.
+2. Builds the Vue 2 demo, fails if formal outputs would change (restoring committed bytes), then runs `check-policy` there.
+3. Builds the Vue 3 demo the same way and runs `check-policy` there.
+4. Runs the package test suite.
+5. Runs the React demo production build.
+
+`npm run regression` already runs the package suite first, so it invokes verify with `--skip-package-tests` to avoid a duplicate test pass while still covering Vue 2/Vue 3 formal freshness and policy.
 
 `i18n-collect verify` is the per-project gate for webpack integrations that already use `i18n-collect collect`. It snapshots formal outputs, runs collection, restores and fails as `stale` when dictionary / source map / source-locale catalog / catalog metadata bytes change, then runs `check-policy`. Collection failures, key conflicts, identity ambiguities, and invalid metadata stay hard failures and cannot be suppressed by the complete-static-copy baseline.
 

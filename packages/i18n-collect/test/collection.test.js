@@ -179,8 +179,9 @@ test('exposes the complete regression gate from the workspace root', () => {
   const workspace = require('../../../package.json')
   assert.strictEqual(
     workspace.scripts.regression,
-    'npm test && npm run build && npm run build-vue3-demo && npm run build-react-demo && npm run verify'
+    'npm test && npm run build && npm run build-vue3-demo && npm run build-react-demo && node scripts/verify-hybrid-localization.js --skip-package-tests'
   )
+  assert.strictEqual(workspace.scripts.verify, 'node scripts/verify-hybrid-localization.js')
 })
 
 test('sorts locations by path, kind, and numeric line and column', () => {

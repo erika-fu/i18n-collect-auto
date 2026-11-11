@@ -26,9 +26,13 @@ const STEPS = [
   'react-verify',
   'vue-formal-freshness',
   'vue-check-policy',
+  'vue3-formal-freshness',
+  'vue3-check-policy',
   'package-tests',
   'react-demo-build'
 ]
+
+const SKIP_PACKAGE_TESTS_FLAG = '--skip-package-tests'
 
 const CATEGORY_HINTS = {
   configuration: 'Fix i18n-collect configuration or command options, then re-run npm run verify.',
@@ -99,20 +103,23 @@ function verifyReactDemo(runners) {
   }
 }
 
-function verifyVueFormalFreshness(runners) {
-  const demoRoot = path.join(ROOT, 'apps/demo')
+function verifyVueFormalFreshness(runners, {
+  demoRoot = path.join(ROOT, 'apps/demo'),
+  workspace = 'i18n-auto-webpack-demo',
+  label = 'Vue'
+} = {}) {
   let snapshot
   try {
     snapshot = snapshotFormalOutputs(demoRoot, loadFormalOutputPaths(demoRoot))
   } catch (error) {
     return fail('configuration', EXIT.configuration, error.message)
   }
-  const build = runners.runNpm(['run', 'build', '-w', 'i18n-auto-webpack-demo'])
+  const build = runners.runNpm(['run', 'build', '-w', workspace])
   if (build.status !== 0) {
     return fail(
       'build',
       EXIT.build,
-      'Vue demo production build failed while checking formal-output freshness',
+      `${label} demo production build failed while checking formal-output freshness`,
       build.stderr || build.stdout || ''
     )
   }
@@ -122,15 +129,26 @@ function verifyVueFormalFreshness(runners) {
     return fail(
       'stale',
       EXIT.stale,
-      'Vue demo formal collection outputs differ from committed artifacts',
+      `${label} demo formal collection outputs differ from committed artifacts`,
       changed.map(file => `changed: ${file}`).join('\n')
     )
   }
-  return { code: EXIT.ok, stdout: 'vue formal outputs are current\n', stderr: '', category: null }
+  return { code: EXIT.ok, stdout: `${label} formal outputs are current\n`, stderr: '', category: null }
 }
 
-function verifyVuePolicy(runners) {
-  const result = runners.runNode([BIN, 'check-policy', '--cwd', path.join(ROOT, 'apps/demo')])
+function verifyVue3FormalFreshness(runners) {
+  return verifyVueFormalFreshness(runners, {
+    demoRoot: path.join(ROOT, 'apps/vue3-demo'),
+    workspace: 'i18n-auto-webpack-vue3-demo',
+    label: 'Vue 3'
+  })
+}
+
+function verifyVuePolicy(runners, {
+  demoRoot = path.join(ROOT, 'apps/demo'),
+  label = 'Vue'
+} = {}) {
+  const result = runners.runNode([BIN, 'check-policy', '--cwd', demoRoot])
   if (result.status === 0) {
     return { code: EXIT.ok, stdout: result.stdout, stderr: '', category: null }
   }
@@ -138,16 +156,23 @@ function verifyVuePolicy(runners) {
     return {
       code: EXIT.configuration,
       stdout: result.stdout || '',
-      stderr: result.stderr || 'configuration: Vue demo check-policy failed\n',
+      stderr: result.stderr || `configuration: ${label} demo check-policy failed\n`,
       category: 'configuration'
     }
   }
   return {
     code: EXIT.policy,
     stdout: result.stdout || '',
-    stderr: result.stderr || 'policy: Vue demo hybrid localization policy check failed\n',
+    stderr: result.stderr || `policy: ${label} demo hybrid localization policy check failed\n`,
     category: 'policy'
   }
+}
+
+function verifyVue3Policy(runners) {
+  return verifyVuePolicy(runners, {
+    demoRoot: path.join(ROOT, 'apps/vue3-demo'),
+    label: 'Vue 3'
+  })
 }
 
 function runPackageTests(runners) {
@@ -197,6 +222,8 @@ const STEP_RUNNERS = {
   'react-verify': verifyReactDemo,
   'vue-formal-freshness': verifyVueFormalFreshness,
   'vue-check-policy': verifyVuePolicy,
+  'vue3-formal-freshness': verifyVue3FormalFreshness,
+  'vue3-check-policy': verifyVue3Policy,
   'package-tests': runPackageTests,
   'react-demo-build': buildReactDemo
 }
@@ -205,9 +232,17 @@ function defaultRunners() {
   return { runNode, runNpm }
 }
 
+function resolveSteps(options = {}) {
+  const argv = options.argv || []
+  const skipPackageTests = options.skipPackageTests === true || argv.includes(SKIP_PACKAGE_TESTS_FLAG)
+  const steps = options.steps || STEPS
+  if (!skipPackageTests) return steps
+  return steps.filter(step => step !== 'package-tests')
+}
+
 function main(options = {}) {
   const runners = options.runners || defaultRunners()
-  const steps = options.steps || STEPS
+  const steps = resolveSteps(options)
   write(process.stdout, 'verify-hybrid-localization: starting')
   for (const step of steps) {
     const runStep = STEP_RUNNERS[step]
@@ -229,13 +264,15 @@ function main(options = {}) {
 }
 
 if (require.main === module) {
-  process.exitCode = main()
+  process.exitCode = main({ argv: process.argv.slice(2) })
 }
 
 module.exports = {
   CATEGORY_HINTS,
   EXIT,
+  SKIP_PACKAGE_TESTS_FLAG,
   STEPS,
   main,
-  mapVerifyExit
+  mapVerifyExit,
+  resolveSteps
 }
