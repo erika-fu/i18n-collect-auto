@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
+const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
@@ -15,6 +16,9 @@ const vueLoaderCompilerPath = require.resolve('vue-loader/dist/compiler', { path
 const vuePath = require.resolve('vue', { paths: [vue3DemoRoot] })
 const vueI18nPath = require.resolve('vue-i18n', { paths: [vue3DemoRoot] })
 const compilerSfcPath = require.resolve('@vue/compiler-sfc')
+const vue2LoaderPath = require.resolve('@vue/vue-loader-v15')
+const vue2Path = require.resolve('vue')
+const vue2I18nPath = require.resolve('vue-i18n')
 
 function run(args, cwd) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -330,6 +334,145 @@ test('build replaces Vue 3 SFC content in memory without rewriting disk sources'
   }
   assert.doesNotMatch(bundle, /欢迎/)
   assert.doesNotMatch(bundle, /说明/)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/Home.vue')), homeBefore)
+  assertUnchanged(before, root)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
+})
+
+function writeVue2BuildProject(root, {
+  vueSource = [
+    '<template>',
+    '  <p title="提示">欢迎</p>',
+    '</template>',
+    '<script>',
+    'export default {',
+    '  methods: {',
+    "    greet() { return '你好' }",
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+} = {}) {
+  const vueVersion = require('vue/package.json').version
+  const vueI18nVersion = require('vue-i18n/package.json').version
+  installVue2(root)
+  writeProxyPackage(root, 'vue', vueVersion, vue2Path)
+  writeProxyPackage(root, 'vue-i18n', vueI18nVersion, vue2I18nPath)
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    name: 'vue2-build-fixture',
+    private: true,
+    dependencies: {
+      vue: vueVersion,
+      'vue-i18n': vueI18nVersion
+    }
+  }, null, 2))
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/Home.vue'), vueSource)
+  fs.writeFileSync(path.join(root, 'src/i18n.js'), [
+    'export function t(key) { return key }',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(path.join(root, 'src/main.js'), [
+    "import Vue from 'vue'",
+    "import VueI18n from 'vue-i18n'",
+    "import Home from './Home.vue'",
+    'Vue.use(VueI18n)',
+    'const i18n = new VueI18n({ locale: "zh", messages: { zh: {} } })',
+    'new Vue({ i18n, render: h => h(Home) }).$mount("#app")',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), [
+    'module.exports = {',
+    '  buildReplacement: {',
+    '    enabled: true,',
+    '    adapter: "vue2",',
+    '    runtimeModule: "src/i18n.js",',
+    '    runtimeExport: "t"',
+    '  }',
+    '}',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
+const { VueLoaderPlugin } = require(${JSON.stringify(vue2LoaderPath)})
+const MyI18nPlugin = require(${JSON.stringify(plugin)})
+const collector = ${JSON.stringify(loader)}
+module.exports = {
+  context: __dirname,
+  mode: 'development',
+  devtool: false,
+  entry: './src/main.js',
+  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist'), clean: true },
+  resolve: {
+    extensions: ['.js', '.vue'],
+    alias: { vue$: ${JSON.stringify(require.resolve('vue/dist/vue.esm.js'))} }
+  },
+  module: {
+    rules: [
+      { test: /\\.vue$/, loader: ${JSON.stringify(vue2LoaderPath)} },
+      { test: /\\.m?js$/, exclude: /node_modules/, use: [collector] },
+      { test: /\\.vue$/, resourceQuery: /type=template/, use: [collector] },
+      { test: /\\.vue$/, resourceQuery: /type=script/, use: [collector] }
+    ]
+  },
+  plugins: [new VueLoaderPlugin(), new MyI18nPlugin()]
+}
+`)
+}
+
+test('build fails when Vue 2 runtime integration is missing', { timeout: 20000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-runtime-'))
+  writeVue2BuildProject(root)
+  fs.writeFileSync(path.join(root, 'src/main.js'), "import Home from './Home.vue'\n")
+  const before = snapshotFiles(root)
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 1)
+  assert.match(result.stderr, /Vue\.use\(VueI18n\)|new VueI18n/)
+  assert.match(result.stderr, /does not install dependencies or rewrite application bootstrap/)
+  assertUnchanged(before, root)
+})
+
+test('build rejects commented or non-call VueI18n lookalikes for Vue 2 runtime validation', { timeout: 20000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-fake-runtime-'))
+  writeVue2BuildProject(root)
+  fs.writeFileSync(path.join(root, 'src/main.js'), [
+    "import Home from './Home.vue'",
+    '// Vue.use(VueI18n)',
+    '// new VueI18n({})',
+    "const VueI18n = 'not a call'",
+    'export default Home',
+    ''
+  ].join('\n'))
+  const before = snapshotFiles(root)
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 1)
+  assert.match(result.stderr, /Vue\.use\(VueI18n\)|new VueI18n/)
+  assertUnchanged(before, root)
+})
+
+test('build replaces Vue 2 SFC content in memory without rewriting disk sources', { timeout: 120000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-ok-'))
+  writeVue2BuildProject(root)
+  const before = snapshotFiles(root)
+  const homeBefore = fs.readFileSync(path.join(root, 'src/Home.vue'))
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.strictEqual(report.adapter, 'vue2')
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
+  const welcome = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '欢迎')
+  const hint = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '提示')
+  const hello = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '你好')
+  assert.ok(welcome, 'expected template text in catalog')
+  assert.ok(hint, 'expected template attribute in catalog')
+  assert.ok(hello, 'expected Options API method text in catalog')
+  const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
+  for (const key of [welcome, hint, hello]) {
+    assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
+  }
+  assert.doesNotMatch(bundle, /欢迎/)
+  assert.doesNotMatch(bundle, /你好/)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/Home.vue')), homeBefore)
   assertUnchanged(before, root)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))

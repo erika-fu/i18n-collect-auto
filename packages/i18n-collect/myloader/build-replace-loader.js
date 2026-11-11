@@ -28,7 +28,7 @@ function catalogOccurrences(metadata) {
 function supportedResource(projectPath, adapter) {
   const extension = path.posix.extname(projectPath).toLowerCase()
   if (SCRIPT_EXTENSIONS.has(extension)) return true
-  return adapter === 'vue3' && extension === '.vue'
+  return (adapter === 'vue2' || adapter === 'vue3') && extension === '.vue'
 }
 
 function looksLikeVueSfc(source) {
@@ -44,7 +44,7 @@ function loader(source, sourceMap, meta) {
     const projectPath = path.relative(root, resourcePath).split(path.sep).join('/')
     const config = loadConfig({ root })
     const build = config.buildReplacement
-    if (!build || !build.enabled || (build.adapter !== 'js' && build.adapter !== 'vue3')) {
+    if (!build || !build.enabled || (build.adapter !== 'js' && build.adapter !== 'vue2' && build.adapter !== 'vue3')) {
       callback(null, source, sourceMap, meta)
       return
     }
@@ -52,7 +52,7 @@ function loader(source, sourceMap, meta) {
       callback(null, source, sourceMap, meta)
       return
     }
-    if (build.adapter === 'vue3' && path.posix.extname(projectPath).toLowerCase() === '.vue' && !looksLikeVueSfc(source)) {
+    if ((build.adapter === 'vue2' || build.adapter === 'vue3') && path.posix.extname(projectPath).toLowerCase() === '.vue' && !looksLikeVueSfc(source)) {
       callback(null, source, sourceMap, meta)
       return
     }

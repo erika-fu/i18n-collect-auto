@@ -347,17 +347,19 @@ function transformScriptBuildReplacement({
   }
 }
 
-function transformVue3BuildReplacement({
+function transformVueBuildReplacement({
   source,
   root,
   projectPath,
   resourcePath,
   occurrences,
+  adapter,
   runtimeModule,
   runtimeExport,
   styleExtensions,
   inputSourceMap
 }) {
+  const vueVersion = adapter === 'vue2' ? 2 : 3
   let template
   try {
     template = parseTemplate({
@@ -367,7 +369,7 @@ function transformVue3BuildReplacement({
         projectPath
       },
       standalone: false,
-      config: { vueVersion: 3 }
+      config: { vueVersion }
     })
   } catch (error) {
     return { code: source, map: null, changed: false, planned: null, error }
@@ -375,13 +377,13 @@ function transformVue3BuildReplacement({
 
   const helperName = chooseVueHelperName(source, runtimeExport)
   const planner = new ReplacementPlanner({
-    adapter: 'vue3',
+    adapter,
     styleExtensions,
     runtime: {
       localizationFunction: true,
       helperName,
-      helperAvailable: true,
-      vueVersion: 3
+      helperAvailable: adapter === 'vue3',
+      vueVersion
     }
   })
   const planned = planner.plan({
@@ -400,24 +402,26 @@ function transformVue3BuildReplacement({
 
   const request = runtimeRequest(root, runtimeModule, resourcePath)
   const injectionTargets = []
-  for (const block of vueScriptBlocks(source)) {
-    const helperEdits = fileEdits.filter(edit => (
-      edit.start >= block.innerStart
-      && edit.start < block.innerEnd
-      && planned.replacements.some(item => item.call && item.call.startsWith(helperCallPrefix(helperName)) && edit.text.includes(item.call))
-    ))
-    if (helperEdits.length === 0) continue
-    const inspected = inspectSource(block.inner, runtimeExport)
-    const reuse = helperName === runtimeExport
-      ? inspected.reusableHelper
-      : isReusableAlias(block.inner, helperName, runtimeExport)
-    if (reuse) continue
-    const esm = inspected.esm || block.setup || /^\s*import\b/m.test(block.inner) || /^\s*export\b/m.test(block.inner)
-    injectionTargets.push({
-      start: block.innerStart,
-      end: block.innerStart,
-      text: injectionStatement(esm, helperName, runtimeExport, request)
-    })
+  if (adapter === 'vue3') {
+    for (const block of vueScriptBlocks(source)) {
+      const helperEdits = fileEdits.filter(edit => (
+        edit.start >= block.innerStart
+        && edit.start < block.innerEnd
+        && planned.replacements.some(item => item.call && item.call.startsWith(helperCallPrefix(helperName)) && edit.text.includes(item.call))
+      ))
+      if (helperEdits.length === 0) continue
+      const inspected = inspectSource(block.inner, runtimeExport)
+      const reuse = helperName === runtimeExport
+        ? inspected.reusableHelper
+        : isReusableAlias(block.inner, helperName, runtimeExport)
+      if (reuse) continue
+      const esm = inspected.esm || block.setup || /^\s*import\b/m.test(block.inner) || /^\s*export\b/m.test(block.inner)
+      injectionTargets.push({
+        start: block.innerStart,
+        end: block.innerStart,
+        text: injectionStatement(esm, helperName, runtimeExport, request)
+      })
+    }
   }
 
   const allEdits = [...fileEdits, ...injectionTargets]
@@ -463,13 +467,14 @@ function transformBuildReplacement({
     return { code: source, map: null, changed: false, planned: null }
   }
 
-  if (adapter === 'vue3' && extension === '.vue') {
-    return transformVue3BuildReplacement({
+  if ((adapter === 'vue2' || adapter === 'vue3') && extension === '.vue') {
+    return transformVueBuildReplacement({
       source,
       root,
       projectPath,
       resourcePath,
       occurrences: relevant,
+      adapter,
       runtimeModule,
       runtimeExport,
       styleExtensions,
@@ -487,7 +492,7 @@ function transformBuildReplacement({
     projectPath,
     resourcePath,
     occurrences: relevant,
-    adapter: adapter === 'vue3' ? 'vue3' : 'js',
+    adapter: adapter === 'vue2' || adapter === 'vue3' ? adapter : 'js',
     runtimeModule,
     runtimeExport,
     styleExtensions,

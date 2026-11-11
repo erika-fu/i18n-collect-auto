@@ -82,11 +82,27 @@ test('validates buildReplacement for the js adapter and rejects invalid values',
       runtimeExport: 't'
     }
   )
+  assert.deepStrictEqual(
+    validate('/project', {
+      buildReplacement: {
+        enabled: true,
+        adapter: 'vue2',
+        runtimeModule: 'src/i18n.js',
+        runtimeExport: 't'
+      }
+    }).buildReplacement,
+    {
+      enabled: true,
+      adapter: 'vue2',
+      runtimeModule: 'src/i18n.js',
+      runtimeExport: 't'
+    }
+  )
   assert.throws(
     () => validate('/project', {
       buildReplacement: {
         enabled: true,
-        adapter: 'vue2',
+        adapter: 'react',
         runtimeModule: 'src/i18n.js',
         runtimeExport: 't'
       }

@@ -54,7 +54,7 @@ class I18nBuildReplacementPlugin {
     const webpack = compiler.webpack || require('webpack')
     const { NormalModule } = webpack
 
-    if (adapter === 'vue3') {
+    if (adapter === 'vue2' || adapter === 'vue3') {
       const rules = compiler.options.module.rules || (compiler.options.module.rules = [])
       const already = rules.some(rule => (
         rule

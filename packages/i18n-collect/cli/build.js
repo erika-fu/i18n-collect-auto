@@ -52,8 +52,8 @@ function requireBuildReplacement(root) {
       'buildReplacement.enabled must be true to run i18n-collect build'
     )
   }
-  if (build.adapter !== 'js' && build.adapter !== 'vue3') {
-    throw commandError('configuration', 'buildReplacement.adapter must be "js" or "vue3"')
+  if (build.adapter !== 'js' && build.adapter !== 'vue2' && build.adapter !== 'vue3') {
+    throw commandError('configuration', 'buildReplacement.adapter must be "js", "vue2", or "vue3"')
   }
   try {
     assertReplacementRuntime(root, build.adapter)

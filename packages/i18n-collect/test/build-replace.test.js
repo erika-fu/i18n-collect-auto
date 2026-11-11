@@ -8,6 +8,7 @@ const { extractScript } = require('../myloader/extract-script')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
 const { transformBuildReplacement } = require('../mycommon/build-replace')
+const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
 
 const ALLOW = ['title', 'placeholder', 'alt', 'aria-label', 'value']
@@ -452,6 +453,223 @@ test('Vue 3 build replacement source map still points at the original SFC', asyn
   ].join('\n')
   const result = transformVue(source, {
     occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 标题: 'home.title' })
+  })
+  assert.ok(result.map)
+  const consumer = await new SourceMapConsumer(result.map)
+  const generatedLine = result.code.split('\n').findIndex(line => /\$t\('home\.welcome'\)/.test(line)) + 1
+  const original = consumer.originalPositionFor({ line: generatedLine, column: 0 })
+  assert.strictEqual(original.source, 'src/Home.vue')
+  assert.ok(original.line >= 1)
+})
+
+function transformVue2(source, {
+  projectPath = 'src/Home.vue',
+  root,
+  occurrences,
+  runtimeModule = 'src/i18n.js',
+  runtimeExport = 't'
+} = {}) {
+  const projectRoot = root || fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-'))
+  installVue2(projectRoot)
+  return transformBuildReplacement({
+    source,
+    root: projectRoot,
+    projectPath,
+    resourcePath: path.join(projectRoot, projectPath),
+    occurrences: occurrences || vueOccurrences(projectPath, source, { 欢迎: 'home.welcome' }),
+    adapter: 'vue2',
+    runtimeModule,
+    runtimeExport,
+    styleExtensions: ['.css']
+  })
+}
+
+test('Vue 2 build replacement rewrites template text to $t before vue-loader would split the SFC', () => {
+  const source = [
+    '<template>',
+    '  <p>欢迎</p>',
+    '</template>',
+    '<script>',
+    'export default {}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source)
+  assert.strictEqual(result.changed, true)
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+  assert.doesNotMatch(result.code, />欢迎</)
+})
+
+test('Vue 2 build replacement rewrites template attributes, expressions, and Options API this.$t', () => {
+  const source = [
+    '<template>',
+    '  <p title="提示">欢迎</p>',
+    "  <p>{{ '前缀' + name }}</p>",
+    '</template>',
+    '<script>',
+    'export default {',
+    '  data() {',
+    "    return { label: '标题' }",
+    '  },',
+    '  mounted() {',
+    "    this.msg = '挂载'",
+    '  },',
+    '  methods: {',
+    '    greet() {',
+    "      return '你好'",
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, {
+      提示: 'home.hint',
+      欢迎: 'home.welcome',
+      前缀: 'home.prefix',
+      标题: 'home.title',
+      挂载: 'home.mounted',
+      你好: 'home.hello'
+    })
+  })
+  assert.strictEqual(result.changed, true)
+  assert.match(result.code, /:title="\$t\('home\.hint'\)"|:title='\$t\('home\.hint'\)'/)
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+  assert.match(result.code, /\{\{\s*\$t\('home\.prefix'\)\s*\+\s*name\s*\}\}/)
+  assert.match(result.code, /label:\s*this\.\$t\('home\.title'\)/)
+  assert.match(result.code, /this\.msg = this\.\$t\('home\.mounted'\)/)
+  assert.match(result.code, /return this\.\$t\('home\.hello'\)/)
+})
+
+test('Vue 2 build replacement keeps template literal static segments as $t calls', () => {
+  const source = [
+    '<template>',
+    '  <p>{{ `前缀${name}` }}</p>',
+    '</template>',
+    '<script>',
+    'export default {}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 前缀: 'home.prefix' })
+  })
+  assert.strictEqual(result.changed, true)
+  assert.match(result.code, /\{\{\s*`\$\{\$t\('home\.prefix'\)\}\$\{name\}`\s*\}\}/)
+  assert.doesNotMatch(result.code, /前缀/)
+})
+
+test('Vue 2 build replacement skips top-level, arrow methods, and nested functions', () => {
+  const source = [
+    '<template>',
+    '  <p>欢迎</p>',
+    '</template>',
+    '<script>',
+    "const top = '顶层'",
+    'export default {',
+    '  methods: {',
+    "    arrow: () => '箭头',",
+    '    greet() {',
+    "      function inner() { return '内部' }",
+    "      return '你好'",
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, {
+      欢迎: 'home.welcome',
+      顶层: 'home.top',
+      箭头: 'home.arrow',
+      内部: 'home.inner',
+      你好: 'home.hello'
+    })
+  })
+  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+  assert.match(result.code, /const top = '顶层'/)
+  assert.match(result.code, /arrow:\s*\(\)\s*=>\s*'箭头'/)
+  assert.match(result.code, /return '内部'/)
+  assert.match(result.code, /return this\.\$t\('home\.hello'\)/)
+  assert.doesNotMatch(result.code, /this\.\$t\('home\.top'\)|t\('home\.top'\)/)
+  assert.doesNotMatch(result.code, /this\.\$t\('home\.arrow'\)|t\('home\.arrow'\)/)
+  assert.doesNotMatch(result.code, /this\.\$t\('home\.inner'\)|t\('home\.inner'\)/)
+  assert.doesNotMatch(result.code, /import\s*\{/)
+})
+
+test('Vue 2 build replacement recognizes existing localized calls without nesting', () => {
+  const source = [
+    '<template>',
+    "  <p>{{ $t('欢迎') }}</p>",
+    '</template>',
+    '<script>',
+    'export default {',
+    '  methods: {',
+    '    greet() {',
+    "      return this.$t('你好')",
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 你好: 'home.hello' })
+  })
+  assert.strictEqual(result.changed, false)
+  assert.match(result.code, /\$t\('欢迎'\)/)
+  assert.match(result.code, /this\.\$t\('你好'\)/)
+  assert.doesNotMatch(result.code, /\$t\(\$t\(|this\.\$t\(this\.\$t\(/)
+})
+
+test('Vue 2 build replacement fails when Template IR does not match catalog locations', () => {
+  const source = [
+    '<template><p>Welcome</p></template>',
+    '<script>',
+    'export default {',
+    '  methods: {',
+    "    greet() { return '你好' }",
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source, {
+    occurrences: [{
+      key: 'home.hello',
+      source: '你好',
+      location: {
+        path: 'src/Home.vue',
+        kind: 'html-text',
+        start: { line: 3, column: 15 },
+        end: { line: 3, column: 17 }
+      }
+    }]
+  })
+  assert.ok(result.error)
+  assert.match(String(result.error.message || result.error), /catalog location does not match/)
+  assert.strictEqual(result.changed, false)
+  assert.strictEqual(result.code, source)
+})
+
+test('Vue 2 build replacement source map still points at the original SFC', async () => {
+  const source = [
+    '<template>',
+    '  <p>欢迎</p>',
+    '</template>',
+    '<script>',
+    'export default {',
+    '  methods: {',
+    "    greet() { return '你好' }",
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  const result = transformVue2(source, {
+    occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 你好: 'home.hello' })
   })
   assert.ok(result.map)
   const consumer = await new SourceMapConsumer(result.map)

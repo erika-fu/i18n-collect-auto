@@ -266,9 +266,9 @@ const BUILD_HELP = `i18n-collect build
 
 Run a two-phase Build replacement through the project's existing webpack integration.
 Phase 1 runs collection compilation and publishes a stable catalog.
-Phase 2 reads that catalog, rewrites matching JavaScript, TypeScript, and Vue 3 SFC modules
+Phase 2 reads that catalog, rewrites matching JavaScript, TypeScript, and Vue SFC modules
 in memory, and emits the formal bundle. Application source files are not modified.
-Requires buildReplacement.enabled in i18n-collect.config.js with adapter js or vue3.
+Requires buildReplacement.enabled in i18n-collect.config.js with adapter js, vue2, or vue3.
 
 Usage:
   i18n-collect build [options]
