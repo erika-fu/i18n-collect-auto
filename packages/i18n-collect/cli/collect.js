@@ -107,7 +107,7 @@ function forbidNetwork() {
     fetch: global.fetch
   }
   const block = name => () => {
-    throw commandError('build', `i18n-collect collect does not make network requests (${name})`)
+    throw commandError('build', `i18n-collect does not make network requests (${name})`)
   }
   http.request = block('http.request')
   http.get = block('http.get')
@@ -145,7 +145,9 @@ function resolveConfig(root) {
 async function readWebpackConfig(file) {
   let loaded
   try {
-    loaded = require(file)
+    const resolved = require.resolve(file)
+    delete require.cache[resolved]
+    loaded = require(resolved)
     if (typeof loaded === 'function') loaded = await loaded()
   } catch (error) {
     if (error && error.kind) throw error
@@ -339,4 +341,15 @@ async function collect(args) {
   }
 }
 
-module.exports = { EXIT, collect }
+module.exports = {
+  EXIT,
+  classifyBuild,
+  collect,
+  forbidNetwork,
+  parseCollectArgs,
+  pluginOptionsFrom,
+  projectRelative,
+  readWebpackConfig,
+  redirectEmit,
+  runCompiler
+}

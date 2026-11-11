@@ -205,6 +205,7 @@ Commands:
   collect       Collect Chinese user-facing copy through the project's webpack integration.
   translate     Fill target-locale catalogs through a project translation provider.
   replace       Preview safe source replacements, or commit them with --write.
+  build         Run collection, then build replacement into the formal webpack bundle.
   run           Run selected collect, translate, and replace stages.
   check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
   verify        Confirm formal outputs are current, then run hybrid localization policy checks.
@@ -261,10 +262,39 @@ Exit codes are the exit code of the stage that finished the workflow:
   7  strict mode found a skipped candidate
 `
 
+const BUILD_HELP = `i18n-collect build
+
+Run a two-phase Build replacement through the project's existing webpack integration.
+Phase 1 runs collection compilation and publishes a stable catalog.
+Phase 2 reads that catalog, rewrites matching JavaScript and TypeScript modules in memory,
+and emits the formal bundle. Application source files are not modified.
+Requires buildReplacement.enabled in i18n-collect.config.js.
+
+Usage:
+  i18n-collect build [options]
+
+Options:
+  --cwd <dir>               Project root. Defaults to the current directory.
+  --webpack-config <path>   Webpack configuration to run. Defaults to webpack.config.js.
+  --include <pattern>       Replace the configured include scope. Repeat to set several patterns.
+  --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
+  --context-filter <name>   Replace configured context filters. Repeat to select several.
+                            Names: logging, tests, analytics.
+  --json                    Print the build report as JSON on stdout.
+  -h, --help                Show this help.
+
+Exit codes:
+  0  build finished
+  1  configuration failure
+  2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
+  3  build failure
+`
+
 function helpFor(command) {
   if (command === 'collect') return COLLECT_HELP
   if (command === 'translate') return TRANSLATE_HELP
   if (command === 'replace') return REPLACE_HELP
+  if (command === 'build') return BUILD_HELP
   if (command === 'run') return RUN_HELP
   if (command === 'check-policy') return CHECK_POLICY_HELP
   if (command === 'verify') return VERIFY_HELP
@@ -272,6 +302,7 @@ function helpFor(command) {
 }
 
 module.exports = {
+  BUILD_HELP,
   CHECK_POLICY_HELP,
   COLLECT_HELP,
   REPLACE_HELP,

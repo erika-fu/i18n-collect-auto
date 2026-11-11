@@ -1,3 +1,4 @@
+const { build } = require('./build')
 const { checkPolicy } = require('./check-policy')
 const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
@@ -25,6 +26,7 @@ async function main(argv) {
     && command !== 'run'
     && command !== 'check-policy'
     && command !== 'verify'
+    && command !== 'build'
   ) {
     write(process.stderr, `configuration: unknown command "${command}"`)
     write(process.stdout, helpFor())
@@ -45,7 +47,9 @@ async function main(argv) {
           ? checkPolicy(commandArgs)
           : command === 'verify'
             ? await verify(commandArgs)
-            : await run(commandArgs)
+            : command === 'build'
+              ? await build(commandArgs)
+              : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   return outcome.code

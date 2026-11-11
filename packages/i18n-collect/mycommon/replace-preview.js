@@ -371,7 +371,7 @@ function supportedScriptPosition(nodePath) {
   return false
 }
 
-function describeLiteral(nodePath) {
+function describeLiteral(nodePath, helperName) {
   const element = nodePath.isTemplateElement()
   const template = element ? nodePath.parentPath.node : null
   const single = template && template.expressions.length === 0 && template.quasis.length === 1
@@ -386,12 +386,13 @@ function describeLiteral(nodePath) {
     supported: supportedScriptPosition(nodePath),
     instance: resolveInstance(nodePath),
     hasT: nodePath.scope.hasBinding('t'),
+    hasHelper: nodePath.scope.hasBinding(helperName),
     wholeStart: single ? template.start : null,
     wholeEnd: single ? template.end : null
   }
 }
 
-function indexBlock(block) {
+function indexBlock(block, helperName) {
   let ast
   try {
     ast = parser.parse(block.source, PARSE)
@@ -401,28 +402,31 @@ function indexBlock(block) {
   const nodes = new Map()
   traverse(ast, {
     StringLiteral(nodePath) {
-      nodes.set(`${nodePath.node.start}:${nodePath.node.end}`, describeLiteral(nodePath))
+      nodes.set(`${nodePath.node.start}:${nodePath.node.end}`, describeLiteral(nodePath, helperName))
     },
     TemplateElement(nodePath) {
       if (nodePath.node.value.cooked == null) return
-      nodes.set(`${nodePath.node.start}:${nodePath.node.end}`, describeLiteral(nodePath))
+      nodes.set(`${nodePath.node.start}:${nodePath.node.end}`, describeLiteral(nodePath, helperName))
     }
   })
   return { ...block, error: false, nodes }
 }
 
-function prepareScript(source, klass) {
-  return scriptBlocks(source, klass).map(indexBlock)
+function prepareScript(source, klass, helperName = 't') {
+  return scriptBlocks(source, klass).map(block => indexBlock(block, helperName))
 }
 
 function blockAt(blocks, offset) {
   return blocks.find(block => offset >= block.innerStart && offset < block.innerEnd) || null
 }
 
-function selectCall(adapter, info, setup) {
+function selectCall(adapter, info, setup, helper = { name: 't', available: false }) {
   if (adapter === 'js') {
-    if (!info.hasT) return { skip: 'js adapter requires t to already be in scope' }
-    return { call: 't' }
+    const name = helper.name || 't'
+    if (!helper.available && !info.hasHelper) {
+      return { skip: 'js adapter requires t to already be in scope' }
+    }
+    return { call: name }
   }
   if (adapter === 'vue2' && setup) return { skip: 'vue2 adapter does not replace script setup' }
   if (setup) {
@@ -471,7 +475,7 @@ function decideTemplate(source, item, adapter, template, base) {
   return { action: 'replace', edit, detail: detailOf(base, { call }) }
 }
 
-function decideScript(source, item, adapter, blocks, base) {
+function decideScript(source, item, adapter, blocks, base, helper) {
   const start = offsetAt(source, item.location.start)
   const end = offsetAt(source, item.location.end)
   if (start < 0 || end < start) return { action: 'skip', detail: detailOf(base, { reason: MISMATCH }) }
@@ -485,7 +489,7 @@ function decideScript(source, item, adapter, blocks, base) {
   if (info.objectKey) return { action: 'skip', detail: detailOf(base, { reason: 'object key is not a supported semantic position' }) }
   if (info.switchCase) return { action: 'skip', detail: detailOf(base, { reason: 'switch case is not a supported semantic position' }) }
   if (!info.supported) return { action: 'skip', detail: detailOf(base, { reason: `semantic position is not supported by the ${adapter} adapter` }) }
-  const selected = selectCall(adapter, info, block.setup)
+  const selected = selectCall(adapter, info, block.setup, helper)
   if (selected.skip) return { action: 'skip', detail: detailOf(base, { reason: selected.skip }) }
   const call = formatCall(selected.call, item.key)
   const edit = info.wholeStart == null
@@ -494,7 +498,7 @@ function decideScript(source, item, adapter, blocks, base) {
   return { action: 'replace', edit, detail: detailOf(base, { call }) }
 }
 
-function decide(source, item, adapter, klass, blocks, template) {
+function decide(source, item, adapter, klass, blocks, template, helper) {
   const base = {
     path: item.location.path,
     key: item.key,
@@ -510,7 +514,7 @@ function decide(source, item, adapter, klass, blocks, template) {
     return decideTemplate(source, item, adapter, template, base)
   }
   if (item.location.kind === 'script-string' || item.location.kind === 'template-literal') {
-    return decideScript(source, item, adapter, blocks, base)
+    return decideScript(source, item, adapter, blocks, base, helper)
   }
   return { action: 'skip', detail: detailOf(base, { reason: `semantic position is not supported by the ${adapter} adapter` }) }
 }
@@ -576,11 +580,11 @@ function byPosition(left, right) {
   return left.kind < right.kind ? -1 : left.kind > right.kind ? 1 : 0
 }
 
-function previewFile(projectPath, source, items, adapter, styleExtensions, template) {
+function previewFile(projectPath, source, items, adapter, styleExtensions, template, helper) {
   const klass = fileClass(projectPath, styleExtensions)
-  const blocks = source == null ? [] : prepareScript(source, klass)
+  const blocks = source == null ? [] : prepareScript(source, klass, helper.name)
   const decisions = items.map(item => {
-    const decision = decide(source, item, adapter, klass, blocks, template || { regions: [] })
+    const decision = decide(source, item, adapter, klass, blocks, template || { regions: [] }, helper)
     if (!item.reportedAmbiguity || decision.action !== 'replace') return decision
     const detail = { ...decision.detail, reason: 'occurrence identity is ambiguous' }
     delete detail.call
@@ -597,7 +601,16 @@ function previewFile(projectPath, source, items, adapter, styleExtensions, templ
   }
 }
 
-function planPreview({ adapter, items, sources, templates = new Map(), styleExtensions }) {
+function planPreview({
+  adapter,
+  items,
+  sources,
+  templates = new Map(),
+  styleExtensions,
+  helperName = 't',
+  helperAvailable = false
+}) {
+  const helper = { name: helperName || 't', available: Boolean(helperAvailable) }
   const grouped = new Map()
   for (const item of items) {
     const list = grouped.get(item.location.path) || []
@@ -616,7 +629,8 @@ function planPreview({ adapter, items, sources, templates = new Map(), styleExte
       grouped.get(projectPath),
       adapter,
       styleExtensions,
-      templates.get(projectPath)
+      templates.get(projectPath),
+      helper
     )
     replacements.push(...result.replacements)
     skipped.push(...result.skipped)

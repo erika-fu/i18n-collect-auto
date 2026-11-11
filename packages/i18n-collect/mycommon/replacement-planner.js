@@ -44,6 +44,8 @@ class ReplacementPlanner {
       sources: snapshots.sources,
       templates: snapshots.templates,
       styleExtensions: this.styleExtensions,
+      helperName: this.runtime.helperName || 't',
+      helperAvailable: Boolean(this.runtime.helperAvailable)
     })
     return {
       ...planned,

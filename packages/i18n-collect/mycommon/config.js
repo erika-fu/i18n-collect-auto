@@ -31,13 +31,18 @@ const DEFAULTS = {
   targetLocales: [],
   translationFailure: 'partial',
   pruneOrphaned: false,
-  externalKeys: []
+  externalKeys: [],
+  buildReplacement: null
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
 const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'vueVersion', 'attributeAllowlist', 'styleExtensions'])
 const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrphaned', 'externalKeys']
 const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
+const BUILD_FIELDS = ['buildReplacement']
+const BUILD_REPLACEMENT_FIELDS = new Set(['enabled', 'adapter', 'runtimeModule', 'runtimeExport'])
+const BUILD_ADAPTERS = new Set(['js'])
+const EXPORT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
 const SCOPE_OVERRIDE_FIELDS = ['include', 'exclude', 'contextFilters']
@@ -169,7 +174,41 @@ function validate(root, input) {
     value => typeof value === 'string' && value.length > 0,
     'externalKeys must be an array of non-empty localization keys'
   )
+  config.buildReplacement = validateBuildReplacement(root, config.buildReplacement)
   return config
+}
+
+function validateBuildReplacement(root, value) {
+  if (value == null) return null
+  if (!isObject(value)) fail('buildReplacement must be an object')
+  for (const key of Object.keys(value)) {
+    if (!BUILD_REPLACEMENT_FIELDS.has(key)) fail(`unknown field "buildReplacement.${key}"`)
+  }
+  if (typeof value.enabled !== 'boolean') fail('buildReplacement.enabled must be a boolean')
+  if (!value.enabled) {
+    return {
+      enabled: false,
+      adapter: null,
+      runtimeModule: null,
+      runtimeExport: null
+    }
+  }
+  if (!BUILD_ADAPTERS.has(value.adapter)) {
+    fail('buildReplacement.adapter must be "js"')
+  }
+  if (typeof value.runtimeModule !== 'string' || !value.runtimeModule) {
+    fail('buildReplacement.runtimeModule must be a project-relative path')
+  }
+  const runtimeModule = projectPath(root, value.runtimeModule, 'buildReplacement.runtimeModule')
+  if (typeof value.runtimeExport !== 'string' || !EXPORT_NAME.test(value.runtimeExport)) {
+    fail('buildReplacement.runtimeExport must be a JavaScript identifier')
+  }
+  return {
+    enabled: true,
+    adapter: value.adapter,
+    runtimeModule,
+    runtimeExport: value.runtimeExport
+  }
 }
 
 function catalogFiles(config) {
@@ -204,11 +243,12 @@ function hashConfig(config) {
   return crypto.createHash('md5').update(JSON.stringify(config)).digest('hex')
 }
 
-// Catalog and translation settings stay out of both hashes so the source map and cached module metadata keep their values.
+// Catalog, translation, and build-replacement settings stay out of both hashes so the source map and cached module metadata keep their values.
 function collectionHash(config) {
   const collection = { ...config }
   for (const field of CATALOG_FIELDS) delete collection[field]
   for (const field of TRANSLATION_FIELDS) delete collection[field]
+  for (const field of BUILD_FIELDS) delete collection[field]
   if (collection.vueVersion === null) delete collection.vueVersion
   return hashConfig(collection)
 }

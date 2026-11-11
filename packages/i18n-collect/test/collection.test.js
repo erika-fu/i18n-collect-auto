@@ -29,6 +29,101 @@ test('accepts an externalKeys allowlist of localization keys', () => {
   assert.throws(() => validate('/project', { externalKeys: ['same', 'same'] }), /duplicate/)
 })
 
+test('validates buildReplacement for the js adapter and rejects invalid values', () => {
+  assert.strictEqual(validate('/project', {}).buildReplacement, null)
+  assert.deepStrictEqual(
+    validate('/project', {
+      buildReplacement: {
+        enabled: true,
+        adapter: 'js',
+        runtimeModule: 'src/i18n.js',
+        runtimeExport: 't'
+      }
+    }).buildReplacement,
+    {
+      enabled: true,
+      adapter: 'js',
+      runtimeModule: 'src/i18n.js',
+      runtimeExport: 't'
+    }
+  )
+  assert.deepStrictEqual(
+    validate('/project', { buildReplacement: { enabled: false } }).buildReplacement,
+    { enabled: false, adapter: null, runtimeModule: null, runtimeExport: null }
+  )
+  assert.throws(
+    () => validate('/project', { buildReplacement: { enabled: true, adapter: 'js' } }),
+    /runtimeModule/
+  )
+  assert.throws(
+    () => validate('/project', {
+      buildReplacement: {
+        enabled: true,
+        adapter: 'js',
+        runtimeModule: '../outside.js',
+        runtimeExport: 't'
+      }
+    }),
+    /inside the project root/
+  )
+  assert.throws(
+    () => validate('/project', {
+      buildReplacement: {
+        enabled: true,
+        adapter: 'vue2',
+        runtimeModule: 'src/i18n.js',
+        runtimeExport: 't'
+      }
+    }),
+    /adapter/
+  )
+  assert.throws(
+    () => validate('/project', {
+      buildReplacement: {
+        enabled: true,
+        adapter: 'js',
+        runtimeModule: 'src/i18n.js',
+        runtimeExport: 't',
+        extra: true
+      }
+    }),
+    /unknown field/
+  )
+  assert.throws(() => validate('/project', { buildReplacement: true }), /buildReplacement must be an object/)
+  assert.throws(
+    () => validate('/project', {
+      buildReplacement: {
+        enabled: true,
+        adapter: 'js',
+        runtimeModule: 'src/i18n.js',
+        runtimeExport: '1bad'
+      }
+    }),
+    /runtimeExport/
+  )
+})
+
+test('buildReplacement settings do not change the collection config hash', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-hash-'))
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = {}\n')
+  const plain = loadConfig({ root })
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), [
+    'module.exports = {',
+    '  buildReplacement: {',
+    '    enabled: true,',
+    '    adapter: "js",',
+    '    runtimeModule: "src/i18n.js",',
+    '    runtimeExport: "t"',
+    '  }',
+    '}',
+    ''
+  ].join('\n'))
+  const configured = loadConfig({ root })
+  assert.strictEqual(configured.configHash, plain.configHash)
+  assert.strictEqual(configured.fileConfigHash, plain.fileConfigHash)
+  assert.strictEqual(configured.buildReplacement.enabled, true)
+})
+
 test('keeps a Han extension character in the runtime dictionary', () => {
   const store = new CollectionStore()
   const value = '\u{20000}'
@@ -41,11 +136,11 @@ test('declares webpack 5 and the dependencies the package imports', () => {
   const pkg = require('../package.json')
   const lock = require('../../../package-lock.json')
   assert.deepStrictEqual(pkg.peerDependencies, { webpack: '^5.0.0' })
-  assert.deepStrictEqual(Object.keys(pkg.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5', 'postcss'])
+  assert.deepStrictEqual(Object.keys(pkg.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5', 'postcss', 'source-map'])
   assert.strictEqual(pkg.dependencies['loader-utils'], undefined)
   const entry = lock.packages['packages/i18n-collect']
   assert.deepStrictEqual(entry.peerDependencies, { webpack: '^5.0.0' })
-  assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5', 'postcss'])
+  assert.deepStrictEqual(Object.keys(entry.dependencies).sort(), ['@babel/parser', '@babel/traverse', 'parse5', 'postcss', 'source-map'])
 })
 
 test('exposes the complete regression gate from the workspace root', () => {
