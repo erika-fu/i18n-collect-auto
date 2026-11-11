@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. ADR-0006 extends this decision: Vue replacement edits original template surfaces before compilation and does not target generated render functions.
 
 ## Context
 

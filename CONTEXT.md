@@ -1,11 +1,57 @@
 # Internationalization Collection Context
 
-This context defines the vocabulary for collecting Chinese user-facing text from source modules and for carrying that text through translation catalogs, translation providers, and source replacement.
+This context defines the vocabulary for project localization completeness: discovering Chinese user-facing text, distinguishing runtime-localizable messages from Chinese source audit findings, carrying messages through translation catalogs, and optionally rewriting supported source into runtime localization calls.
 
 ## Language
 
+### Localization completeness
+
+**Runtime-localizable message**:
+A message the supported build or source replacement path can turn into a runtime `t` / `$t` lookup (today: complete static JavaScript, TypeScript, and Vue template copy, not standalone HTML or styles).
+_Avoid_: Audit finding, catalog entry alone
+
+**Runtime localization coverage**:
+Whether every runtime-localizable message is already a runtime localization call or has a current source-catalog key that build or source replacement can apply; Chinese source audit findings are out of scope.
+_Avoid_: Project localization completeness, collection coverage
+
+**Chinese source audit**:
+The set of Chinese user-facing findings on surfaces that are not runtime-localizable, including standalone HTML and styles until an adapter makes them runtime-localizable; these findings never receive keys or enter catalogs.
+_Avoid_: Runtime localization coverage
+
+**Audit finding**:
+One Chinese source audit observation with source text, location, surface, and disposition, unresolved until accepted.
+_Avoid_: Occurrence, runtime-localizable message
+
+**Accepted audit finding**:
+An audit finding migrated to a runtime-localizable surface, handled by a real adapter that makes it runtime-localizable, or suppressed by an adjacent directive with a non-empty reason.
+_Avoid_: Unresolved audit finding, silent ignore, reasonless ignore
+
+**Project localization completeness**:
+The project state with complete runtime localization coverage and no unresolved Chinese source audit findings.
+_Avoid_: Runtime localization coverage alone, Chinese source audit alone
+
+### Commands
+
+**Scan**:
+The workflow command whose write ownership is source analysis outputs (source catalog and analysis report).
+_Avoid_: Collect
+
+**Translate**:
+The workflow command whose write ownership is target translation outputs.
+
+**Build**:
+The localization-aware build path that is read-only for localization artifacts while still allowed to rewrite in-memory modules and emitted build output.
+
+**Check**:
+The read-only workflow command that evaluates project localization completeness.
+
+**Replace**:
+The optional source-replacement command that owns application-source writes only when explicitly requested, otherwise preview-only.
+
+### Collection and messages
+
 **Collected text**:
-Chinese text identified as candidate user-facing copy and added to the localization collection. Collection does not rewrite application source. Source replacement is a later command.
+Chinese text identified as candidate user-facing copy during source analysis. Analysis does not rewrite application source. Source replacement is a later, explicit command.
 
 **Template literal**:
 A JavaScript or TypeScript backtick literal. Each static Chinese segment is collected independently; interpolation expressions are not collected as copy.
@@ -28,8 +74,8 @@ The versioned document `explicit-messages.json` beside the catalog metadata. Ver
 _Avoid_: Confirmation manifest, translation catalog
 
 **Complete-static-copy baseline**:
-The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. `check-policy` reads it and does not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide collection failures, identity ambiguities, stale formal outputs, or direct source text inside a declared runtime-multilingual boundary.
-_Avoid_: Hash collection output, confirmation manifest, journal restore baseline
+The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. Policy checks read it and do not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide analysis failures, stale formal outputs, or direct source text inside a declared runtime-multilingual boundary.
+_Avoid_: Audit ignore directive, source catalog
 
 **Explicit localization boundary**:
 A feature or route that must render user-facing copy in a target locale at runtime. Its user-facing copy uses explicit localized calls rather than automatically collected source text.
@@ -40,13 +86,13 @@ The versioned document `runtime-multilingual-boundaries.json` beside the catalog
 _Avoid_: Translated page, complete-static-copy baseline
 
 **HTML text**:
-A user-visible HTML text-node fragment. Each text node is considered independently: formatting-only leading and trailing whitespace is excluded, meaningful internal whitespace is retained, and text is not merged across element boundaries. Character references contribute their decoded character value while the source range remains anchored to the original spelling.
+A user-visible HTML text-node fragment considered independently (formatting-only edge whitespace excluded; meaningful internal whitespace kept; no merge across elements; character references decoded with ranges on the original spelling). Vue template text may be runtime-localizable; standalone HTML text is a Chinese source audit finding until an adapter exists.
 
 **User-facing HTML attribute**:
-An HTML attribute whose value may be presented to a user or assistive technology, such as `title`, `placeholder`, `alt`, `aria-label`, or `value`. Only the agreed attribute allowlist qualifies as collected copy. A static attribute contributes its decoded value; a dynamic binding contributes each statically determinable fragment without evaluating the expression.
+An allowlisted HTML attribute presented to users or assistive technology (`title`, `placeholder`, `alt`, `aria-label`, `value`, and peers); static values decode directly, dynamic bindings contribute only statically determinable fragments. Vue attributes may be runtime-localizable; standalone HTML attributes are Chinese source audit findings until an adapter exists.
 
 **CSS generated content**:
-Chinese text in a CSS `content` declaration that may be rendered as generated user-visible content. Every statically determinable string fragment in the declaration qualifies, including fragments mixed with dynamic CSS values; empty strings, whitespace-only strings, other declarations, custom-property definitions, selectors, and comments do not qualify.
+Chinese text in a CSS `content` declaration that may render as generated user-visible content; statically determinable string fragments qualify, and until an adapter exists these findings are Chinese source audit findings.
 
 **Source range**:
 A half-open range covering the collected fragment's original content, with 1-based line numbers and 0-based columns; the end position is exclusive. For HTML attributes and CSS strings, the range excludes the attribute syntax and string delimiters.
@@ -58,13 +104,10 @@ The originating file, semantic kind, and source range associated with collected 
 The fixed category identifying where collected text came from: `script-string`, `template-literal`, `html-text`, `html-attribute`, `template-expression`, `css-generated-content`, `static-html-text`, or `static-html-attribute`. A static fragment inside a dynamic HTML attribute remains `html-attribute`.
 
 **Collection result**:
-The localization data present in the current source collection, containing every collected occurrence independently. Equal source text does not cause occurrences to share a localization key unless they explicitly name the same key. Entries without a current source location are not part of the result.
+The runtime-localizable messages in the current source analysis; equal exact source text shares one automatic key unless an explicit key is required, and Chinese source audit findings stay outside the catalog.
 
 **Occurrence**:
-One concrete appearance of collected text in source. It has its own source location and may be independently located, replaced, and matched to collection history. An occurrence is not necessarily a translation unit.
-
-**Occurrence identity**:
-The durable per-occurrence record used to recover an automatic key across collection rounds. It is the stable occurrence ID together with the structural anchor. It is not the localization key and it is not a source location. Source coordinates may move; the identity stays when the structural anchor uniquely matches history.
+One concrete appearance of collected text in source, with its own source location, that shares an automatic key with equal exact source text unless an explicit key is required for contextual translation.
 
 **Semantic collection stage**:
 A collection point where the source structure still identifies whether text came from a script literal, HTML text or attribute, or a CSS `content` declaration.
@@ -74,7 +117,7 @@ _Avoid_: Final-bundle scan
 The complete collection for one currently processed source resource, submitted as a replacement for that resource's previous snapshot so removed text and locations can disappear.
 
 **Static HTML entry**:
-The source HTML document at an explicitly configured path, collected from its original template rather than from rendered build output.
+The source HTML document at an explicitly configured path, analyzed from its original template as a Chinese source audit surface until an adapter makes its messages runtime-localizable.
 
 **Collection configuration**:
 The local configuration for collection inputs, semantic attribute rules, output files, resource filtering, and optional collection-context filters; it is separate from the dependency package's translation configuration.
@@ -98,31 +141,18 @@ The text a translation provider proposes for one localization key in one target 
 The per-key, per-target-locale record of the source fingerprint a translation was accepted against, and whether that translation is current or needs review. It is stored beside the catalogs and is not part of the source-locale catalog metadata.
 
 **Localization key**:
-The stable runtime identifier used by source replacements and translation catalogs. An automatic key is generated when no adjacent key directive explicitly supplies one.
+The stable runtime identifier used by source replacements and translation catalogs. An automatic key is derived when no adjacent key directive explicitly supplies one; otherwise the key is explicit.
 
 **Key directive**:
-A syntax-valid comment `i18n-key: <key>` that gives the next associated collected fragment an explicit localization key. It associates by the same rules as the exclusion directive. A comment that starts with `i18n-key` but is not well formed fails the collection round.
+A syntax-valid comment `i18n-key: <key>` that gives the next associated collected fragment an explicit localization key. It associates by the same rules as the exclusion directive. A comment that starts with `i18n-key` but is not well formed fails the analysis round.
 
 **Automatic key**:
-A localization key assigned to an occurrence when no adjacent key directive supplies one. New automatic keys are opaque `auto.<ULID>` values with no path, source text, line, or column material. Once assigned, the key is reused through catalog metadata rather than being recalculated from current source text or coordinates.
-
-**Occurrence identity ambiguity**:
-Collection history has more than one viable historical candidate for an occurrence, so the occurrence cannot keep a previous automatic key. Collection assigns a new automatic key, writes an ambiguity report, and fails the round until a durable confirmation.
-
-**Ambiguity report**:
-The machine-readable record of occurrence identity ambiguities for a failed round. It names each current occurrence, its proposed new automatic key, and the historical candidates. It is not a formal collection output. A failed round still preserves the previous dictionary, source map, and catalog.
-
-**Identity confirmation**:
-A durable choice of localization key for an occurrence whose identity is ambiguous. An `i18n-key` directive confirms it in source. A confirmation manifest confirms it when the source cannot be edited. The chosen key is either one historical candidate or the proposed new automatic key.
-
-**Confirmation manifest**:
-The versioned document `identity-confirmations.json` beside the catalog metadata. Each confirmation names a semantic host, child role, local context, and localization key. Collection reads it and does not rewrite it.
-
-**Structural anchor**:
-The stable source-structure description used to identify an occurrence across collection rounds. It names the nearest meaningful semantic host and the occurrence's child role; local context distinguishes otherwise identical sibling occurrences. Coordinates aid locating source but do not independently establish identity.
+A deterministic hash of exact source text used when no adjacent key directive supplies a key; equal exact text shares one key, contextual differences need an explicit key, and unequal-text hash collisions fail closed.
+_Avoid_: Per-occurrence automatic key, `auto.<ULID>`, occurrence identity, structural anchor, derived key
 
 **Derived key**:
-A legacy localization key computed from the resource path, the semantic kind, and the collected text. It does not depend on line or column. New automatic keys replace this strategy because equal text in separate occurrences must not share a translation identity by default.
+A retired localization-key strategy computed from the resource path, the semantic kind, and the collected text. It is not used by the current model.
+_Avoid_: Automatic key
 
 **Message pattern**:
 The normalized shape of collected source text used when comparing occurrences that share a localization key. Today the literal static text is kept as-is except that simple `{identifier}` tokens become positional slots; whitespace, ICU selects, and non-identifier braces are not folded.
@@ -140,7 +170,7 @@ One localization key that names incompatible message contracts. It fails the col
 A hash of a key's source text recorded in catalog metadata. A key whose fingerprint differs between two catalogs has source-changed text.
 
 **Catalog metadata**:
-The per-key record next to the source-locale catalog: source text, source fingerprint, explicit or derived origin, representation (`source-text` or `localized-call`), source locations, and per-occurrence identity. Each occurrence records a stable ID, semantic host, child role, local context, representation, and source location. The metadata document is versioned (current version 3); version 1 and 2 upgrade on a successful collection without rewriting existing localization keys. Unsupported versions fail with a clear migration path rather than publishing a partial upgrade.
+The per-key record beside the source-locale catalog (source text, fingerprint, explicit or automatic origin, representation, source locations), recovering automatic keys from exact source text rather than per-occurrence identity.
 
 **Resource identity**:
 The normalized project resource path plus its semantic block or resource query, used to replace one resource snapshot without overwriting another block from the same file.
@@ -163,32 +193,17 @@ A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the nex
 **Existing translation**:
 Target-locale catalog text already stored for a localization key. Translate keeps that text unless the caller sets `--retranslate`. The kept text may be a human translation or an earlier translation draft that was already accepted. A source-text change keeps the text and sets its review state to `needs-review`.
 
-**Orphaned key**:
-A localization key whose occurrences are missing from the current collection round. Catalog metadata keeps the key with status `orphaned` so translation history and automatic-key recovery remain available. The source-locale catalog omits orphaned keys. Target-locale text stays until the key is retired.
-
-**Retired key**:
-An orphaned localization key removed from catalog metadata after a retirement confirmation or prune policy. Retirement is recorded by leaving the metadata (and by collect's `removed` report), not as a persistent metadata status. The next translate removes that key from target-locale catalogs and review state.
-
-**Retirement confirmation**:
-The versioned document `retirement-confirmations.json` beside the catalog metadata. Version 1 lists localization keys to retire. Collection reads it and does not rewrite it. Active keys named there are ignored.
-
-**Prune policy**:
-When `pruneOrphaned` is true in collection configuration, missing and previously orphaned keys are retired in the same round instead of staying orphaned.
-
-**Hash collection output**:
-The hash dictionary and its source map written by collection. The dictionary maps the MD5 of collected text to that text. It stays beside the translation catalog during migration. Source replacement does not use the hash as a localization key.
+**Stale target key**:
+A localization key present in a target catalog but absent from the current source catalog; reported, not a completeness failure by itself, and removed only by explicit prune.
 
 **Replacement adapter**:
-The runtime call shape used by source replacement: `vue2`, `vue3`, or `js`. Each adapter states the semantic positions it can rewrite and requires a runtime integration that is already present. It does not install dependencies or rewrite application bootstrap. React JSX, standalone HTML, and CSS generated content are outside its scope.
-
-**Replacement metadata**:
-The versioned record of committed source replacements, stored as `replacements.json` beside the translation catalogs. A write prepares the changed source files, the keyed catalogs, and this record, then commits them as one set. A failed commit restores that set. The file is audit, rollback, and diagnostic data. Ordinary automatic-key recovery reads catalog metadata occurrence identities, not this record.
+The runtime call shape for source or build replacement (`vue2`, `vue3`, or `js`), naming the positions it can rewrite and requiring an already-present runtime integration; standalone HTML and styles remain audit surfaces until such an adapter exists.
 
 **Replacement preview**:
-The dry-run result of source replacement. It reports the per-file source that would be written, the skipped candidates, and the calls that are already localized. It does not modify source files, translation catalogs, or replacement metadata.
+The dry-run result of source replacement: per-file proposed source, skips, and already-localized calls, with no artifact writes.
 
 **Source replacement**:
-A rewrite of a supported collected location into a runtime localization call that names its localization key. Collection does not do this. The replace command's default is a replacement preview. Source files change only when the caller sets `--write`.
+A rewrite of a supported runtime-localizable location into a runtime localization call; preview by default, source written only on explicit request.
 
 **Build replacement**:
-A build-time rewrite of a supported collected location into a runtime localization call that names its localization key. It changes only the in-memory module and emitted build output; the source file remains unchanged. It uses the same replacement rules as source replacement and leaves explicit localized calls intact. A newly collected occurrence must receive its stable localization key before a build replacement may consume it.
+A build-time rewrite of a supported runtime-localizable location into a runtime localization call in memory and emitted output only, with Vue edits applied to original template text and attributes before template compilation so locale changes keep static optimizations correct.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by ADR-0007 for treating style findings as runtime catalog messages. Accepted for original-source parsing of author-written styles (not compiled CSS) when locating audit findings.
 
 ## Context
 
