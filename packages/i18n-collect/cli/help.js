@@ -208,6 +208,7 @@ Commands:
   replace       Preview safe source replacements, or commit them with --write.
   build         Run collection, then build replacement into the formal webpack bundle.
   run           Run selected collect, translate, and replace stages.
+  check         Evaluate project localization completeness without writing files.
   check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
   verify        Confirm formal outputs are current, then run hybrid localization policy checks.
 
@@ -265,12 +266,14 @@ Exit codes are the exit code of the stage that finished the workflow:
 
 const SCAN_HELP = `i18n-collect scan
 
-Analyze JavaScript, TypeScript, and Vue sources without webpack.
-Classify complete static copy as automatically runtime-localizable and existing static
-t/$t/this.$t calls as already localized, then write a deterministic source catalog and a
-machine-readable analysis report (including empty audit and explicit-required buckets for
-later expand work). This command does not rewrite application source and does not make
-network requests. Existing collect integrations remain available.
+Analyze JavaScript, TypeScript, Vue, and standalone HTML sources without webpack.
+Classify complete static copy as automatically runtime-localizable, existing static
+t/$t/this.$t calls as already localized, and standalone HTML Chinese as Chinese source
+audit findings that never receive keys or enter catalogs. Write a deterministic source
+catalog and a machine-readable analysis report. Adjacent HTML comments of the form
+i18n-ignore: <reason> mark an associated audit finding as intentionally ignored.
+This command does not rewrite application source and does not make network requests.
+Existing collect integrations remain available.
 
 Usage:
   i18n-collect scan [options]
@@ -288,6 +291,32 @@ Exit codes:
   0  scan finished
   1  configuration failure
   2  collection failure, including a malformed directive or incompatible source catalog key
+`
+
+const CHECK_HELP = `i18n-collect check
+
+Evaluate project localization completeness without writing files.
+For this expand step, check analyzes sources in memory and fails when any standalone HTML
+Chinese source audit finding remains unresolved. Intentionally ignored findings stay visible
+in the JSON report with their non-empty reason. Later work widens this command to full
+runtime coverage and target-locale checks.
+
+Usage:
+  i18n-collect check [options]
+
+Options:
+  --cwd <dir>               Project root. Defaults to the current directory.
+  --include <pattern>       Replace the configured include scope. Repeat to set several patterns.
+  --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
+  --context-filter <name>   Replace configured context filters. Repeat to select several.
+                            Names: logging, tests, analytics.
+  --json                    Print the completeness report as JSON on stdout.
+  -h, --help                Show this help.
+
+Exit codes:
+  0  project localization completeness passed for the audited surfaces
+  1  configuration failure
+  2  incomplete: unresolved Chinese source audit findings or analysis failure
 `
 
 const BUILD_HELP = `i18n-collect build
@@ -333,6 +362,7 @@ function helpFor(command) {
   if (command === 'replace') return REPLACE_HELP
   if (command === 'build') return BUILD_HELP
   if (command === 'run') return RUN_HELP
+  if (command === 'check') return CHECK_HELP
   if (command === 'check-policy') return CHECK_POLICY_HELP
   if (command === 'verify') return VERIFY_HELP
   return ROOT_HELP
@@ -340,6 +370,7 @@ function helpFor(command) {
 
 module.exports = {
   BUILD_HELP,
+  CHECK_HELP,
   CHECK_POLICY_HELP,
   COLLECT_HELP,
   REPLACE_HELP,

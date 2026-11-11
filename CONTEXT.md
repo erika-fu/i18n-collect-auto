@@ -23,7 +23,7 @@ One Chinese source audit observation with source text, location, surface, and di
 _Avoid_: Occurrence, runtime-localizable message
 
 **Accepted audit finding**:
-An audit finding migrated to a runtime-localizable surface, handled by a real adapter that makes it runtime-localizable, or suppressed by an adjacent directive with a non-empty reason.
+An audit finding migrated to a runtime-localizable surface, handled by a real adapter that makes it runtime-localizable, or suppressed by an adjacent audit ignore directive with a non-empty reason. In analysis reports, a finding suppressed that way carries disposition `intentionally-ignored` and keeps its reason visible; unresolved findings carry disposition `unresolved`.
 _Avoid_: Unresolved audit finding, silent ignore, reasonless ignore
 
 **Project localization completeness**:
@@ -75,7 +75,7 @@ _Avoid_: Confirmation manifest, translation catalog
 
 **Complete-static-copy baseline**:
 The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. Policy checks read it and do not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide analysis failures, stale formal outputs, or direct source text inside a declared runtime-multilingual boundary.
-_Avoid_: Audit ignore directive, source catalog
+_Avoid_: Audit ignore directive (reasoned HTML/CSS suppressions), source catalog
 
 **Explicit localization boundary**:
 A feature or route that must render user-facing copy in a target locale at runtime. Its user-facing copy uses explicit localized calls rather than automatically collected source text.
@@ -188,7 +188,12 @@ A position in original source. Lines are 1-based. Columns are 0-based and count 
 A source text segment whose value can be determined without executing application code, including a segment around an interpolation; only fragments containing Chinese are collected.
 
 **Exclusion directive**:
-A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the next associated collected text or static fragment from entering the collection result. The directive is control metadata; its own comment text is not collected. Ordinary comments are not collected.
+A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the next associated collected text or static fragment from entering the collection result. The directive is control metadata; its own comment text is not collected. Ordinary comments are not collected. It is not an audit ignore directive: exclusion drops runtime-localizable collection candidates rather than accepting a Chinese source audit finding.
+_Avoid_: Audit ignore directive, `i18n-ignore`
+
+**Audit ignore directive**:
+A syntax-valid, node-local comment `i18n-ignore: <non-empty reason>` on a Chinese source audit surface (today: standalone HTML) that accepts exactly the next associated audit finding. The finding remains in the analysis report as an accepted audit finding with disposition `intentionally-ignored` and the stated reason. A comment that starts with `i18n-ignore` but lacks a non-empty reason, associates to no finding, or associates ambiguously fails the analysis round.
+_Avoid_: Exclusion directive, `no-i18n-auto`, silent ignore, reasonless ignore, complete-static-copy baseline
 
 **Existing translation**:
 Target-locale catalog text already stored for a localization key. Translate keeps that text unless the caller sets `--retranslate`. The kept text may be a human translation or an earlier translation draft that was already accepted. A source-text change keeps the text and sets its review state to `needs-review`.

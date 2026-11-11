@@ -287,6 +287,8 @@ function parse({ source, resource }) {
       for (const child of node.childNodes || []) walk(child)
       return
     }
+    // Script and style bodies are not user-visible HTML copy for audit or collection.
+    if (node.tagName === 'script' || node.tagName === 'style') return
     const id = constructIds.get(node)
     if (id != null) ownerStack.push(id)
     addAttributeRegions(node)

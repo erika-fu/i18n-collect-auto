@@ -1,4 +1,5 @@
 const { build } = require('./build')
+const { check } = require('./check')
 const { checkPolicy } = require('./check-policy')
 const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
@@ -26,6 +27,7 @@ async function main(argv) {
     && command !== 'translate'
     && command !== 'replace'
     && command !== 'run'
+    && command !== 'check'
     && command !== 'check-policy'
     && command !== 'verify'
     && command !== 'build'
@@ -47,13 +49,15 @@ async function main(argv) {
         ? await translate(commandArgs)
         : command === 'replace'
           ? replace(commandArgs)
-          : command === 'check-policy'
-            ? checkPolicy(commandArgs)
-            : command === 'verify'
-              ? await verify(commandArgs)
-              : command === 'build'
-                ? await build(commandArgs)
-                : await run(commandArgs)
+          : command === 'check'
+            ? check(commandArgs)
+            : command === 'check-policy'
+              ? checkPolicy(commandArgs)
+              : command === 'verify'
+                ? await verify(commandArgs)
+                : command === 'build'
+                  ? await build(commandArgs)
+                  : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   if (typeof outcome.waitUntilClosed === 'function') {

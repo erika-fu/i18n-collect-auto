@@ -16,7 +16,7 @@ const EXIT = {
 }
 
 const SOURCE_EXTENSIONS = new Set([
-  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue'
+  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue', '.html', '.htm'
 ])
 
 const SKIP_DIRECTORIES = new Set([

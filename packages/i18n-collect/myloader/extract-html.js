@@ -7,7 +7,14 @@ const {
   staticLocalizationCall
 } = require('../mycommon/localized-call')
 const { contextSuppresses } = require('./context-filter')
-const { babelComments, directivesBefore, keyConflict, runtimeKeyConflict, scanDirectives } = require('./directives')
+const {
+  babelComments,
+  directivesBefore,
+  keyConflict,
+  runtimeKeyConflict,
+  scanDirectives,
+  whitespaceGap
+} = require('./directives')
 const { containsHan, offsetToPosition } = require('./resource')
 const { parseTemplate } = require('./template-parser')
 
@@ -63,12 +70,15 @@ function attachedComments(ast) {
 function constructDirectives(template, source, fail) {
   const directives = scanDirectives(template.comments, fail)
   const found = new Map()
-  if (directives.length === 0) return found
+  const ignoreDirectives = directives.filter(directive => directive.ignoreReason)
+  if (directives.length === 0) return { found, ignoreDirectives }
   for (const construct of template.constructs) {
     const directive = directivesBefore(source, directives, construct.start, fail)
-    if (directive.exclude || directive.key) found.set(construct.id, directive)
+    if (directive.exclude || directive.key || directive.ignoreReason) {
+      found.set(construct.id, directive)
+    }
   }
-  return found
+  return { found, ignoreDirectives }
 }
 
 function extractHtml({ source, resource, config }) {
@@ -215,10 +225,23 @@ function extractHtml({ source, resource, config }) {
     }
   }
 
-  const marked = constructDirectives(template, source, (offset, message) => {
+  const fail = (offset, message) => {
     throw failAt(source, offset, message)
-  })
+  }
+  const { found: marked, ignoreDirectives } = constructDirectives(template, source, fail)
   const dropped = new Set()
+  const usedIgnoreStarts = new Set()
+
+  function markIgnoreDirectivesUsed(constructStart) {
+    let cursor = constructStart
+    for (;;) {
+      const found = ignoreDirectives.find(item => whitespaceGap(source, item.end, cursor))
+      if (!found) break
+      usedIgnoreStarts.add(found.start)
+      cursor = found.start
+    }
+  }
+
   for (const [constructId, directive] of marked) {
     let earliest = null
     for (const entry of entries) {
@@ -227,19 +250,37 @@ function extractHtml({ source, resource, config }) {
     }
     if (!earliest) continue
     if (directive.exclude) dropped.add(earliest)
+    if (directive.ignoreReason) {
+      if (!standalone) {
+        fail(earliest.start, 'i18n-ignore is only valid on standalone HTML audit surfaces')
+      }
+      if (directive.exclude || earliest.suppress) continue
+      earliest.ignoreReason = directive.ignoreReason
+      const construct = template.constructs.find(item => item.id === constructId)
+      markIgnoreDirectivesUsed(construct.start)
+      continue
+    }
     if (!directive.key || directive.exclude || earliest.suppress) continue
     if (earliest.key && earliest.key !== directive.key) {
       const message = earliest.representation === REPRESENTATION_LOCALIZED_CALL
         ? runtimeKeyConflict(directive.key, earliest.key)
         : keyConflict(directive.key, earliest.key)
-      throw failAt(source, earliest.start, message)
+      fail(earliest.start, message)
     }
     earliest.key = directive.key
+  }
+  for (const directive of ignoreDirectives) {
+    if (usedIgnoreStarts.has(directive.start)) continue
+    fail(
+      directive.start,
+      `unused i18n-ignore directive "${directive.ignoreReason}": no associated HTML finding`
+    )
   }
   return {
     entries: entries.filter(entry => !entry.suppress && !dropped.has(entry)).map(entry => {
       const mapped = { value: entry.value, locations: entry.locations }
       if (entry.key) mapped.key = entry.key
+      if (entry.ignoreReason) mapped.ignoreReason = entry.ignoreReason
       if (entry.representation) mapped.representation = entry.representation
       if (entry.representation === REPRESENTATION_LOCALIZED_CALL) {
         mapped.paramsKind = entry.paramsKind || 'none'

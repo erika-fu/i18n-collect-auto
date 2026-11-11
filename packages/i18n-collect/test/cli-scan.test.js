@@ -59,6 +59,11 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
       total: 2,
       automaticallyRuntimeLocalizable: 1,
       alreadyLocalized: 1
+    },
+    chineseSourceAudit: {
+      total: 0,
+      unresolved: 0,
+      intentionallyIgnored: 0
     }
   })
 
@@ -128,6 +133,73 @@ test('scan classifies Vue template copy through the CLI without webpack', () => 
   assert.ok(texts.includes('标题'))
   assert.ok(texts.includes('提示'))
   assert.ok(analysis.runtimeMessages.every(item => item.capability === 'automatically-runtime-localizable'))
+})
+
+test('scan reports standalone HTML as audit findings without catalog keys', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-html-'))
+  writeScanProject(root, {
+    source: 'const message = "你好"\n',
+    files: {
+      'public/index.html': [
+        '<!DOCTYPE html>',
+        '<html><body>',
+        '  <!-- i18n-ignore: brand stays Chinese -->',
+        '  <p title="品牌">欢迎</p>',
+        '  <p>未忽略</p>',
+        '</body></html>',
+        ''
+      ].join('\n')
+    }
+  })
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src", "public"], attributeAllowlist: ["title"] }\n'
+  )
+
+  const result = run(['scan', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.deepStrictEqual(report.coverage.chineseSourceAudit, {
+    total: 3,
+    unresolved: 2,
+    intentionallyIgnored: 1
+  })
+  assert.strictEqual(report.coverage.runtimeLocalization.automaticallyRuntimeLocalizable, 1)
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.deepStrictEqual(catalog, { [HELLO]: '你好' })
+  assert.ok(!Object.values(catalog).includes('品牌'))
+  assert.ok(!Object.values(catalog).includes('欢迎'))
+  assert.ok(!Object.values(catalog).includes('未忽略'))
+
+  const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
+  assert.strictEqual(analysis.auditFindings.length, 3)
+  const ignored = analysis.auditFindings.find(item => item.disposition === 'intentionally-ignored')
+  assert.strictEqual(ignored.text, '品牌')
+  assert.strictEqual(ignored.ignoreReason, 'brand stays Chinese')
+  assert.strictEqual(ignored.key, undefined)
+  assert.ok(analysis.auditFindings.every(item => item.capability === 'chinese-source-audit'))
+  assert.ok(analysis.auditFindings.every(item => item.key === undefined))
+})
+
+test('scan fails with an actionable diagnostic for a malformed HTML i18n-ignore', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-ignore-fail-'))
+  writeScanProject(root, {
+    source: 'module.exports = {}\n',
+    files: {
+      'public/index.html': '<!-- i18n-ignore -->\n<p>文案</p>\n'
+    }
+  })
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src", "public"] }\n'
+  )
+  const result = run(['scan', '--json'], root)
+  assert.notStrictEqual(result.status, 0, result.stdout)
+  assert.match(result.stderr, /i18n-ignore/)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, false)
+  assert.match(report.message, /i18n-ignore/)
 })
 
 test('collect remains operational alongside scan', { timeout: 20000 }, () => {
