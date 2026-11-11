@@ -167,7 +167,7 @@ function validateAndBindExplicitMessages(analysis, explicitMessages, externalKey
     const prior = automaticByKey.get(key)
     if (prior != null && prior !== finding.text) {
       throw collectionFailure(
-        `conflicting source text for key "${key}": ${JSON.stringify(prior)} vs ${JSON.stringify(finding.text)}`
+        `hash collision for key "${key}": ${JSON.stringify(prior)} vs ${JSON.stringify(finding.text)}`
       )
     }
     automaticByKey.set(key, finding.text)
@@ -483,7 +483,7 @@ function buildSourceCatalog(analysis) {
     const prior = messages.get(key)
     if (prior != null && prior !== finding.text) {
       throw collectionFailure(
-        `source catalog key "${key}" maps to incompatible source text`
+        `hash collision for key "${key}": ${JSON.stringify(prior)} vs ${JSON.stringify(finding.text)}`
       )
     }
     messages.set(key, finding.text)
@@ -493,7 +493,7 @@ function buildSourceCatalog(analysis) {
     const prior = messages.get(finding.key)
     if (prior != null && prior !== finding.source) {
       throw collectionFailure(
-        `source catalog key "${finding.key}" maps to incompatible source text`
+        `hash collision for key "${finding.key}": ${JSON.stringify(prior)} vs ${JSON.stringify(finding.source)}`
       )
     }
     messages.set(finding.key, finding.source)

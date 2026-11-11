@@ -203,6 +203,7 @@ Usage:
 
 Commands:
   scan          Analyze project sources and write the source catalog plus analysis report.
+  migrate-keys  Migrate per-occurrence automatic keys to deterministic exact-text hash keys.
   collect       Collect Chinese user-facing copy through the project's webpack integration.
   translate     Fill target-locale catalogs through a project translation provider.
   replace       Preview safe source replacements, or commit them with --write.
@@ -262,6 +263,32 @@ Exit codes are the exit code of the stage that finished the workflow:
   5  network translation was not authorized
   6  catalogs or replacement files could not be saved
   7  strict mode found a skipped candidate
+`
+
+const MIGRATE_KEYS_HELP = `i18n-collect migrate-keys
+
+Migrate a per-occurrence automatic-key catalog to deterministic exact-text hash keys.
+Equal exact source text shares one automatic key. Explicit keys stay unchanged.
+When every old automatic key for one source text has the same target translation, that
+translation is reused under the new hash key. Conflicting historical translations stop the
+command with a report and write nothing; assign explicit keys, then retry.
+Successful runs rewrite the source-locale catalog, target catalogs, and source-catalog.json
+without occurrence identities. This command does not rewrite application source.
+
+Usage:
+  i18n-collect migrate-keys [options]
+
+Options:
+  --cwd <dir>     Project root. Defaults to the current directory.
+  --locale <tag>  Target locale to migrate. Repeat to set several. Defaults to targetLocales.
+  --json          Print the migration report as JSON on stdout.
+  -h, --help      Show this help.
+
+Exit codes:
+  0  migration finished
+  1  configuration failure
+  2  migration conflict or hash collision
+  6  catalogs could not be saved
 `
 
 const SCAN_HELP = `i18n-collect scan
@@ -359,6 +386,7 @@ Exit codes:
 
 function helpFor(command) {
   if (command === 'scan') return SCAN_HELP
+  if (command === 'migrate-keys') return MIGRATE_KEYS_HELP
   if (command === 'collect') return COLLECT_HELP
   if (command === 'translate') return TRANSLATE_HELP
   if (command === 'replace') return REPLACE_HELP
@@ -375,6 +403,7 @@ module.exports = {
   CHECK_HELP,
   CHECK_POLICY_HELP,
   COLLECT_HELP,
+  MIGRATE_KEYS_HELP,
   REPLACE_HELP,
   ROOT_HELP,
   RUN_HELP,

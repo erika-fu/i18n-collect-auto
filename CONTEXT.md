@@ -36,6 +36,10 @@ _Avoid_: Runtime localization coverage alone, Chinese source audit alone
 The workflow command whose write ownership is source analysis outputs (source catalog and analysis report).
 _Avoid_: Collect
 
+**Migrate-keys**:
+The one-shot migration command that rewrites per-occurrence automatic keys into deterministic exact-text hash keys across the source-locale catalog, target catalogs, and `source-catalog.json`. It is the only command allowed to cross the usual Scan/Translate write split, and only for that migration. Conflicts write nothing.
+_Avoid_: Scan, Translate
+
 **Translate**:
 The workflow command whose write ownership is target translation outputs.
 

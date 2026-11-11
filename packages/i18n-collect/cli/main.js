@@ -3,6 +3,7 @@ const { check } = require('./check')
 const { checkPolicy } = require('./check-policy')
 const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
+const { migrateKeys } = require('./migrate-keys')
 const { replace } = require('./replace')
 const { run } = require('./run')
 const { scan } = require('./scan')
@@ -31,6 +32,7 @@ async function main(argv) {
     && command !== 'check-policy'
     && command !== 'verify'
     && command !== 'build'
+    && command !== 'migrate-keys'
   ) {
     write(process.stderr, `configuration: unknown command "${command}"`)
     write(process.stdout, helpFor())
@@ -57,7 +59,9 @@ async function main(argv) {
                 ? await verify(commandArgs)
                 : command === 'build'
                   ? await build(commandArgs)
-                  : await run(commandArgs)
+                  : command === 'migrate-keys'
+                    ? migrateKeys(commandArgs)
+                    : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   if (typeof outcome.waitUntilClosed === 'function') {
