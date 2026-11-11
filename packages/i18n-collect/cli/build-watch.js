@@ -3,7 +3,8 @@ const path = require('path')
 const crypto = require('crypto')
 const Watchpack = require('watchpack')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
-const { collect, EXIT } = require('./collect')
+const { SOURCE_CATALOG_FILE } = require('../mycommon/source-catalog-freshness')
+const { EXIT } = require('./collect')
 
 const AGGREGATE_MS = 50
 const IGNORED_DIR_NAMES = new Set([
@@ -33,11 +34,14 @@ function walkFiles(directory, out = []) {
 }
 
 function catalogFingerprint(root, config) {
+  const sourceCatalog = path.join(root, config.catalogDir, SOURCE_CATALOG_FILE)
   const files = catalogFiles(config)
   return crypto.createHash('sha1')
-    .update(readFileBuffer(path.join(root, files.metadata)))
+    .update(readFileBuffer(sourceCatalog))
     .update('\0')
     .update(readFileBuffer(path.join(root, files.messages)))
+    .update('\0')
+    .update(readFileBuffer(path.join(root, files.metadata)))
     .digest('hex')
 }
 
@@ -45,6 +49,7 @@ function cycleInputSignature(root, parsed, config) {
   const files = catalogFiles(config)
   const runtimeModule = config.buildReplacement && config.buildReplacement.runtimeModule
   const inputs = [
+    path.join(root, config.catalogDir, SOURCE_CATALOG_FILE),
     path.join(root, files.metadata),
     path.join(root, files.messages),
     path.join(root, 'i18n-collect.config.js'),
@@ -90,13 +95,13 @@ function listExisting(files) {
 function createWatchBuildSession({
   root,
   parsed,
-  collectArgs,
   runReplacementCompilation,
   requireBuildReplacement,
+  prepareReadOnlyBuild,
   failure,
   jsonText,
   humanReport,
-  collectionReportFrom
+  collectionSummary
 }) {
   const json = Boolean(parsed.json)
   const publishes = []
@@ -113,7 +118,6 @@ function createWatchBuildSession({
   let lastStdout = ''
   let lastStderr = ''
   let watchpack = null
-  let collectionCompiler = null
   let replacementCompiler = null
   let closeResolve = null
   const closedPromise = new Promise(resolve => {
@@ -158,19 +162,18 @@ function createWatchBuildSession({
     }, AGGREGATE_MS)
   }
 
-  function trackCompiler(kind, compiler) {
-    if (kind === 'collection') collectionCompiler = compiler
-    else replacementCompiler = compiler
+  function trackCompiler(compiler) {
+    replacementCompiler = compiler
   }
 
-  function clearCompiler(kind, compiler) {
-    if (kind === 'collection' && collectionCompiler === compiler) collectionCompiler = null
-    if (kind === 'replacement' && replacementCompiler === compiler) replacementCompiler = null
+  function clearCompiler(compiler) {
+    if (replacementCompiler === compiler) replacementCompiler = null
   }
 
   function rememberSelfWrites(config, bundleRelative) {
     const files = catalogFiles(config)
     const paths = [
+      path.join(root, config.catalogDir, SOURCE_CATALOG_FILE),
       path.join(root, files.metadata),
       path.join(root, files.messages),
       path.join(root, config.outputPath),
@@ -181,13 +184,14 @@ function createWatchBuildSession({
     for (const file of paths) suppressedWrites.add(path.resolve(file))
   }
 
-  async function runReplacementPhase(config) {
+  async function runReplacementPhase(config, prepared) {
     return runReplacementCompilation(root, parsed, config, {
+      prepared,
       onCompiler(compiler) {
-        trackCompiler('replacement', compiler)
+        trackCompiler(compiler)
       },
       onCompilerClosed(compiler) {
-        clearCompiler('replacement', compiler)
+        clearCompiler(compiler)
       }
     })
   }
@@ -216,50 +220,31 @@ function createWatchBuildSession({
         return
       }
 
-      const phase1 = await collect(collectArgs, {
-        onCompiler(compiler) {
-          trackCompiler('collection', compiler)
-        },
-        onCompilerClosed(compiler) {
-          clearCompiler('collection', compiler)
-        }
-      })
-      if (closed) return
-      if (phase1.code !== EXIT.ok) {
-        lastExitCode = phase1.code
-        if (json && phase1.stdout) {
-          try {
-            const body = JSON.parse(phase1.stdout)
-            body.command = 'build'
-            body.phase = 'collection'
-            body.stage = 'collection'
-            lastStdout = jsonText(body)
-            lastStderr = phase1.stderr
-          } catch (error) {
-            lastStdout = phase1.stdout
-            lastStderr = phase1.stderr
-          }
-        } else {
-          lastStdout = phase1.stdout
-          lastStderr = phase1.stderr
-        }
-        notifyStatus()
-        return
-      }
-
-      config = loadConfig({ root })
-      const afterCollectSignature = cycleInputSignature(root, parsed, config)
-      rememberSelfWrites(config, null)
-
-      let replacement
+      let prepared
       try {
-        replacement = await runReplacementPhase(config)
+        prepared = prepareReadOnlyBuild(root, config)
       } catch (error) {
         const failed = failure(error, json)
         lastExitCode = failed.code
         lastStdout = failed.stdout
         lastStderr = failed.stderr
-        lastCycleSignature = afterCollectSignature
+        lastCycleSignature = beforeSignature
+        notifyStatus()
+        return
+      }
+      if (closed) return
+
+      rememberSelfWrites(config, null)
+
+      let replacement
+      try {
+        replacement = await runReplacementPhase(config, prepared)
+      } catch (error) {
+        const failed = failure(error, json)
+        lastExitCode = failed.code
+        lastStdout = failed.stdout
+        lastStderr = failed.stderr
+        lastCycleSignature = beforeSignature
         rememberSelfWrites(config, null)
         notifyStatus()
         return
@@ -276,41 +261,25 @@ function createWatchBuildSession({
         lastExitCode = failed.code
         lastStdout = failed.stdout
         lastStderr = failed.stderr
-        lastCycleSignature = afterCollectSignature
+        lastCycleSignature = beforeSignature
         rememberSelfWrites(config, null)
         notifyStatus()
         return
       }
 
       const fingerprint = catalogFingerprint(root, config)
-      lastCycleSignature = afterCollectSignature
+      lastCycleSignature = beforeSignature
       rememberSelfWrites(config, bundleRelative)
       publishes.push({
         catalogFingerprint: Buffer.from(fingerprint),
-        catalogMeta: readFileBuffer(path.join(root, catalogFiles(config).metadata)),
+        sourceCatalog: readFileBuffer(path.join(root, config.catalogDir, SOURCE_CATALOG_FILE)),
         bundle,
         bundlePath: bundleRelative,
         adapter: replacement.adapter
       })
       notifyPublish()
 
-      const collection = json
-        ? collectionReportFrom(phase1.stdout, true)
-        : {
-            catalog: {
-              messages: catalogFiles(config).messages,
-              metadata: catalogFiles(config).metadata
-            },
-            entries: null
-          }
-      if (!json) {
-        try {
-          const dictionary = JSON.parse(fs.readFileSync(path.join(root, config.outputPath), 'utf8'))
-          collection.entries = Object.keys(dictionary).length
-        } catch (error) {
-          collection.entries = 0
-        }
-      }
+      const collection = collectionSummary(prepared)
       const report = {
         adapter: replacement.adapter,
         bundle: bundleRelative,
@@ -356,12 +325,13 @@ function createWatchBuildSession({
       path.join(root, 'i18n-collect.config.js'),
       path.resolve(root, parsed.webpackConfig || 'webpack.config.js'),
       runtimeModule ? path.resolve(root, runtimeModule) : null,
+      path.join(root, config.catalogDir, SOURCE_CATALOG_FILE),
       path.join(root, files.metadata),
       path.join(root, files.messages)
     ])
     const watchDirs = listExisting([
       path.join(root, 'src'),
-      path.join(root, path.posix.dirname(files.metadata))
+      path.join(root, config.catalogDir)
     ])
     watchpack = new Watchpack({ aggregateTimeout: AGGREGATE_MS })
     watchpack.watch({
@@ -410,9 +380,7 @@ function createWatchBuildSession({
       watchpack.close()
       watchpack = null
     }
-    closeCompiler(collectionCompiler)
     closeCompiler(replacementCompiler)
-    collectionCompiler = null
     replacementCompiler = null
     suppressedWrites.clear()
     notifyIdle()

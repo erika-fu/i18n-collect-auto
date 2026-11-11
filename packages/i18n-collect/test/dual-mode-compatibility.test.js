@@ -10,6 +10,7 @@ const { transformBuildReplacement } = require('../mycommon/build-replace')
 const { extractScript } = require('../myloader/extract-script')
 const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
+const { keyForSource, seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -142,6 +143,10 @@ module.exports = {
 }
 
 function catalogKeyFor(root, source) {
+  const sourceCatalogPath = path.join(root, 'lang/catalog/source-catalog.json')
+  if (fs.existsSync(sourceCatalogPath)) {
+    return keyForSource(root, source)
+  }
   const metadata = readJson(root, 'lang/catalog/catalog.meta.json')
   const key = Object.keys(metadata.entries).find(name => metadata.entries[name].source === source)
   assert.ok(key, `missing catalog key for ${source}`)
@@ -213,8 +218,7 @@ test('after Build replacement, Source replacement preview matches the pre-build 
   ].join('\n')
   writeJsProject(root, { source })
 
-  const collect = run(['collect', '--json'], root)
-  assert.strictEqual(collect.status, 0, collect.stderr)
+  seedSourceCatalog(root)
   const previewBefore = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(previewBefore.status, 0, previewBefore.stderr)
   const before = JSON.parse(previewBefore.stdout)
@@ -260,8 +264,7 @@ test('after replace --write, Build replacement keeps localized calls and leaves 
   ].join('\n')
   writeJsProject(root, { source })
 
-  const collect = run(['collect', '--json'], root)
-  assert.strictEqual(collect.status, 0, collect.stderr)
+  seedSourceCatalog(root)
   const key = catalogKeyFor(root, '你好')
   const write = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(write.status, 0, write.stderr)
@@ -269,18 +272,13 @@ test('after replace --write, Build replacement keeps localized calls and leaves 
   assert.match(replaced, new RegExp(`t\\('${key.replace(/\./g, '\\.')}'\\)`))
   assert.doesNotMatch(replaced, /你好/)
   const metadataBefore = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
+  seedSourceCatalog(root)
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), metadataBefore)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), replaced)
 
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(meta.entries[key].representation, 'localized-call')
-  assert.deepStrictEqual(
-    meta.entries[key].occurrences.map(item => item.representation),
-    ['localized-call']
-  )
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
   assert.doesNotMatch(bundle, /t\(t\(|你好/)
@@ -297,8 +295,7 @@ test('mixed localized-call and source-text occurrences keep separate identities 
   ].join('\n')
   writeJsProject(root, { source })
 
-  const collect = run(['collect', '--json'], root)
-  assert.strictEqual(collect.status, 0, collect.stderr)
+  seedSourceCatalog(root)
   const migratedKey = catalogKeyFor(root, '已迁移')
   const pendingKey = catalogKeyFor(root, '待迁移')
   assert.notStrictEqual(migratedKey, pendingKey)
@@ -325,17 +322,12 @@ test('mixed localized-call and source-text occurrences keep separate identities 
     }]
   }, null, 2)}\n`)
   const recordedBytes = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
+  seedSourceCatalog(root)
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), mixed)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recordedBytes)
-
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(meta.entries[migratedKey].representation, 'localized-call')
-  assert.strictEqual(meta.entries[pendingKey].representation, 'source-text')
-  assert.strictEqual(meta.entries[migratedKey].source, '已迁移')
-  assert.strictEqual(meta.entries[pendingKey].source, '待迁移')
 
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(migratedKey.replace(/\./g, '\\.')))
@@ -360,8 +352,7 @@ test('projects with existing replacement metadata can enable Build replacement w
     ''
   ].join('\n')
   writeJsProject(root, { source })
-  const collect = run(['collect', '--json'], root)
-  assert.strictEqual(collect.status, 0, collect.stderr)
+  seedSourceCatalog(root)
   const key = catalogKeyFor(root, '你好')
   const recorded = {
     version: 1,
@@ -378,6 +369,7 @@ test('projects with existing replacement metadata can enable Build replacement w
   }
   fs.writeFileSync(path.join(root, 'lang/catalog/replacements.json'), `${JSON.stringify(recorded, null, 2)}\n`)
   const recordedBytes = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
+  seedSourceCatalog(root)
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
@@ -399,16 +391,14 @@ test('legacy MD5 localization calls stay outside keyed Build replacement', { tim
     ''
   ].join('\n')
   writeJsProject(root, { source })
+  const catalog = seedSourceCatalog(root)
+  assert.ok(!catalog[hash], 'MD5 call must not become a keyed catalog entry')
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
 
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.ok(!meta.entries[hash], 'MD5 call must not become a keyed catalog entry')
   const freshKey = catalogKeyFor(root, '你好')
-  assert.ok(!meta.entries[freshKey] || meta.entries[freshKey].source === '你好')
-
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(hash))
   assert.match(bundle, new RegExp(freshKey.replace(/\./g, '\\.')))
@@ -416,7 +406,7 @@ test('legacy MD5 localization calls stay outside keyed Build replacement', { tim
   assert.doesNotMatch(bundle, new RegExp(`t\\(t\\('${hash}'\\)\\)`))
 })
 
-test('identical Chinese text keeps distinct keys while an explicit shared key stays shared', { timeout: 120000 }, () => {
+test('identical Chinese text shares one automatic key while an explicit shared key stays shared', { timeout: 120000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-keys-'))
   const source = [
     "const { t } = require('./i18n')",
@@ -428,15 +418,13 @@ test('identical Chinese text keeps distinct keys while an explicit shared key st
     ''
   ].join('\n')
   writeJsProject(root, { source })
+  const catalog = seedSourceCatalog(root)
+  const duplicateKeys = Object.keys(catalog).filter(name => catalog[name] === '重复文案')
+  assert.strictEqual(duplicateKeys.length, 1)
+  assert.strictEqual(catalog['home.shared'], '共享文案')
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  const duplicateKeys = Object.keys(meta.entries).filter(name => meta.entries[name].source === '重复文案')
-  assert.strictEqual(duplicateKeys.length, 2)
-  assert.notStrictEqual(duplicateKeys[0], duplicateKeys[1])
-  assert.ok(meta.entries['home.shared'])
-  assert.strictEqual(meta.entries['home.shared'].occurrences.length, 2)
 
   const preview = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
@@ -444,7 +432,7 @@ test('identical Chinese text keeps distinct keys while an explicit shared key st
   const calls = report.replacements.map(item => item.call).sort()
   assert.deepStrictEqual(calls, [
     `t('${duplicateKeys[0]}')`,
-    `t('${duplicateKeys[1]}')`,
+    `t('${duplicateKeys[0]}')`,
     "t('home.shared')",
     "t('home.shared')"
   ].sort())
@@ -464,11 +452,12 @@ test('repeated Build replacement stays idempotent on disk and does not nest call
     ''
   ].join('\n')
   writeJsProject(root, { source })
+  seedSourceCatalog(root)
 
   const first = run(['build', '--json'], root)
   assert.strictEqual(first.status, 0, first.stderr)
   const key = catalogKeyFor(root, '你好')
-  const metaAfterFirst = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+  const catalogAfterFirst = fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'))
   const sourceAfterFirst = fs.readFileSync(path.join(root, 'src/app.js'))
   assert.strictEqual(sourceAfterFirst.toString(), source)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
@@ -478,15 +467,15 @@ test('repeated Build replacement stays idempotent on disk and does not nest call
   const second = run(['build', '--json'], root)
   assert.strictEqual(second.status, 0, second.stderr)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/app.js')), sourceAfterFirst)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), metaAfterFirst)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json')), catalogAfterFirst)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
   const bundleSecond = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundleSecond, new RegExp(key.replace(/\./g, '\\.')))
   assert.doesNotMatch(bundleSecond, /t\(t\(|你好/)
 })
 
-test('orphaned catalog keys fail Build replacement while Source replacement still skips them', { timeout: 120000 }, () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-orphan-'))
+test('stale committed source catalog fails Build replacement closed', { timeout: 120000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-stale-'))
   writeJsProject(root, {
     source: [
       "const { t } = require('./i18n')",
@@ -495,10 +484,8 @@ test('orphaned catalog keys fail Build replacement while Source replacement stil
       ''
     ].join('\n')
   })
-  const first = run(['collect', '--json'], root)
-  assert.strictEqual(first.status, 0, first.stderr)
-  const orphanKey = catalogKeyFor(root, '临时文案')
-  const helloKey = catalogKeyFor(root, '你好')
+  seedSourceCatalog(root)
+  const catalogBefore = fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'))
   fs.writeFileSync(path.join(root, 'src/app.js'), [
     "const { t } = require('./i18n')",
     "module.exports = function label() { return '你好' }",
@@ -506,28 +493,11 @@ test('orphaned catalog keys fail Build replacement while Source replacement stil
   ].join('\n'))
 
   const build = run(['build', '--json'], root)
-  assert.strictEqual(build.status, 3, build.stderr)
+  assert.strictEqual(build.status, 2, build.stderr)
   const body = JSON.parse(build.stdout)
-  assert.strictEqual(body.stage, 'replacement')
-  assert.ok(body.occurrences.some(item => (
-    item.key === orphanKey
-    && item.reason === 'orphaned occurrence is outside the current collection'
-  )))
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(meta.entries[orphanKey].status, 'orphaned')
-  assert.strictEqual(meta.entries[helloKey].status, 'active')
-  assert.strictEqual(meta.entries[orphanKey].source, '临时文案')
-
-  const preview = run(['replace', '--adapter', 'js', '--json'], root)
-  assert.strictEqual(preview.status, 0, preview.stderr)
-  const report = JSON.parse(preview.stdout)
-  assert.ok(report.skipped.some(item => item.key === orphanKey && /orphan/i.test(item.reason)))
-  assert.ok(report.replacements.every(item => item.key !== orphanKey))
-  assert.strictEqual(report.replacements.length, 1)
-  assert.strictEqual(report.replacements[0].key, helloKey)
-
-  const strict = run(['replace', '--adapter', 'js', '--strict', '--json'], root)
-  assert.strictEqual(strict.status, 7)
+  assert.strictEqual(body.stage, 'analysis')
+  assert.match(build.stderr, /source catalog|no longer matches|scan/i)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json')), catalogBefore)
 })
 
 function writeVue3DualProject(root, vueSource) {
@@ -662,8 +632,7 @@ test('Vue 3 build-then-replace and replace-then-build keep the same keys without
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-vue3-'))
   writeVue3DualProject(root, source)
 
-  const collect = run(['collect', '--json'], root)
-  assert.strictEqual(collect.status, 0, collect.stderr)
+  seedSourceCatalog(root)
   const welcomeKey = catalogKeyFor(root, '欢迎')
   const tipKey = catalogKeyFor(root, '说明')
   const previewBefore = run(['replace', '--adapter', 'vue3', '--json'], root)
@@ -671,6 +640,7 @@ test('Vue 3 build-then-replace and replace-then-build keep the same keys without
   const before = JSON.parse(previewBefore.stdout)
   assert.strictEqual(before.replacements.length, 2)
 
+  seedSourceCatalog(root)
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), source)
@@ -694,13 +664,11 @@ test('Vue 3 build-then-replace and replace-then-build keep the same keys without
   assert.match(replaced, new RegExp(`t\\('${tipKey.replace(/\./g, '\\.')}'\\)`))
   const recorded = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
 
+  seedSourceCatalog(root)
   const rebuild = run(['build', '--json'], root)
   assert.strictEqual(rebuild.status, 0, rebuild.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), replaced)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recorded)
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(meta.entries[welcomeKey].representation, 'localized-call')
-  assert.strictEqual(meta.entries[tipKey].representation, 'localized-call')
   const rebuilt = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(rebuilt, new RegExp(welcomeKey.replace(/\./g, '\\.')))
   assert.match(rebuilt, new RegExp(tipKey.replace(/\./g, '\\.')))
@@ -724,14 +692,14 @@ test('Vue 2 build-then-replace and replace-then-build keep the same keys without
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-vue2-'))
   writeVue2DualProject(root, source)
 
-  const collect = run(['collect', '--json'], root)
-  assert.strictEqual(collect.status, 0, collect.stderr)
+  seedSourceCatalog(root)
   const welcomeKey = catalogKeyFor(root, '欢迎')
   const helloKey = catalogKeyFor(root, '你好')
   const previewBefore = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(previewBefore.status, 0, previewBefore.stderr)
   const before = JSON.parse(previewBefore.stdout)
 
+  seedSourceCatalog(root)
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), source)
@@ -752,12 +720,10 @@ test('Vue 2 build-then-replace and replace-then-build keep the same keys without
   assert.match(replaced, new RegExp(`this\\.\\$t\\('${helloKey.replace(/\./g, '\\.')}'\\)`))
   const recorded = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
 
+  seedSourceCatalog(root)
   const rebuild = run(['build', '--json'], root)
   assert.strictEqual(rebuild.status, 0, rebuild.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), replaced)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recorded)
-  const meta = readJson(root, 'lang/catalog/catalog.meta.json')
-  assert.strictEqual(meta.entries[welcomeKey].representation, 'localized-call')
-  assert.strictEqual(meta.entries[helloKey].representation, 'localized-call')
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8'), /\$t\(\$t\(|this\.\$t\(this\.\$t\(/)
 })

@@ -9,6 +9,12 @@ const {
   leftoverArtifacts,
   snapshotSources
 } = require('./source-snapshot')
+const {
+  assertLangUnchanged,
+  keyForSource,
+  seedSourceCatalog,
+  snapshotLangTree
+} = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const vue2Root = path.resolve(__dirname, '../../../apps/demo')
@@ -70,6 +76,12 @@ function findBundle(root) {
   throw new Error('formal bundle js not found')
 }
 
+function scrubBuildLeftovers(root) {
+  for (const name of leftoverArtifacts(root)) {
+    fs.rmSync(name, { recursive: true, force: true })
+  }
+}
+
 test('Vue 2 demo package scripts expose two-phase build and serial watch Build replacement', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(vue2Root, 'package.json'), 'utf8'))
   assert.match(pkg.scripts.build, /i18n-collect(?:\.js)? build/)
@@ -90,7 +102,10 @@ test('Vue 3 demo package scripts expose two-phase build and serial watch Build r
 })
 
 test('Vue 2 demo Build replacement keeps disk Chinese and localizes the formal bundle', { timeout: 300000 }, () => {
+  scrubBuildLeftovers(vue2Root)
+  seedSourceCatalog(vue2Root, { writeLegacyArtifacts: false })
   const before = snapshotDemoSources(vue2Root)
+  const langBefore = snapshotLangTree(vue2Root)
   const home = path.join(vue2Root, 'src/pages/HomePage.vue')
   const homeSource = before.get(home).content.toString('utf8')
   assert.match(homeSource, /插值/)
@@ -101,20 +116,22 @@ test('Vue 2 demo Build replacement keeps disk Chinese and localizes the formal b
   assert.strictEqual(report.adapter, 'vue2')
   assert.strictEqual(fs.readFileSync(home, 'utf8'), homeSource)
   assertSourcesUnchanged(before, vue2Root)
+  assertLangUnchanged(langBefore, vue2Root)
   assert.deepStrictEqual(leftoverArtifacts(vue2Root), [])
   assert.ok(!fs.existsSync(path.join(vue2Root, 'lang/catalog/replacements.json')))
-  const metadata = JSON.parse(fs.readFileSync(path.join(vue2Root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  const titleKey = Object.keys(metadata.entries).find(key => metadata.entries[key].source === '插值')
-  assert.ok(titleKey, 'expected HomePage title in catalog')
+  const titleKey = keyForSource(vue2Root, '插值')
   const bundle = fs.readFileSync(findBundle(vue2Root), 'utf8')
   assert.match(bundle, new RegExp(titleKey.replace(/\./g, '\\.')))
-  const buildTitle = metadata.entries['demo.build.title']
-  assert.ok(buildTitle, 'expected demo.build.title')
+  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(vue2Root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.strictEqual(sourceCatalog['demo.build.title'], '构建替换演示')
   assert.match(bundle, /demo\.build\.title/)
 })
 
 test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal bundle', { timeout: 300000 }, () => {
+  scrubBuildLeftovers(vue3Root)
+  seedSourceCatalog(vue3Root, { writeLegacyArtifacts: false })
   const before = snapshotDemoSources(vue3Root)
+  const langBefore = snapshotLangTree(vue3Root)
   const app = path.join(vue3Root, 'src/App.vue')
   const appSource = before.get(app).content.toString('utf8')
   assert.match(appSource, /原生 Vue 三模板/)
@@ -125,10 +142,11 @@ test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal b
   assert.strictEqual(report.adapter, 'vue3')
   assert.strictEqual(fs.readFileSync(app, 'utf8'), appSource)
   assertSourcesUnchanged(before, vue3Root)
+  assertLangUnchanged(langBefore, vue3Root)
   assert.deepStrictEqual(leftoverArtifacts(vue3Root), [])
   assert.ok(!fs.existsSync(path.join(vue3Root, 'lang/catalog/replacements.json')))
-  const metadata = JSON.parse(fs.readFileSync(path.join(vue3Root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  assert.strictEqual(metadata.entries['vue3.heading'].source, '原生 Vue 三模板')
+  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(vue3Root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.strictEqual(sourceCatalog['vue3.heading'], '原生 Vue 三模板')
   const bundle = fs.readFileSync(findBundle(vue3Root), 'utf8')
   assert.match(bundle, /vue3\.heading/)
   // Catalog JSON is bundled for runtime lookup, so Chinese source text may still
@@ -138,14 +156,19 @@ test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal b
 
 test('Vue demo rebuild leaves business sources and formal outputs byte-stable', { timeout: 600000 }, () => {
   for (const root of [vue2Root, vue3Root]) {
+    scrubBuildLeftovers(root)
+    seedSourceCatalog(root, { writeLegacyArtifacts: false })
     const sourcesBefore = snapshotDemoSources(root)
+    const langBefore = snapshotLangTree(root)
     const first = run(['build', '--json'], root)
     assert.strictEqual(first.status, 0, first.stderr || first.stdout)
     assertSourcesUnchanged(sourcesBefore, root)
+    assertLangUnchanged(langBefore, root)
     const formalAfterFirst = snapshotSources(path.join(root, 'lang'), { skipNames: ['node_modules'] })
     const second = run(['build', '--json'], root)
     assert.strictEqual(second.status, 0, second.stderr || second.stdout)
     assertSourcesUnchanged(sourcesBefore, root)
+    assertLangUnchanged(langBefore, root)
     for (const [file, entry] of formalAfterFirst) {
       assert.deepStrictEqual(
         fs.readFileSync(file),

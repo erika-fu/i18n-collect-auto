@@ -7,18 +7,22 @@ const {
   formatJsonFailure,
   preflightBuildReplacement,
   publishFormalBundle,
-  stageFormalBundle
+  stageFormalBundle,
+  stripCollectionIntegration
 } = require('../mycommon/build-replacement-contract')
-const { catalogFiles, clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
+const {
+  clearBuildReplacementContext,
+  setBuildReplacementContext
+} = require('../mycommon/build-replacement-context')
+const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
+const { assertSourceCatalogFresh } = require('../mycommon/source-catalog-freshness')
 const I18nBuildReplacementPlugin = require('../myplugin/build-replacement')
 const {
   EXIT,
   classifyBuild,
-  collect,
   forbidNetwork,
   parseCollectArgs,
-  pluginOptionsFrom,
   projectRelative,
   readWebpackConfig,
   runCompiler
@@ -53,7 +57,7 @@ function failure(error, json) {
   const stage = error && error.stage
     ? error.stage
     : kind === 'collection'
-      ? 'collection'
+      ? 'analysis'
       : kind === 'configuration'
         ? 'configuration'
         : 'replacement'
@@ -97,10 +101,10 @@ function overridesFrom(parsed) {
 }
 
 function humanReport(report) {
-  const noun = report.collection.entries === 1 ? 'entry' : 'entries'
+  const noun = report.collection.keys === 1 ? 'key' : 'keys'
   return [
     `Build replacement finished.`,
-    `Collection: ${report.collection.entries} ${noun}; catalog ${report.collection.catalog.messages}`,
+    `Source catalog: ${report.collection.sourceCatalog} (${report.collection.keys} ${noun})`,
     `Bundle: ${report.bundle}`,
     `Adapter: ${report.adapter}`,
     `Runtime: ${report.runtimeModule}#${report.runtimeExport}`,
@@ -143,11 +147,16 @@ function classifyReplacementBuild(error, stats) {
   return null
 }
 
+function prepareReadOnlyBuild(root, config) {
+  return assertSourceCatalogFresh(root, config)
+}
+
 async function runReplacementCompilation(root, parsed, config, hooks = {}) {
   const previous = process.cwd()
   let restoreNetwork = null
   let staging = null
   let compiler = null
+  let contextSet = false
   process.chdir(root)
   clearCollectionOverrides()
   try {
@@ -172,8 +181,14 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
     if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded)) {
       throw commandError('configuration', 'build accepts one webpack configuration object')
     }
-    preflightBuildReplacement(root, config)
-    const webpackConfig = cloneWebpackConfig(loaded)
+    const prepared = hooks.prepared || prepareReadOnlyBuild(root, config)
+    preflightBuildReplacement(root, config, { occurrences: prepared.occurrences })
+    setBuildReplacementContext(root, {
+      occurrences: prepared.occurrences,
+      sourceCatalog: prepared.sourceCatalog
+    })
+    contextSet = true
+    const webpackConfig = stripCollectionIntegration(cloneWebpackConfig(loaded))
     webpackConfig.watch = false
     webpackConfig.cache = false
     webpackConfig.infrastructureLogging = { level: 'error' }
@@ -182,8 +197,7 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
       adapter: config.buildReplacement && config.buildReplacement.adapter
     }))
     staging = stageFormalBundle(webpackConfig, root)
-    const pluginOptions = pluginOptionsFrom(webpackConfig)
-    const resolved = loadConfig({ root, pluginOptions })
+    const resolved = loadConfig({ root })
     const { error, stats } = await runCompiler(webpackConfig, {
       onCompiler(next) {
         compiler = next
@@ -196,8 +210,10 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
     })
     const failed = classifyReplacementBuild(error, stats)
     if (failed) throw failed
-    publishFormalBundle(staging)
     const published = staging
+    publishFormalBundle(published)
+    // rename/move may leave the staging path on some Windows hosts; always scrub it.
+    cleanupBundleArtifacts(root, published.stagingPath)
     staging = null
     const outputPath = published.formalPath
     const filename = (webpackConfig.output && webpackConfig.output.filename) || 'bundle.js'
@@ -212,20 +228,17 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
       adapter: resolved.buildReplacement.adapter,
       bundle,
       outputPath,
+      prepared,
       runtimeExport: resolved.buildReplacement.runtimeExport,
       runtimeModule: resolved.buildReplacement.runtimeModule
     }
   } finally {
+    if (contextSet) clearBuildReplacementContext(root)
     if (restoreNetwork) restoreNetwork()
     clearCollectionOverrides()
     process.chdir(previous)
     cleanupBundleArtifacts(root, staging && staging.stagingPath)
   }
-}
-
-function collectionReportFrom(stdout, json) {
-  if (json) return JSON.parse(stdout)
-  return null
 }
 
 function parseBuildArgs(args) {
@@ -238,6 +251,18 @@ function parseBuildArgs(args) {
   const parsed = parseCollectArgs(rest)
   parsed.watch = watch
   return parsed
+}
+
+function collectionSummary(prepared) {
+  const keys = Object.keys(prepared.sourceCatalog || {})
+  return {
+    sourceCatalog: prepared.sourceCatalogPath,
+    keys: keys.length,
+    catalog: {
+      sourceCatalog: prepared.sourceCatalogPath,
+      keys: keys.length
+    }
+  }
 }
 
 async function build(args) {
@@ -260,61 +285,27 @@ async function build(args) {
     return failure(error, json)
   }
 
-  const collectArgs = args.filter(arg => arg !== '--watch')
-
   if (parsed.watch) {
     const { createWatchBuildSession } = require('./build-watch')
     const session = createWatchBuildSession({
       root,
       parsed,
-      collectArgs,
       runReplacementCompilation,
       requireBuildReplacement,
+      prepareReadOnlyBuild,
       failure,
       jsonText,
       humanReport,
-      collectionReportFrom
+      collectionSummary
     })
     return session.start()
   }
 
-  const phase1 = await collect(collectArgs)
-  if (phase1.code !== EXIT.ok) {
-    if (json && phase1.stdout) {
-      try {
-        const body = JSON.parse(phase1.stdout)
-        body.command = 'build'
-        body.phase = 'collection'
-        body.stage = 'collection'
-        return outcome(phase1.code, jsonText(body), phase1.stderr)
-      } catch (error) {
-        return phase1
-      }
-    }
-    return phase1
-  }
-
   try {
     const config = loadConfig({ root })
-    const replacement = await runReplacementCompilation(root, parsed, config)
-    const collection = json
-      ? collectionReportFrom(phase1.stdout, true)
-      : {
-          catalog: { messages: catalogFiles(config).messages },
-          entries: null
-        }
-    if (!json) {
-      try {
-        const dictionary = JSON.parse(fs.readFileSync(path.join(root, config.outputPath), 'utf8'))
-        collection.entries = Object.keys(dictionary).length
-        collection.catalog = {
-          messages: catalogFiles(config).messages,
-          metadata: catalogFiles(config).metadata
-        }
-      } catch (error) {
-        collection.entries = 0
-      }
-    }
+    const prepared = prepareReadOnlyBuild(root, config)
+    const replacement = await runReplacementCompilation(root, parsed, config, { prepared })
+    const collection = collectionSummary(prepared)
     const report = {
       adapter: replacement.adapter,
       bundle: replacement.bundle,
@@ -333,4 +324,10 @@ async function build(args) {
   }
 }
 
-module.exports = { EXIT, build, parseBuildArgs, runReplacementCompilation }
+module.exports = {
+  EXIT,
+  build,
+  parseBuildArgs,
+  prepareReadOnlyBuild,
+  runReplacementCompilation
+}

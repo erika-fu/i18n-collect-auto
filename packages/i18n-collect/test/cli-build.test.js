@@ -7,7 +7,13 @@ const test = require('node:test')
 const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
 const { leftoverArtifacts } = require('./source-snapshot')
-
+const {
+  assertLangUnchanged,
+  keyForSource,
+  seedSourceCatalog,
+  snapshotLangTree,
+  writeSourceCatalog
+} = require('./build-test-helpers')
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
 const plugin = require.resolve('../myplugin')
@@ -53,7 +59,7 @@ function assertUnchanged(before, root, ignore = []) {
   const ignored = new Set(ignore.map(file => path.resolve(root, file)))
   const after = snapshotFiles(root)
   for (const [file, entry] of before) {
-    if (ignored.has(file) || file.startsWith(path.join(root, 'dist')) || file.startsWith(path.join(root, 'lang'))) {
+    if (ignored.has(file) || file.startsWith(path.join(root, 'dist'))) {
       continue
     }
     assert.ok(after.has(file), `missing ${file}`)
@@ -110,17 +116,18 @@ module.exports = {
 `)
 }
 
-test('build help describes the two-phase Build replacement command', () => {
+test('build help describes the read-only Build replacement command', () => {
   const result = run(['build', '--help'])
   assert.strictEqual(result.status, 0)
   assert.match(result.stdout, /i18n-collect build/)
   assert.match(result.stdout, /Phase 1/)
   assert.match(result.stdout, /Phase 2/)
   assert.match(result.stdout, /buildReplacement/)
-  assert.match(result.stdout, /does not modify|not modified/i)
-  assert.match(result.stdout, /fail-closed|unsafe collected positions/i)
+  assert.match(result.stdout, /does not create, update, restore, or delete|read-only/i)
+  assert.match(result.stdout, /fail-closed|unsafe/i)
   assert.match(result.stdout, /--watch/)
-  assert.match(result.stdout, /serial collect-then-replace|coalesced/i)
+  assert.match(result.stdout, /serial analyze-then-replace|coalesced/i)
+  assert.match(result.stdout, /does not start an implicit scan|catalog write/i)
 })
 
 test('build requires buildReplacement to be enabled', { timeout: 20000 }, () => {
@@ -131,10 +138,12 @@ test('build requires buildReplacement to be enabled', { timeout: 20000 }, () => 
   assert.match(result.stderr, /buildReplacement\.enabled/)
 })
 
-test('build publishes a stable key into the formal bundle without rewriting source files', { timeout: 60000 }, () => {
+test('build publishes a stable key into the formal bundle without rewriting source or catalog files', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-ok-'))
   writeBuildProject(root)
+  seedSourceCatalog(root)
   const before = snapshotFiles(root)
+  const langBefore = snapshotLangTree(root)
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   assert.strictEqual(result.stderr, '')
@@ -143,13 +152,12 @@ test('build publishes a stable key into the formal bundle without rewriting sour
   assert.strictEqual(report.ok, true)
   assert.strictEqual(report.adapter, 'js')
   assert.ok(report.collection.catalog.keys >= 1)
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  const key = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '你好')
-  assert.ok(key)
+  const key = keyForSource(root, '你好')
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
   assert.doesNotMatch(bundle, /你好/)
   assertUnchanged(before, root)
+  assertLangUnchanged(langBefore, root)
   assert.strictEqual(
     fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'),
     before.get(path.join(root, 'src/app.js')).content.toString()
@@ -157,7 +165,24 @@ test('build publishes a stable key into the formal bundle without rewriting sour
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
 
-test('build fails the first phase on a key conflict and does not emit a formal bundle', { timeout: 60000 }, () => {
+test('build fails when source analysis no longer matches the committed source catalog', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-stale-'))
+  writeBuildProject(root)
+  seedSourceCatalog(root)
+  const langBefore = snapshotLangTree(root)
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "世界"\n}\n')
+  const result = run(['build', '--json'], root)
+  assert.strictEqual(result.status, 2, result.stderr)
+  const body = JSON.parse(result.stdout)
+  assert.strictEqual(body.ok, false)
+  assert.strictEqual(body.command, 'build')
+  assert.strictEqual(body.stage, 'analysis')
+  assert.match(result.stderr, /source catalog|no longer matches|scan/i)
+  assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
+  assertLangUnchanged(langBefore, root)
+})
+
+test('build fails analysis on a key conflict and does not emit a formal bundle', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-conflict-'))
   writeBuildProject(root, {
     source: 'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n',
@@ -165,15 +190,18 @@ test('build fails the first phase on a key conflict and does not emit a formal b
       'src/other.js': 'module.exports = /* i18n-key: shared.title */ "主页"\n'
     }
   })
+  writeSourceCatalog(root, { 'shared.title': '首页' })
   const before = snapshotFiles(root)
+  const langBefore = snapshotLangTree(root)
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 2, result.stderr)
-  assert.match(result.stderr, /localization key conflict|collection:/)
+  assert.match(result.stderr, /hash collision|localization key conflict|collection:|analysis/i)
   const body = JSON.parse(result.stdout)
   assert.strictEqual(body.ok, false)
   assert.strictEqual(body.command, 'build')
   assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
   assertUnchanged(before, root)
+  assertLangUnchanged(langBefore, root)
 })
 
 test('build ESM entry injects runtime import into the formal bundle', { timeout: 60000 }, () => {
@@ -198,14 +226,16 @@ module.exports = {
   experiments: { outputModule: false }
 }
 `)
+  seedSourceCatalog(root)
   const before = snapshotFiles(root)
+  const langBefore = snapshotLangTree(root)
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  const key = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '你好')
+  const key = keyForSource(root, '你好')
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
   assertUnchanged(before, root)
+  assertLangUnchanged(langBefore, root)
 })
 
 function writeProxyPackage(root, name, version, entry) {
@@ -299,6 +329,7 @@ module.exports = {
 test('build fails when Vue 3 runtime integration is missing', { timeout: 20000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue3-runtime-'))
   writeVue3BuildProject(root)
+  seedSourceCatalog(root)
   fs.writeFileSync(path.join(root, 'src/main.js'), "import Home from './Home.vue'\n")
   const before = snapshotFiles(root)
   const result = run(['build', '--json'], root)
@@ -311,6 +342,7 @@ test('build fails when Vue 3 runtime integration is missing', { timeout: 20000 }
 test('build rejects commented or non-call createI18n lookalikes for Vue 3 runtime validation', { timeout: 20000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue3-fake-runtime-'))
   writeVue3BuildProject(root)
+  seedSourceCatalog(root)
   fs.writeFileSync(path.join(root, 'src/main.js'), [
     "import Home from './Home.vue'",
     '// createI18n({})',
@@ -325,25 +357,22 @@ test('build rejects commented or non-call createI18n lookalikes for Vue 3 runtim
   assertUnchanged(before, root)
 })
 
-test('build replaces Vue 3 SFC content in memory without rewriting disk sources', { timeout: 120000 }, () => {
+test('build replaces Vue 3 SFC content in memory without rewriting disk sources or catalogs', { timeout: 120000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue3-ok-'))
   writeVue3BuildProject(root)
+  seedSourceCatalog(root)
   const before = snapshotFiles(root)
+  const langBefore = snapshotLangTree(root)
   const homeBefore = fs.readFileSync(path.join(root, 'src/Home.vue'))
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.ok, true)
   assert.strictEqual(report.adapter, 'vue3')
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  const welcome = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '欢迎')
-  const hint = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '提示')
-  const tip = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '说明')
-  const hello = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '你好')
-  assert.ok(welcome, 'expected template text in catalog')
-  assert.ok(hint, 'expected template attribute in catalog')
-  assert.ok(tip, 'expected script setup text in catalog')
-  assert.ok(hello, 'expected script setup function text in catalog')
+  const welcome = keyForSource(root, '欢迎')
+  const hint = keyForSource(root, '提示')
+  const tip = keyForSource(root, '说明')
+  const hello = keyForSource(root, '你好')
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   for (const key of [welcome, hint, tip, hello]) {
     assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
@@ -352,6 +381,7 @@ test('build replaces Vue 3 SFC content in memory without rewriting disk sources'
   assert.doesNotMatch(bundle, /说明/)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/Home.vue')), homeBefore)
   assertUnchanged(before, root)
+  assertLangUnchanged(langBefore, root)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
 
@@ -439,6 +469,7 @@ module.exports = {
 test('build fails when Vue 2 runtime integration is missing', { timeout: 20000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-runtime-'))
   writeVue2BuildProject(root)
+  seedSourceCatalog(root)
   fs.writeFileSync(path.join(root, 'src/main.js'), "import Home from './Home.vue'\n")
   const before = snapshotFiles(root)
   const result = run(['build', '--json'], root)
@@ -451,6 +482,7 @@ test('build fails when Vue 2 runtime integration is missing', { timeout: 20000 }
 test('build rejects commented or non-call VueI18n lookalikes for Vue 2 runtime validation', { timeout: 20000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-fake-runtime-'))
   writeVue2BuildProject(root)
+  seedSourceCatalog(root)
   fs.writeFileSync(path.join(root, 'src/main.js'), [
     "import Home from './Home.vue'",
     '// Vue.use(VueI18n)',
@@ -466,23 +498,21 @@ test('build rejects commented or non-call VueI18n lookalikes for Vue 2 runtime v
   assertUnchanged(before, root)
 })
 
-test('build replaces Vue 2 SFC content in memory without rewriting disk sources', { timeout: 120000 }, () => {
+test('build replaces Vue 2 SFC content in memory without rewriting disk sources or catalogs', { timeout: 120000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue2-ok-'))
   writeVue2BuildProject(root)
+  seedSourceCatalog(root)
   const before = snapshotFiles(root)
+  const langBefore = snapshotLangTree(root)
   const homeBefore = fs.readFileSync(path.join(root, 'src/Home.vue'))
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.ok, true)
   assert.strictEqual(report.adapter, 'vue2')
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  const welcome = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '欢迎')
-  const hint = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '提示')
-  const hello = Object.keys(metadata.entries).find(name => metadata.entries[name].source === '你好')
-  assert.ok(welcome, 'expected template text in catalog')
-  assert.ok(hint, 'expected template attribute in catalog')
-  assert.ok(hello, 'expected Options API method text in catalog')
+  const welcome = keyForSource(root, '欢迎')
+  const hint = keyForSource(root, '提示')
+  const hello = keyForSource(root, '你好')
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   for (const key of [welcome, hint, hello]) {
     assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
@@ -491,6 +521,7 @@ test('build replaces Vue 2 SFC content in memory without rewriting disk sources'
   assert.doesNotMatch(bundle, /你好/)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/Home.vue')), homeBefore)
   assertUnchanged(before, root)
+  assertLangUnchanged(langBefore, root)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
 
@@ -505,6 +536,8 @@ test('build fails closed for unsupported semantic positions with structured diag
       ''
     ].join('\n')
   })
+  seedSourceCatalog(root)
+  const langBefore = snapshotLangTree(root)
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 3, result.stderr)
   const body = JSON.parse(result.stdout)
@@ -524,6 +557,7 @@ test('build fails closed for unsupported semantic positions with structured diag
   assert.ok(unsupported.end)
   assert.match(result.stderr, /object key is not a supported semantic position/)
   assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
+  assertLangUnchanged(langBefore, root)
   assert.deepStrictEqual(leftoverArtifacts(root), [])
 })
 
@@ -557,6 +591,7 @@ module.exports = {
   plugins: [new MyI18nPlugin()]
 }
 `)
+  seedSourceCatalog(root)
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 3, result.stderr)
   const body = JSON.parse(result.stdout)
@@ -566,43 +601,48 @@ module.exports = {
   assert.ok(body.occurrences[0].path <= body.occurrences[1].path)
 })
 
-test('build keeps the previous formal bundle when replacement fails', { timeout: 90000 }, () => {
+test('build keeps the previous formal bundle and catalogs when replacement fails', { timeout: 90000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-keep-bundle-'))
   writeBuildProject(root)
+  seedSourceCatalog(root)
   const first = run(['build', '--json'], root)
   assert.strictEqual(first.status, 0, first.stderr)
   const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
-  const previousCatalog = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+  const langBefore = snapshotLangTree(root)
   fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = { "你好": 1 }\n')
+  seedSourceCatalog(root)
+  const langAfterSeed = snapshotLangTree(root)
   const second = run(['build', '--json'], root)
   assert.strictEqual(second.status, 3, second.stderr)
   const body = JSON.parse(second.stdout)
   assert.strictEqual(body.stage, 'replacement')
   assert.ok(body.occurrences.some(item => item.reason.includes('object key')))
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'dist/bundle.js')), previousBundle)
-  assert.notDeepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), previousCatalog)
+  assertLangUnchanged(langAfterSeed, root)
   assert.deepStrictEqual(leftoverArtifacts(root), [])
+  void langBefore
 })
 
-test('build keeps previous catalog and formal bundle when collection fails', { timeout: 90000 }, () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-keep-collection-'))
+test('build keeps previous catalogs and formal bundle when analysis fails', { timeout: 90000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-keep-analysis-'))
   writeBuildProject(root)
+  seedSourceCatalog(root)
   const first = run(['build', '--json'], root)
   assert.strictEqual(first.status, 0, first.stderr)
   const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
-  const previousCatalog = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+  const langBefore = snapshotLangTree(root)
   fs.writeFileSync(path.join(root, 'src/app.js'), 'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n')
   fs.writeFileSync(path.join(root, 'src/other.js'), 'module.exports = /* i18n-key: shared.title */ "主页"\n')
   const second = run(['build', '--json'], root)
   assert.strictEqual(second.status, 2, second.stderr)
   const body = JSON.parse(second.stdout)
-  assert.strictEqual(body.stage || body.phase, 'collection')
+  assert.strictEqual(body.stage || body.phase, 'analysis')
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'dist/bundle.js')), previousBundle)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), previousCatalog)
+  assertLangUnchanged(langBefore, root)
   assert.deepStrictEqual(leftoverArtifacts(root), [])
 })
 
-test('build fails for CSS generated content instead of keeping Chinese', { timeout: 60000 }, () => {
+test('build does not pass CSS audit findings to the replacement planner', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-css-'))
   const cssLoader = require.resolve('css-loader')
   writeBuildProject(root, {
@@ -628,13 +668,15 @@ module.exports = {
   plugins: [new MyI18nPlugin()]
 }
 `)
+  seedSourceCatalog(root)
+  const langBefore = snapshotLangTree(root)
   const result = run(['build', '--json'], root)
-  assert.strictEqual(result.status, 3, `${result.stderr}\n${result.stdout}`)
-  const body = JSON.parse(result.stdout)
-  assert.strictEqual(body.stage, 'replacement')
-  assert.ok(body.occurrences.some(item => (
-    item.reason === 'CSS generated content is outside replacement scope'
-    && item.source === '你好'
-  )))
+  assert.strictEqual(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const key = keyForSource(root, '欢迎')
+  const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
+  assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
+  assert.doesNotMatch(bundle, /欢迎/)
+  assert.match(bundle, /你好/)
+  assertLangUnchanged(langBefore, root)
   assert.deepStrictEqual(leftoverArtifacts(root), [])
 })

@@ -1,3 +1,4 @@
+const fs = require('fs')
 const path = require('path')
 const { readCatalogMetadataFile } = require('../mycommon/catalog')
 const {
@@ -8,8 +9,10 @@ const {
   catalogOccurrences,
   ORPHANED
 } = require('../mycommon/build-replacement-contract')
+const { getBuildReplacementContext } = require('../mycommon/build-replacement-context')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
 const { SCRIPT_EXTENSIONS } = require('../mycommon/replace-preview')
+const { SOURCE_CATALOG_FILE } = require('../mycommon/source-catalog-freshness')
 
 function supportedResource(projectPath, adapter) {
   const extension = path.posix.extname(projectPath).toLowerCase()
@@ -26,6 +29,28 @@ function activeOccurrences(metadata, projectPath) {
   const open = []
   for (const item of catalogOccurrences(metadata)) {
     if (item.location.path !== projectPath) continue
+    if (item.status === 'orphaned') {
+      orphaned.push({
+        path: item.location.path,
+        key: item.key,
+        kind: item.location.kind,
+        source: item.source,
+        start: item.location.start,
+        end: item.location.end,
+        reason: ORPHANED
+      })
+    } else {
+      open.push(item)
+    }
+  }
+  return { open, orphaned }
+}
+
+function activeOccurrencesFromList(items, projectPath) {
+  const orphaned = []
+  const open = []
+  for (const item of items || []) {
+    if (!item || !item.location || item.location.path !== projectPath) continue
     if (item.status === 'orphaned') {
       orphaned.push({
         path: item.location.path,
@@ -64,12 +89,18 @@ function loader(source, sourceMap, meta) {
       callback(null, source, sourceMap, meta)
       return
     }
-    const metadata = readCatalogMetadataFile(path.join(root, catalogFiles(config).metadata))
-    if (!metadata) {
-      callback(new Error('i18n-collect build replacement requires a published catalog'))
-      return
+    const context = getBuildReplacementContext(root)
+    let selected
+    if (context && Array.isArray(context.occurrences)) {
+      selected = activeOccurrencesFromList(context.occurrences, projectPath)
+    } else {
+      const metadata = readCatalogMetadataFile(path.join(root, catalogFiles(config).metadata))
+      if (!metadata) {
+        callback(new Error('i18n-collect build replacement requires a published catalog'))
+        return
+      }
+      selected = activeOccurrences(metadata, projectPath)
     }
-    const selected = activeOccurrences(metadata, projectPath)
     if (selected.orphaned.length > 0) {
       callback(buildReplacementError(selected.orphaned))
       return
@@ -95,10 +126,11 @@ function loader(source, sourceMap, meta) {
       return
     }
     if (typeof this.addDependency === 'function') {
-      const files = catalogFiles(config)
-      this.addDependency(path.join(root, files.metadata))
-      this.addDependency(path.join(root, files.messages))
+      this.addDependency(path.join(root, config.catalogDir, SOURCE_CATALOG_FILE))
       this.addDependency(path.resolve(root, build.runtimeModule))
+      const files = catalogFiles(config)
+      const metadataPath = path.join(root, files.metadata)
+      if (fs.existsSync(metadataPath)) this.addDependency(metadataPath)
     }
     callback(null, result.code, result.map || sourceMap, meta)
   } catch (error) {

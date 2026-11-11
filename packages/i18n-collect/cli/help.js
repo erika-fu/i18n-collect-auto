@@ -354,15 +354,18 @@ Exit codes:
 
 const BUILD_HELP = `i18n-collect build
 
-Run a two-phase Build replacement through the project's existing webpack integration.
-Phase 1 runs collection compilation and publishes a stable catalog.
-Phase 2 reads that catalog, rewrites matching JavaScript, TypeScript, and Vue SFC modules
-in memory, and emits the formal bundle. Application source files are not modified.
-Requires buildReplacement.enabled in i18n-collect.config.js with adapter js, vue2, or vue3.
-Build replacement is fail-closed: unsupported, orphaned, ambiguous, mismatched, or otherwise
-unsafe collected positions abort the build with structured diagnostics. A failed collection
-keeps the previous catalog and formal bundle. A failed replacement keeps the previous formal
-bundle and leaves no staging leftovers. Unlike source replace, there is no skipped mode.
+Run a read-only Build replacement through the project's existing webpack integration.
+Phase 1 analyzes project sources in memory and verifies they still match the committed
+source catalog (source-catalog.json). Phase 2 rewrites matching JavaScript, TypeScript,
+and Vue SFC modules in memory and emits the formal bundle. Build does not create, update,
+restore, or delete source catalog, audit, target catalog, or translation-state files.
+Application source files are not modified. Requires buildReplacement.enabled in
+i18n-collect.config.js with adapter js, vue2, or vue3.
+Build replacement is fail-closed: unsupported, stale, mismatched, or otherwise unsafe
+runtime-localizable positions abort the build with structured diagnostics. HTML and style
+audit findings are not passed to the replacement planner. A failed analysis keeps the
+previous formal bundle. A failed replacement keeps the previous formal bundle and leaves
+no staging leftovers. Unlike source replace, there is no skipped mode.
 
 Usage:
   i18n-collect build [options]
@@ -374,18 +377,18 @@ Options:
   --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
   --context-filter <name>   Replace configured context filters. Repeat to select several.
                             Names: logging, tests, analytics.
-  --watch                   Keep a serial collect-then-replace loop. Each cycle commits the
-                            catalog before replacement compilation and only then publishes the
-                            formal bundle. Invalidations are coalesced; at most one coordinated
-                            cycle runs at a time.
+  --watch                   Keep a serial analyze-then-replace loop. Each cycle verifies the
+                            committed source catalog, then publishes the formal bundle.
+                            Invalidations are coalesced; at most one coordinated cycle runs at
+                            a time. Watch does not start an implicit scan or catalog write.
   --json                    Print the build report as JSON on stdout.
   -h, --help                Show this help.
 
 Exit codes:
   0  build finished
   1  configuration failure
-  2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
-  3  build / replacement failure, including unsafe collected positions
+  2  analysis failure, including a stale source catalog, malformed directive, or localization key conflict
+  3  build / replacement failure, including unsafe runtime-localizable positions
 `
 
 function helpFor(command) {

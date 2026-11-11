@@ -1,5 +1,6 @@
 module.exports = {
   styleExtensions: ['.css', '.scss', '.sass', '.less', '.styl', '.stylus'],
+  exclude: ['fixtures/**'],
   targetLocales: ['en'],
   pruneOrphaned: true,
   buildReplacement: {

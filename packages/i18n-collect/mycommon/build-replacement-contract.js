@@ -249,18 +249,87 @@ function loadPublishedCatalog(root, config) {
   }
 }
 
-function preflightBuildReplacement(root, config) {
-  const adapter = config.buildReplacement && config.buildReplacement.adapter
-  const metadata = loadPublishedCatalog(root, config)
-  const items = catalogOccurrences(metadata)
-  const ambiguities = readAmbiguities(root, config)
-  const orphaned = []
-  const active = []
-  for (const item of items) {
-    if (item.status === 'orphaned') orphaned.push(skipDetail(item, ORPHANED))
-    else active.push(item)
+function normalizeLoaderPath(loader) {
+  if (!loader) return ''
+  if (typeof loader === 'object' && loader.loader) return normalizeLoaderPath(loader.loader)
+  return String(loader).replace(/\\/g, '/')
+}
+
+function isCollectLoaderEntry(loader) {
+  const value = normalizeLoaderPath(loader)
+  return value.includes('/myloader/index.js')
+    || value.endsWith('/myloader')
+    || value.includes('/i18n-collect/myloader')
+}
+
+function stripCollectUse(use) {
+  const list = [].concat(use).filter(entry => entry && !isCollectLoaderEntry(entry))
+  if (list.length === 0) return null
+  return list.length === 1 ? list[0] : list
+}
+
+function stripCollectionRule(rule) {
+  if (!rule || typeof rule !== 'object') return rule
+  if (rule.oneOf) {
+    const oneOf = rule.oneOf.map(stripCollectionRule).filter(Boolean)
+    return oneOf.length ? { ...rule, oneOf } : null
   }
-  const open = withReportedAmbiguities(active, ambiguities)
+  if (rule.rules) {
+    const rules = rule.rules.map(stripCollectionRule).filter(Boolean)
+    return rules.length ? { ...rule, rules } : null
+  }
+  const next = { ...rule }
+  if (next.loader && isCollectLoaderEntry(next.loader)) {
+    delete next.loader
+    delete next.options
+  }
+  if (next.use) {
+    const use = stripCollectUse(next.use)
+    if (!use) delete next.use
+    else next.use = use
+  }
+  if (!next.loader && !next.use && !next.oneOf && !next.rules) return null
+  return next
+}
+
+function stripCollectionIntegration(webpackConfig) {
+  if (!webpackConfig || typeof webpackConfig !== 'object') return webpackConfig
+  webpackConfig.plugins = (webpackConfig.plugins || []).filter(plugin => {
+    if (!plugin) return false
+    return !(plugin.constructor && plugin.constructor.name === 'MyI18nPlugin')
+  })
+  if (webpackConfig.module && Array.isArray(webpackConfig.module.rules)) {
+    webpackConfig.module = {
+      ...webpackConfig.module,
+      rules: webpackConfig.module.rules.map(stripCollectionRule).filter(Boolean)
+    }
+  }
+  return webpackConfig
+}
+
+function preflightBuildReplacement(root, config, options = {}) {
+  const adapter = config.buildReplacement && config.buildReplacement.adapter
+  let metadata = null
+  let orphaned = []
+  let open
+  let extraSkipped = []
+  if (Array.isArray(options.occurrences)) {
+    open = options.occurrences.map(item => ({
+      ...item,
+      reportedAmbiguity: Boolean(item && item.reportedAmbiguity)
+    }))
+  } else {
+    metadata = loadPublishedCatalog(root, config)
+    const items = catalogOccurrences(metadata)
+    const ambiguities = readAmbiguities(root, config)
+    const active = []
+    for (const item of items) {
+      if (item.status === 'orphaned') orphaned.push(skipDetail(item, ORPHANED))
+      else active.push(item)
+    }
+    open = withReportedAmbiguities(active, ambiguities)
+    extraSkipped = unrepresentedAmbiguities(open, ambiguities)
+  }
   const sources = readSources(root, open)
   const planner = new ReplacementPlanner({
     adapter,
@@ -278,7 +347,7 @@ function preflightBuildReplacement(root, config) {
   const occurrences = sortOccurrences([
     ...orphaned,
     ...planned.skipped,
-    ...unrepresentedAmbiguities(open, ambiguities)
+    ...extraSkipped
   ])
   if (occurrences.length === 0) return { metadata, occurrences: [] }
   throw buildReplacementError(occurrences)
@@ -304,22 +373,37 @@ function removeTree(target) {
   if (target && fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true })
 }
 
+function moveTree(from, to) {
+  try {
+    fs.renameSync(from, to)
+  } catch (error) {
+    const code = error && error.code
+    // Windows can refuse renameSync on a non-empty directory tree that still has
+    // open handles; copy then delete preserves the same publish semantics.
+    if (code !== 'EPERM' && code !== 'EACCES' && code !== 'EXDEV' && code !== 'EBUSY') {
+      throw error
+    }
+    fs.cpSync(from, to, { recursive: true })
+    removeTree(from)
+  }
+}
+
 function publishFormalBundle({ formalPath, stagingPath }) {
   const backupPath = `${formalPath}.i18n-build-bak-${process.pid}-${Date.now()}`
   let backedUp = false
   try {
     if (fs.existsSync(formalPath)) {
-      fs.renameSync(formalPath, backupPath)
+      moveTree(formalPath, backupPath)
       backedUp = true
     }
-    fs.renameSync(stagingPath, formalPath)
+    moveTree(stagingPath, formalPath)
     if (backedUp) removeTree(backupPath)
   } catch (error) {
     let restored = !backedUp
     if (backedUp && fs.existsSync(backupPath)) {
       removeTree(formalPath)
       try {
-        fs.renameSync(backupPath, formalPath)
+        moveTree(backupPath, formalPath)
         restored = true
       } catch (restoreError) {
         restored = false
@@ -334,8 +418,23 @@ function publishFormalBundle({ formalPath, stagingPath }) {
   }
 }
 
-function cleanupBundleArtifacts(_root, stagingPath) {
+function scrubOrphanedStagingDirs(root) {
+  if (!root || !fs.existsSync(root)) return
+  let names
+  try {
+    names = fs.readdirSync(root)
+  } catch (error) {
+    return
+  }
+  for (const name of names) {
+    if (!name.startsWith('.i18n-build-staging-')) continue
+    removeTree(path.join(root, name))
+  }
+}
+
+function cleanupBundleArtifacts(root, stagingPath) {
   removeTree(stagingPath)
+  scrubOrphanedStagingDirs(root)
 }
 
 module.exports = {
@@ -350,5 +449,7 @@ module.exports = {
   preflightBuildReplacement,
   publishFormalBundle,
   sortOccurrences,
-  stageFormalBundle
+  scrubOrphanedStagingDirs,
+  stageFormalBundle,
+  stripCollectionIntegration
 }

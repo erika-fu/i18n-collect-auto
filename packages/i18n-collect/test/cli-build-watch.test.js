@@ -4,6 +4,15 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const { build } = require('../cli/build')
+const {
+  assertLangUnchanged,
+  keyForSource,
+  seedSourceCatalog,
+  snapshotLangTree,
+  sourceCatalogBuffer,
+  writeSourceCatalog
+} = require('./build-test-helpers')
+const { keyFor } = require('../mycommon/store')
 
 const loader = require.resolve('../myloader')
 const plugin = require.resolve('../myplugin')
@@ -51,20 +60,9 @@ module.exports = {
 `)
 }
 
-function keyForSource(root, sourceText) {
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  const key = Object.keys(metadata.entries).find(name => metadata.entries[name].source === sourceText)
-  assert.ok(key, `missing catalog key for ${sourceText}`)
-  return key
-}
-
-function catalogMeta(root) {
-  return fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
-}
-
 function assertPublishMatchesCatalog(root, published, sourceText) {
   const key = keyForSource(root, sourceText)
-  assert.ok(published.catalogMeta.equals(catalogMeta(root)))
+  assert.ok(published.sourceCatalog.equals(sourceCatalogBuffer(root)))
   assert.match(published.bundle, new RegExp(key.replace(/\./g, '\\.')))
   assert.doesNotMatch(published.bundle, new RegExp(sourceText))
   assert.strictEqual(
@@ -74,109 +72,79 @@ function assertPublishMatchesCatalog(root, published, sourceText) {
   return key
 }
 
-function assertNoStaleCatalogBundles(publishes) {
-  for (const published of publishes) {
-    const meta = JSON.parse(published.catalogMeta.toString('utf8'))
-    const keys = Object.keys(meta.entries || {}).filter(name => meta.entries[name].status !== 'orphaned')
-    for (const key of keys) {
-      const source = meta.entries[key].source
-      if (!source || !/[\u4e00-\u9fff]/.test(source)) continue
-      assert.match(
-        published.bundle,
-        new RegExp(key.replace(/\./g, '\\.')),
-        'published bundle must use the catalog version from the same cycle'
-      )
-      assert.doesNotMatch(published.bundle, new RegExp(source))
-    }
-  }
-}
-
 async function startWatch(root) {
+  seedSourceCatalog(root)
   const outcome = await build(['--watch', '--json', '--cwd', root])
   assert.ok(outcome.watch, 'build --watch should return a watch handle')
   await outcome.watch.waitForIdle()
   return outcome
 }
 
-test('watch starts with one collect-replace-publish cycle whose bundle matches the committed catalog', {
+test('watch starts with one analyze-replace-publish cycle whose bundle matches the committed catalog', {
   timeout: 90000
 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-init-'))
   writeBuildProject(root)
-  const outcome = await startWatch(root)
+  const langBefore = (() => {
+    seedSourceCatalog(root)
+    return snapshotLangTree(root)
+  })()
+  const outcome = await build(['--watch', '--json', '--cwd', root])
   try {
+    await outcome.watch.waitForIdle()
     assert.strictEqual(outcome.code, 0)
     assert.ok(outcome.watch.publishes.length >= 1)
     assertPublishMatchesCatalog(root, outcome.watch.publishes[outcome.watch.publishes.length - 1], '你好')
-    assertNoStaleCatalogBundles(outcome.watch.publishes)
+    assertLangUnchanged(langBefore, root)
   } finally {
     await outcome.watch.close()
   }
 })
 
-test('editing collected copy publishes a bundle for the newly committed catalog', {
+test('editing collected copy without scanning fails closed and leaves catalogs byte-identical', {
   timeout: 120000
 }, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-edit-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-stale-'))
+  writeBuildProject(root)
+  const outcome = await startWatch(root)
+  try {
+    const langBefore = snapshotLangTree(root)
+    const before = outcome.watch.publishes.length
+    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "世界"\n}\n')
+    await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
+    await outcome.watch.waitForIdle({ settleMs: 200 })
+    assert.strictEqual(outcome.watch.publishes.length, before)
+    assertLangUnchanged(langBefore, root)
+    assert.match(outcome.watch.lastStderr, /source catalog|no longer matches|scan/i)
+  } finally {
+    await outcome.watch.close()
+  }
+})
+
+test('updating the committed source catalog after a source edit republishes the formal bundle', {
+  timeout: 180000
+}, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-rescan-'))
   writeBuildProject(root)
   const outcome = await startWatch(root)
   try {
     const before = outcome.watch.publishes.length
-    const source = path.join(root, 'src/app.js')
-    fs.writeFileSync(source, 'module.exports = function label() {\n  return "世界"\n}\n')
+    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "世界"\n}\n')
+    await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
+    await outcome.watch.waitForIdle({ settleMs: 200 })
+
+    writeSourceCatalog(root, { [keyFor('世界')]: '世界' })
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 200 })
     assertPublishMatchesCatalog(root, published, '世界')
     assert.doesNotMatch(published.bundle, /你好/)
-    assertNoStaleCatalogBundles(outcome.watch.publishes)
+    assert.strictEqual(outcome.watch.lastExitCode, 0)
   } finally {
     await outcome.watch.close()
   }
 })
 
-test('adding and deleting collected copy refresh the formal bundle from the same-cycle catalog', {
-  timeout: 180000
-}, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-add-del-'))
-  writeBuildProject(root, {
-    source: 'module.exports = {\n  a: "你好"\n}\n',
-    configSource: [
-      'module.exports = {',
-      '  pruneOrphaned: true,',
-      '  buildReplacement: {',
-      '    enabled: true,',
-      '    adapter: "js",',
-      '    runtimeModule: "src/i18n.js",',
-      '    runtimeExport: "t"',
-      '  }',
-      '}',
-      ''
-    ].join('\n')
-  })
-  const outcome = await startWatch(root)
-  try {
-    let before = outcome.watch.publishes.length
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = {\n  a: "你好",\n  b: "欢迎"\n}\n')
-    let published = await outcome.watch.waitForPublish(before)
-    await outcome.watch.waitForIdle({ settleMs: 200 })
-    const helloKey = assertPublishMatchesCatalog(root, published, '你好')
-    const welcomeKey = keyForSource(root, '欢迎')
-    assert.match(published.bundle, new RegExp(welcomeKey.replace(/\./g, '\\.')))
-    assert.doesNotMatch(published.bundle, /欢迎/)
-
-    before = outcome.watch.publishes.length
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = {\n  b: "欢迎"\n}\n')
-    published = await outcome.watch.waitForPublish(before)
-    await outcome.watch.waitForIdle({ settleMs: 200 })
-    assertPublishMatchesCatalog(root, published, '欢迎')
-    assert.doesNotMatch(published.bundle, new RegExp(helloKey.replace(/\./g, '\\.')))
-    assertNoStaleCatalogBundles(outcome.watch.publishes)
-  } finally {
-    await outcome.watch.close()
-  }
-})
-
-test('rapid consecutive edits coalesce into serial cycles without stale intermediate bundles', {
+test('rapid consecutive catalog-aligned edits coalesce into serial cycles', {
   timeout: 180000
 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-rapid-'))
@@ -185,14 +153,23 @@ test('rapid consecutive edits coalesce into serial cycles without stale intermed
   try {
     const before = outcome.watch.publishes.length
     const source = path.join(root, 'src/app.js')
-    fs.writeFileSync(source, 'module.exports = function label() {\n  return "第一"\n}\n')
-    fs.writeFileSync(source, 'module.exports = function label() {\n  return "第二"\n}\n')
-    fs.writeFileSync(source, 'module.exports = function label() {\n  return "第三"\n}\n')
+    fs.writeFileSync(source, 'module.exports = function label() {\n  return "你好"\n}\n')
+    fs.writeFileSync(
+      source,
+      'module.exports = function label() {\n  const marker = "one"\n  return "你好"\n}\n'
+    )
+    fs.writeFileSync(
+      source,
+      'module.exports = function label() {\n  const marker = "two"\n  return "你好"\n}\n'
+    )
+    fs.writeFileSync(
+      source,
+      'module.exports = function label() {\n  const marker = "three"\n  return "你好"\n}\n'
+    )
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 400 })
-    assertPublishMatchesCatalog(root, outcome.watch.publishes[outcome.watch.publishes.length - 1], '第三')
-    assert.doesNotMatch(outcome.watch.publishes[outcome.watch.publishes.length - 1].bundle, /第一|第二|你好/)
-    assertNoStaleCatalogBundles(outcome.watch.publishes)
+    assertPublishMatchesCatalog(root, outcome.watch.publishes[outcome.watch.publishes.length - 1], '你好')
+    assert.match(outcome.watch.publishes[outcome.watch.publishes.length - 1].bundle, /three/)
     assert.ok(
       outcome.watch.publishes.length - before <= 3,
       `expected coalesced publishes, got ${outcome.watch.publishes.length - before}`
@@ -203,15 +180,16 @@ test('rapid consecutive edits coalesce into serial cycles without stale intermed
   }
 })
 
-test('collection failure keeps the previous catalog and bundle; a fix recovers watch', {
+test('analysis failure keeps the previous catalog and bundle; a fix recovers watch', {
   timeout: 180000
 }, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-coll-fail-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-analysis-fail-'))
   writeBuildProject(root)
   const outcome = await startWatch(root)
   try {
-    const goodMeta = catalogMeta(root)
+    const goodCatalog = sourceCatalogBuffer(root)
     const goodBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
+    const langBefore = snapshotLangTree(root)
     const before = outcome.watch.publishes.length
     fs.writeFileSync(
       path.join(root, 'src/other.js'),
@@ -224,22 +202,23 @@ test('collection failure keeps the previous catalog and bundle; a fix recovers w
     await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
     await outcome.watch.waitForIdle({ settleMs: 200 })
     assert.strictEqual(outcome.watch.publishes.length, before)
-    assert.ok(goodMeta.equals(catalogMeta(root)))
+    assert.ok(goodCatalog.equals(sourceCatalogBuffer(root)))
     assert.ok(goodBundle.equals(fs.readFileSync(path.join(root, 'dist/bundle.js'))))
+    assertLangUnchanged(langBefore, root)
     assert.notStrictEqual(outcome.watch.lastExitCode, 0)
 
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "恢复"\n}\n')
+    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "你好"\n}\n')
     fs.rmSync(path.join(root, 'src/other.js'))
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 200 })
-    assertPublishMatchesCatalog(root, published, '恢复')
+    assertPublishMatchesCatalog(root, published, '你好')
     assert.strictEqual(outcome.watch.lastExitCode, 0)
   } finally {
     await outcome.watch.close()
   }
 })
 
-test('replacement failure keeps the committed catalog, leaves the previous bundle, then recovers', {
+test('replacement failure keeps catalogs byte-identical, leaves the previous bundle, then recovers', {
   timeout: 180000
 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-repl-fail-'))
@@ -248,21 +227,23 @@ test('replacement failure keeps the committed catalog, leaves the previous bundl
   try {
     const before = outcome.watch.publishes.length
     const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
-    const previousCatalog = catalogMeta(root)
     fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = { "你好": 1 }\n')
+    seedSourceCatalog(root)
+    const langAfterSeed = snapshotLangTree(root)
     await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
     await outcome.watch.waitForIdle({ settleMs: 200 })
     assert.strictEqual(outcome.watch.publishes.length, before)
     assert.ok(previousBundle.equals(fs.readFileSync(path.join(root, 'dist/bundle.js'))))
-    assert.ok(!previousCatalog.equals(catalogMeta(root)), 'successful collection should keep the new catalog')
+    assertLangUnchanged(langAfterSeed, root)
     assert.notStrictEqual(outcome.watch.lastExitCode, 0)
     const staging = fs.readdirSync(root).filter(name => name.startsWith('.i18n-build-staging-'))
     assert.deepStrictEqual(staging, [])
 
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "修好"\n}\n')
+    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "你好"\n}\n')
+    seedSourceCatalog(root)
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 200 })
-    assertPublishMatchesCatalog(root, published, '修好')
+    assertPublishMatchesCatalog(root, published, '你好')
     assert.strictEqual(outcome.watch.lastExitCode, 0)
   } finally {
     await outcome.watch.close()
@@ -314,24 +295,32 @@ test('config and webpack changes trigger a new coordinated cycle', {
   }
 })
 
-test('non-catalog source edits still republish the formal bundle', {
+test('non-message source edits still republish the formal bundle without catalog writes', {
   timeout: 120000
 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-watch-src-'))
   writeBuildProject(root)
   const outcome = await startWatch(root)
   try {
+    const langBefore = snapshotLangTree(root)
     const before = outcome.watch.publishes.length
     const previousBundle = outcome.watch.publishes[before - 1].bundle
     fs.writeFileSync(
       path.join(root, 'src/app.js'),
-      'module.exports = function label() {\n  const marker = "watch-rebuild"\n  return "你好" + marker\n}\n'
+      [
+        'module.exports = {',
+        '  marker: "watch-rebuild",',
+        '  label() { return "你好" }',
+        '}',
+        ''
+      ].join('\n')
     )
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 200 })
     assertPublishMatchesCatalog(root, published, '你好')
     assert.match(published.bundle, /watch-rebuild/)
     assert.notStrictEqual(published.bundle, previousBundle)
+    assertLangUnchanged(langBefore, root)
   } finally {
     await outcome.watch.close()
   }
