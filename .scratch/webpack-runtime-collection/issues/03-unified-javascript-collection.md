@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-- [ ] JavaScript and TypeScript use the same semantic finding pipeline.
-- [ ] Complete static copy, template literals, explicit keys, and existing runtime localization calls follow the established contracts.
-- [ ] Equal exact source text receives the same automatic key.
-- [ ] Key conflicts and placeholder contract conflicts fail closed.
-- [ ] Existing runtime collection directives retain their documented behavior.
-- [ ] Findings include key, source text, semantic role, resource identity, source location, and replacement capability.
-- [ ] Application source files remain unchanged.
-- [ ] Tests cover scripts, TypeScript, script setup, and conflict cases.
+- [x] JavaScript and TypeScript use the same semantic finding pipeline.
+- [x] Complete static copy, template literals, explicit keys, and existing runtime localization calls follow the established contracts.
+- [x] Equal exact source text receives the same automatic key.
+- [x] Key conflicts and placeholder contract conflicts fail closed.
+- [x] Existing runtime collection directives retain their documented behavior.
+- [x] Findings include key, source text, semantic role, resource identity, source location, and replacement capability.
+- [x] Application source files remain unchanged.
+- [x] Tests cover scripts, TypeScript, script setup, and conflict cases.

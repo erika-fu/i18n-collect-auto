@@ -45,7 +45,8 @@ function snapshotFor(resource, entries) {
     owner: {
       block: resource.block,
       styleIndex: resource.styleIndex,
-      lang: resource.lang
+      lang: resource.lang,
+      setup: resource.setup === true
     },
     entries
   }

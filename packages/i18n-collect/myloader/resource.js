@@ -54,8 +54,18 @@ function styleIndexOf(params) {
   return Number.isInteger(index) && index >= 0 ? index : 0
 }
 
-function formatIdentity({ projectPath, block, styleIndex, lang, vue }) {
-  if (block === 'script' && vue) return `${projectPath}::script[lang=${lang}]`
+function setupFlag(params) {
+  if (!params.has('setup')) return false
+  const value = params.get('setup')
+  return value === '' || value == null || value === 'true'
+}
+
+function formatIdentity({ projectPath, block, styleIndex, lang, vue, setup }) {
+  if (block === 'script' && vue) {
+    return setup
+      ? `${projectPath}::script[lang=${lang};setup=true]`
+      : `${projectPath}::script[lang=${lang}]`
+  }
   if (block === 'script') return `${projectPath}::script`
   if (block === 'template') return `${projectPath}::template[lang=${lang}]`
   if (block === 'html') return `${projectPath}::html`
@@ -74,10 +84,12 @@ function describeResource({ root, resourcePath, resourceQuery = '', styleExtensi
   let block = null
   let styleIndex = null
   let lang = null
+  let setup = false
 
   if (vue && type === 'script') {
     block = 'script'
     lang = present(params, 'lang') || 'js'
+    setup = setupFlag(params)
   } else if (vue && type === 'template') {
     block = 'template'
     lang = present(params, 'lang') || 'html'
@@ -109,8 +121,9 @@ function describeResource({ root, resourcePath, resourceQuery = '', styleExtensi
     block,
     styleIndex,
     lang,
+    setup,
     sourceOffset: 0,
-    identity: formatIdentity({ projectPath, block, styleIndex, lang, vue })
+    identity: formatIdentity({ projectPath, block, styleIndex, lang, vue, setup })
   }
 }
 
@@ -121,9 +134,21 @@ function isResourceIncluded(projectPath, { include = [], exclude = [] } = {}) {
   return !exclude.some(pattern => scopeMatches(candidate, pattern))
 }
 
+function scriptIdentity(projectPath, { lang = 'js', setup = false } = {}) {
+  return formatIdentity({
+    projectPath,
+    block: 'script',
+    lang,
+    vue: true,
+    setup: setup === true
+  })
+}
+
 module.exports = {
   containsHan,
   offsetToPosition,
   describeResource,
-  isResourceIncluded
+  formatIdentity,
+  isResourceIncluded,
+  scriptIdentity
 }

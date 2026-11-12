@@ -17,7 +17,8 @@
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
       "capability": "automatically-runtime-localizable",
-      "key": "vue3.heading"
+      "key": "vue3.heading",
+      "resourceIdentity": "src/App.vue::template[lang=html]"
     },
     {
       "text": "保存资料",
@@ -34,7 +35,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::template[lang=html]"
     },
     {
       "text": "插值字符串",
@@ -51,7 +53,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "template-expression",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::template[lang=html]"
     },
     {
       "text": "资料名称",
@@ -68,7 +71,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::template[lang=html]"
     },
     {
       "text": "构建替换演示",
@@ -86,7 +90,8 @@
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
       "capability": "automatically-runtime-localizable",
-      "key": "vue3.build.title"
+      "key": "vue3.build.title",
+      "resourceIdentity": "src/App.vue::template[lang=html]"
     },
     {
       "text": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
@@ -104,7 +109,8 @@
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
       "capability": "automatically-runtime-localizable",
-      "key": "vue3.build.body"
+      "key": "vue3.build.body",
+      "resourceIdentity": "src/App.vue::template[lang=html]"
     },
     {
       "text": "脚本文案",
@@ -121,7 +127,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "脚本模板文案",
@@ -138,7 +145,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "template-literal",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     }
   ],
   "auditFindings": [
@@ -158,6 +166,7 @@
       "sourceSurface": "standalone-html",
       "semanticRole": "static-html-text",
       "capability": "chinese-source-audit",
+      "resourceIdentity": "public/index.html::html",
       "disposition": "intentionally-ignored",
       "ignoreReason": "standalone HTML audit sample stays Chinese on disk"
     },
@@ -177,6 +186,7 @@
       "sourceSurface": "css",
       "semanticRole": "css-generated-content",
       "capability": "chinese-source-audit",
+      "resourceIdentity": "src/base.css::style[index=0;lang=css]",
       "disposition": "intentionally-ignored",
       "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
@@ -201,6 +211,7 @@
       "semanticRole": "html-attribute",
       "capability": "already-localized",
       "key": "vue3.fieldPlaceholder",
+      "resourceIdentity": "src/App.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "field"
@@ -224,6 +235,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "vue3.welcomeBack",
+      "resourceIdentity": "src/App.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "name"
@@ -247,6 +259,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "vue3.htmlNotice",
+      "resourceIdentity": "src/App.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "已通过 Vue I18n 本地化"
@@ -268,6 +281,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "vue3.build.localeLabel",
+      "resourceIdentity": "src/App.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "当前语言：中文"

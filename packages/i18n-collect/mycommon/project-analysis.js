@@ -6,7 +6,7 @@ const { keyFor } = require('./store')
 const { scanCompleteStaticCopyPolicy } = require('./complete-static-copy-policy')
 const { extractScript } = require('../myloader/extract-script')
 const { extractHtml } = require('../myloader/extract-html')
-const { extractVueScript } = require('../myloader/extract-vue-compat')
+const { extractVueScriptBlocks } = require('../myloader/extract-vue-compat')
 const { auditStyle } = require('../myloader/audit-style')
 
 const HASH_DICTIONARY_KEY = /^[a-f0-9]{32}$/
@@ -104,6 +104,7 @@ function findingFrom(entry, location, capability, sourceSurface, extras = {}) {
     capability
   }
   if (entry.key) finding.key = entry.key
+  if (extras.resourceIdentity) finding.resourceIdentity = extras.resourceIdentity
   if (extras.disposition) finding.disposition = extras.disposition
   if (extras.ignoreReason) finding.ignoreReason = extras.ignoreReason
   if (extras.diagnostic) finding.diagnostic = extras.diagnostic
@@ -256,88 +257,104 @@ function explicitRequiredFromPolicy(files, config) {
   return { findings, matchKeys }
 }
 
+function collectedItem(entry, sourceSurface, resourceIdentity) {
+  return { entry, sourceSurface, resourceIdentity }
+}
+
+function hasVueTemplateBlock(source) {
+  return /<template[\s>]/i.test(source)
+}
+
 function collectScriptEntries(file, config) {
+  const resourceIdentity = `${file.path}::script`
   const resource = {
     projectPath: file.path,
     absolutePath: file.absolutePath || path.resolve(file.path),
     block: 'script',
-    identity: `${file.path}::script`
+    identity: resourceIdentity
   }
-  return extractScript({ source: file.source, resource, config }).map(entry => ({
-    entry,
-    sourceSurface: sourceSurfaceFor(file.path, 'script')
-  }))
+  return extractScript({ source: file.source, resource, config }).map(entry => (
+    collectedItem(entry, sourceSurfaceFor(file.path, 'script'), resourceIdentity)
+  ))
 }
 
 function collectVueEntries(file, config) {
   const absolutePath = file.absolutePath || path.resolve(file.path)
-  const scriptResource = {
-    projectPath: file.path,
-    absolutePath,
-    block: 'script',
-    lang: 'js',
-    identity: `${file.path}::script[lang=js]`
+  const scriptSurface = sourceSurfaceFor(file.path, 'script')
+  const script = extractVueScriptBlocks({
+    source: file.source,
+    resource: {
+      projectPath: file.path,
+      absolutePath,
+      block: 'script'
+    },
+    config
+  }).flatMap(({ resource, entries }) => (
+    entries.map(entry => collectedItem(entry, scriptSurface, resource.identity))
+  ))
+  const template = []
+  if (hasVueTemplateBlock(file.source)) {
+    const templateIdentity = `${file.path}::template[lang=html]`
+    const templateResource = {
+      projectPath: file.path,
+      absolutePath,
+      block: 'template',
+      lang: 'html',
+      identity: templateIdentity
+    }
+    for (const entry of extractHtml({
+      source: file.source,
+      resource: templateResource,
+      config
+    }).entries) {
+      template.push(collectedItem(entry, sourceSurfaceFor(file.path, 'template'), templateIdentity))
+    }
   }
-  const templateResource = {
-    projectPath: file.path,
-    absolutePath,
-    block: 'template',
-    lang: 'html',
-    identity: `${file.path}::template[lang=html]`
-  }
-  const script = extractVueScript({ source: file.source, resource: scriptResource, config }).map(entry => ({
-    entry,
-    sourceSurface: sourceSurfaceFor(file.path, 'script')
-  }))
-  const template = extractHtml({ source: file.source, resource: templateResource, config }).entries.map(entry => ({
-    entry,
-    sourceSurface: sourceSurfaceFor(file.path, 'template')
-  }))
+  const styleIdentity = `${file.path}::style`
   const styles = auditStyle({
     source: file.source,
     resource: {
       projectPath: file.path,
       absolutePath,
       block: 'style',
-      identity: `${file.path}::style`
+      identity: styleIdentity
     },
     config
-  }).entries.map(entry => ({
-    entry,
-    sourceSurface: sourceSurfaceFor(file.path, 'style')
-  }))
+  }).entries.map(entry => (
+    collectedItem(entry, sourceSurfaceFor(file.path, 'style'), styleIdentity)
+  ))
   return script.concat(template).concat(styles)
 }
 
 function collectStandaloneHtmlEntries(file, config) {
   const absolutePath = file.absolutePath || path.resolve(file.path)
+  const resourceIdentity = `${file.path}::html`
   const resource = {
     projectPath: file.path,
     absolutePath,
     block: 'html',
     lang: 'html',
-    identity: `${file.path}::html`
+    identity: resourceIdentity
   }
-  return extractHtml({ source: file.source, resource, config }).entries.map(entry => ({
-    entry,
-    sourceSurface: sourceSurfaceFor(file.path, 'html')
-  }))
+  return extractHtml({ source: file.source, resource, config }).entries.map(entry => (
+    collectedItem(entry, sourceSurfaceFor(file.path, 'html'), resourceIdentity)
+  ))
 }
 
 function collectStyleEntries(file, config) {
   const lang = styleLangFor(file.path)
   const absolutePath = file.absolutePath || path.resolve(file.path)
+  const resourceIdentity = `${file.path}::style[index=0;lang=${lang}]`
   const resource = {
     projectPath: file.path,
     absolutePath,
     block: 'style',
     lang,
-    identity: `${file.path}::style[index=0;lang=${lang}]`
+    identity: resourceIdentity
   }
-  return auditStyle({ source: file.source, resource, config }).entries.map(entry => ({
-    entry,
-    sourceSurface: sourceSurfaceFor(file.path, 'style')
-  }))
+  return auditStyle({ source: file.source, resource, config }).entries.map(entry => (
+    collectedItem(entry, sourceSurfaceFor(file.path, 'style'), resourceIdentity)
+  ))
 }
 
 function entriesForFile(file, config) {
@@ -365,12 +382,14 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
   const analysis = emptyAnalysis()
   analysis.explicitRequiredFindings.push(...explicitRequired.findings)
   for (const item of collected) {
-    const { entry, sourceSurface } = item
+    const { entry, sourceSurface, resourceIdentity } = item
+    const identityExtras = resourceIdentity ? { resourceIdentity } : {}
     const locations = entry.locations || []
     for (const location of locations) {
       if (entry.representation === REPRESENTATION_LOCALIZED_CALL) {
         analysis.localizedCallFindings.push(
           findingFrom(entry, location, CAPABILITY_LOCALIZED, sourceSurface, {
+            ...identityExtras,
             paramsKind: entry.paramsKind || 'none',
             paramNames: Array.isArray(entry.paramNames) ? entry.paramNames : []
           })
@@ -385,6 +404,7 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
         const auditEntry = { ...entry, key: null }
         analysis.auditFindings.push(
           findingFrom(auditEntry, location, CAPABILITY_AUDIT, sourceSurface, {
+            ...identityExtras,
             disposition,
             ignoreReason: entry.ignoreReason || undefined,
             diagnostic: auditDiagnostic(location)
@@ -404,7 +424,7 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
         continue
       }
       analysis.runtimeMessages.push(
-        findingFrom(entry, location, CAPABILITY_AUTOMATIC, sourceSurface)
+        findingFrom(entry, location, CAPABILITY_AUTOMATIC, sourceSurface, identityExtras)
       )
     }
   }

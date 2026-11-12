@@ -54,6 +54,7 @@ test('identifies standalone script, HTML, and CSS resources', () => {
     block: 'script',
     styleIndex: null,
     lang: null,
+    setup: false,
     sourceOffset: 0,
     identity: 'src/utils/message.js::script'
   })
