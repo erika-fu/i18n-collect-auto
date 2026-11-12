@@ -122,9 +122,11 @@ function collectedFor(resource, sourceText, config) {
     return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
   }
   if (resource.block === 'template' && looksLikeVueRenderSource(sourceText)) {
-    // Vue-loader may only hand the collector the compiled render function. Prefer
-    // the same SFC file's template HTML so i18n-key / no-i18n-auto / $t calls keep
-    // their template semantics; fall back to render-function collection.
+    // When the pipeline only supplies compiled render JS, recover template
+    // directives (i18n-key / no-i18n-auto / $t) from the same SFC webpack already
+    // resolved. Prefer compilation source whenever it is still template HTML.
+    // Known tension with webpack-runtime-collection-design.md (no disk reread as
+    // the normal path); remove once template collection always sees pre-compile HTML.
     if (resource.absolutePath && fs.existsSync(resource.absolutePath)) {
       try {
         const fileSource = fs.readFileSync(resource.absolutePath, 'utf8')
