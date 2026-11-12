@@ -4,13 +4,13 @@
 
 **Blocked by:** 05: Atomically publish and verify collection outputs.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `staticAudit.include` manages an independent complete input snapshot.
-- [ ] Standalone HTML text and allowlisted attributes appear in the analysis report.
-- [ ] CSS generated content and conservative preprocessor candidates use the established semantic kinds and dispositions.
-- [ ] Audit findings never enter the source catalog or build replacement plan.
-- [ ] A reasoned `i18n-ignore` preserves the finding, reason, and `intentionally-ignored` disposition.
-- [ ] Unresolved and needs-review findings block completeness checks but do not block ordinary collection publication.
-- [ ] Missing, unreadable, or unparseable audit inputs fail closed.
-- [ ] Module-graph style audits and standalone audits use the same finding model.
+- [x] `staticAudit.include` manages an independent complete input snapshot.
+- [x] Standalone HTML text and allowlisted attributes appear in the analysis report.
+- [x] CSS generated content and conservative preprocessor candidates use the established semantic kinds and dispositions.
+- [x] Audit findings never enter the source catalog or build replacement plan.
+- [x] A reasoned `i18n-ignore` preserves the finding, reason, and `intentionally-ignored` disposition.
+- [x] Unresolved and needs-review findings block completeness checks but do not block ordinary collection publication.
+- [x] Missing, unreadable, or unparseable audit inputs fail closed.
+- [x] Module-graph style audits and standalone audits use the same finding model.

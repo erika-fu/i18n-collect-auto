@@ -31,7 +31,8 @@ const DEFAULTS = {
   targetLocales: [],
   translationFailure: 'partial',
   externalKeys: [],
-  buildReplacement: null
+  buildReplacement: null,
+  staticAudit: { include: [] }
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
@@ -41,6 +42,7 @@ const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translation
 const BUILD_FIELDS = ['buildReplacement']
 const BUILD_REPLACEMENT_FIELDS = new Set(['enabled', 'adapter', 'runtimeModule', 'runtimeExport'])
 const BUILD_ADAPTERS = new Set(['js', 'vue2', 'vue3'])
+const STATIC_AUDIT_FIELDS = new Set(['include'])
 const EXPORT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
@@ -177,7 +179,18 @@ function validate(root, input) {
     'externalKeys must be an array of non-empty localization keys'
   )
   config.buildReplacement = validateBuildReplacement(root, config.buildReplacement)
+  config.staticAudit = validateStaticAudit(root, config.staticAudit)
   return config
+}
+
+function validateStaticAudit(root, value) {
+  if (!isObject(value)) fail('staticAudit must be an object')
+  for (const key of Object.keys(value)) {
+    if (!STATIC_AUDIT_FIELDS.has(key)) fail(`unknown field "staticAudit.${key}"`)
+  }
+  return {
+    include: filterList(root, value.include == null ? [] : value.include, 'staticAudit.include')
+  }
 }
 
 function validateBuildReplacement(root, value) {

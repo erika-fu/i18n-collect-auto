@@ -2,6 +2,7 @@ const { canonicalRoot, loadConfig } = require('../mycommon/config')
 const { analysisReport, analyzeSnapshots, buildSourceCatalog } = require('../mycommon/project-analysis')
 const { publishCollectionOutputs } = require('../mycommon/formal-outputs')
 const { assembleLiveSet, getSession } = require('../mycommon/session')
+const { collectStaticAuditSnapshots } = require('../mycommon/static-audit')
 
 const PLUGIN = 'MyI18nPlugin'
 const NOT_INTEGRATED =
@@ -87,13 +88,16 @@ class MyI18nPlugin {
       let catalog
       let report
       try {
-        const analysis = analyzeSnapshots(round.snapshots, config)
+        const staticSnapshots = collectStaticAuditSnapshots({ root: config.root, config })
+        const analysis = analyzeSnapshots([...round.snapshots, ...staticSnapshots], config)
         catalog = buildSourceCatalog(analysis)
         report = analysisReport(analysis)
       } catch (error) {
         session.abandon(compilation)
         throw error
       }
+      // Module-graph snapshots alone enter the committed store used by build
+      // replacement; static audit snapshots stay analysis-report only.
       await session.release(compilation, round.snapshots, config.configHash, () =>
         publishCollectionOutputs({
           root: config.root,

@@ -23,7 +23,8 @@ function writeCollectProject(root, {
   files = {
     'src/app.js': 'module.exports = function label() {\n  return "你好"\n}\n',
     'src/orphan.js': 'module.exports = function orphan() {\n  return "不可达文案"\n}\n'
-  }
+  },
+  configSource = 'module.exports = {}\n'
 } = {}) {
   fs.mkdirSync(path.join(root, 'src'), { recursive: true })
   for (const [name, contents] of Object.entries(files)) {
@@ -31,7 +32,7 @@ function writeCollectProject(root, {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, contents)
   }
-  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = {}\n')
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), configSource)
   fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
 const MyI18nPlugin = require(${JSON.stringify(plugin)})
 module.exports = {
@@ -87,6 +88,88 @@ test('collection failures leave previous dictionary outputs unchanged', { timeou
   const failed = run(['collect', '--json'], root)
   assert.notStrictEqual(failed.status, 0, failed.stdout)
   assert.deepStrictEqual(fs.readFileSync(dictionaryPath), before)
+  assert.deepStrictEqual(fs.readFileSync(catalogPath), beforeCatalog)
+  assert.deepStrictEqual(fs.readFileSync(analysisPath), beforeAnalysis)
+})
+
+test('collect publishes staticAudit findings without catalog keys and still succeeds', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-static-audit-'))
+  writeCollectProject(root, {
+    files: {
+      'src/app.js': 'module.exports = function label() {\n  return "你好"\n}\n',
+      'public/index.html': [
+        '<!DOCTYPE html>',
+        '<html><body>',
+        '  <!-- i18n-ignore: brand stays Chinese -->',
+        '  <p title="品牌">欢迎</p>',
+        '  <p>未忽略</p>',
+        '</body></html>',
+        ''
+      ].join('\n'),
+      'legacy/badge.css': '.x::before { content: "角标"; }\n',
+      'legacy/theme.scss': '.y::before { content: "待审"; }\n'
+    },
+    configSource: `module.exports = {
+  staticAudit: {
+    include: ['public/**/*.html', 'legacy/**/*.css', 'legacy/**/*.scss']
+  }
+}
+`
+  })
+  const result = run(['collect', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr + result.stdout)
+  const catalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.deepStrictEqual(catalog, {
+    version: 1,
+    messages: { [keyFor('你好')]: '你好' }
+  })
+  const dictionary = JSON.parse(fs.readFileSync(path.join(root, 'lang/zh_hash.json'), 'utf8'))
+  for (const text of ['欢迎', '未忽略', '品牌', '角标', '待审']) {
+    assert.ok(!Object.values(catalog.messages).includes(text), text)
+    assert.ok(!Object.values(dictionary).includes(text), text)
+  }
+  const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
+  assert.ok(analysis.runtimeMessages.some(item => item.text === '你好'))
+  const byText = new Map(analysis.auditFindings.map(item => [item.text, item]))
+  assert.strictEqual(byText.get('欢迎').disposition, 'unresolved')
+  assert.strictEqual(byText.get('未忽略').disposition, 'unresolved')
+  assert.strictEqual(byText.get('品牌').disposition, 'intentionally-ignored')
+  assert.strictEqual(byText.get('品牌').ignoreReason, 'brand stays Chinese')
+  assert.strictEqual(byText.get('角标').semanticRole, 'css-generated-content')
+  assert.strictEqual(byText.get('待审').semanticRole, 'css-preprocessor-candidate')
+  assert.strictEqual(byText.get('待审').disposition, 'needs-review')
+  assert.ok(analysis.auditFindings.every(item => item.key === undefined))
+})
+
+test('collect fails closed when a staticAudit input is missing and keeps prior outputs', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-static-missing-'))
+  writeCollectProject(root, {
+    configSource: `module.exports = {
+  staticAudit: { include: ['public/index.html'] }
+}
+`
+  })
+  const ok = run(['collect', '--json'], root)
+  assert.notStrictEqual(ok.status, 0, ok.stdout)
+  assert.match(`${ok.stderr}\n${ok.stdout}`, /static audit|missing/i)
+
+  writeCollectProject(root)
+  const published = run(['collect', '--json'], root)
+  assert.strictEqual(published.status, 0, published.stderr)
+  const catalogPath = path.join(root, 'lang/catalog/source-catalog.json')
+  const analysisPath = path.join(root, 'lang/catalog/analysis-report.json')
+  const beforeCatalog = fs.readFileSync(catalogPath)
+  const beforeAnalysis = fs.readFileSync(analysisPath)
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    `module.exports = {
+  staticAudit: { include: ['public/missing.html'] }
+}
+`
+  )
+  const failed = run(['collect', '--json'], root)
+  assert.notStrictEqual(failed.status, 0, failed.stdout)
+  assert.match(`${failed.stderr}\n${failed.stdout}`, /static audit|missing/i)
   assert.deepStrictEqual(fs.readFileSync(catalogPath), beforeCatalog)
   assert.deepStrictEqual(fs.readFileSync(analysisPath), beforeAnalysis)
 })
