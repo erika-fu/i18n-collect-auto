@@ -107,19 +107,22 @@ function publishWarnings(loaderContext, warnings) {
 
 function collectedFor(resource, sourceText, config) {
   if (vueFile(resource.projectPath) && resource.block === 'script') {
-    return {
-      entries: extractVueScript({
-        source: fs.readFileSync(resource.absolutePath, 'utf8'),
-        resource,
-        config
-      }),
-      warnings: []
+    if (/<script[\s>]/i.test(sourceText)) {
+      return {
+        entries: extractVueScript({
+          source: sourceText,
+          resource,
+          config
+        }),
+        warnings: []
+      }
     }
+    return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
   }
   if (resource.block === 'template' || resource.block === 'html') {
     return {
       entries: extractHtml({
-        source: fs.readFileSync(resource.absolutePath, 'utf8'),
+        source: sourceText,
         resource,
         config
       }).entries,
@@ -129,7 +132,7 @@ function collectedFor(resource, sourceText, config) {
   if (resource.block === 'script') return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
   if (resource.block === 'style') {
     return extractCss({
-      source: fs.readFileSync(resource.absolutePath, 'utf8'),
+      source: sourceText,
       resource,
       config
     })
@@ -171,17 +174,8 @@ function runCollect(loaderContext, sourceText) {
 }
 
 function loader(source, sourceMap, meta) {
-  if (!this.data || !this.data.collected) runCollect(this, source)
-  else {
-    const options = typeof this.getOptions === 'function' ? (this.getOptions() || {}) : {}
-    trackConfig(this, path.resolve(options.root || this.rootContext || process.cwd()))
-  }
+  runCollect(this, source)
   this.callback(null, source, sourceMap, meta)
-}
-
-loader.pitch = function pitch() {
-  runCollect(this, fs.readFileSync(this.resourcePath, 'utf8'))
-  if (this.data) this.data.collected = true
 }
 
 module.exports = loader

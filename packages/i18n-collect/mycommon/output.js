@@ -132,4 +132,13 @@ function commitFiles(targets, fsImpl = fs) {
   }
 }
 
-module.exports = { commitFiles, json, recoverCommits, unchanged }
+async function writeOutputs(root, config, dictionary, sourceMap, fsImpl = fs, extraFiles = []) {
+  const targets = [
+    { file: path.resolve(root, config.outputPath), content: json(dictionary) },
+    { file: path.resolve(root, config.sourceMapFilename), content: json(sourceMap) },
+    ...extraFiles.map(extra => ({ file: path.resolve(root, extra.path), content: extra.content }))
+  ].filter(target => !unchanged(fsImpl, target.file, target.content))
+  commitFiles(targets, fsImpl)
+}
+
+module.exports = { commitFiles, json, recoverCommits, unchanged, writeOutputs }

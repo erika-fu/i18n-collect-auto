@@ -294,15 +294,11 @@ test('scan fails with an actionable diagnostic for a malformed HTML i18n-ignore'
   assert.match(report.message, /i18n-ignore/)
 })
 
-test('collect is rejected with migration guidance while scan remains the write path', () => {
+test('scan remains the filesystem analysis write path for source-catalog artifacts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-collect-'))
   writeScanProject(root)
   const scanResult = run(['scan', '--json'], root)
   assert.strictEqual(scanResult.status, 0, scanResult.stderr)
   assert.ok(fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
   assert.ok(fs.existsSync(path.join(root, 'lang/catalog/analysis-report.json')))
-  const collectResult = run(['collect', '--json'], root)
-  assert.strictEqual(collectResult.status, 1, collectResult.stderr)
-  assert.match(collectResult.stderr, /collect is removed/i)
-  assert.match(collectResult.stderr, /scan/i)
 })

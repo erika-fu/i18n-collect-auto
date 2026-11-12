@@ -1,5 +1,8 @@
-// Shared webpack helpers for `build`. The collect command itself is a migration stub.
+// Orchestrates the project's webpack integration. Semantic extraction stays in myloader.
+const fs = require('fs')
+const os = require('os')
 const path = require('path')
+const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 
 const EXIT = {
   ok: 0,
@@ -80,6 +83,14 @@ function parseCollectArgs(args) {
   return parsed
 }
 
+function overridesFrom(parsed) {
+  const overrides = {}
+  if (parsed.include) overrides.include = parsed.include
+  if (parsed.exclude) overrides.exclude = parsed.exclude
+  if (parsed.contextFilters) overrides.contextFilters = parsed.contextFilters
+  return overrides
+}
+
 function forbidNetwork() {
   const http = require('http')
   const https = require('https')
@@ -122,6 +133,14 @@ function projectRelative(root, file) {
   return (relative || path.basename(file)).split(path.sep).join('/')
 }
 
+function resolveConfig(root) {
+  try {
+    return loadConfig({ root })
+  } catch (error) {
+    throw commandError('configuration', error.message)
+  }
+}
+
 async function readWebpackConfig(file) {
   let loaded
   try {
@@ -134,6 +153,15 @@ async function readWebpackConfig(file) {
     throw commandError('build', error && error.message ? error.message : String(error))
   }
   return loaded
+}
+
+function redirectEmit(config) {
+  const emitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-emit-'))
+  config.output = { ...(config.output || {}), path: emitDir, clean: false }
+  config.watch = false
+  config.cache = false
+  config.infrastructureLogging = { level: 'error' }
+  return emitDir
 }
 
 function runCompiler(config, hooks = {}) {
@@ -188,10 +216,106 @@ function classifyBuild(error, stats) {
   return commandError('build', text)
 }
 
-async function collect(args) {
+function pluginOptionsFrom(webpackConfig) {
+  for (const plugin of webpackConfig.plugins || []) {
+    if (plugin && plugin.constructor && plugin.constructor.name === 'MyI18nPlugin') return plugin.options || {}
+  }
+  return undefined
+}
+
+function humanReport(report) {
+  const noun = report.entries === 1 ? 'entry' : 'entries'
+  const include = report.include.length ? report.include.join(', ') : '(all resources that enter the loader)'
+  const exclude = report.exclude.length ? report.exclude.join(', ') : '(none)'
+  const filters = report.contextFilters.length ? report.contextFilters.join(', ') : '(none)'
+  return [
+    `Collected ${report.entries} ${noun}.`,
+    `Dictionary: ${report.dictionary}`,
+    `Source map: ${report.sourceMap}`,
+    `Scope include: ${include}`,
+    `Scope exclude: ${exclude}`,
+    `Context filters: ${filters}`,
+    ''
+  ].join('\n')
+}
+
+function reportFrom(config, dictionaryFile) {
+  const dictionary = JSON.parse(fs.readFileSync(dictionaryFile, 'utf8'))
+  return {
+    command: 'collect',
+    contextFilters: config.contextFilters,
+    dictionary: config.outputPath,
+    entries: Object.keys(dictionary).length,
+    exclude: config.exclude,
+    include: config.include,
+    ok: true,
+    sourceMap: config.sourceMapFilename
+  }
+}
+
+async function execute(parsed, hooks = {}) {
+  const root = path.resolve(parsed.cwd || process.cwd())
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw commandError('configuration', `project root is not a directory: ${root}`)
+  }
+  const previous = process.cwd()
+  let emitDir = null
+  let restoreNetwork = null
+  process.chdir(root)
+  clearCollectionOverrides()
+  try {
+    restoreNetwork = forbidNetwork()
+    resolveConfig(root)
+    const overrides = overridesFrom(parsed)
+    if (Object.keys(overrides).length > 0) {
+      setCollectionOverrides(overrides)
+      try {
+        loadConfig({ root })
+      } catch (error) {
+        throw commandError('configuration', error.message.replace(/^Invalid i18n-collect\.config\.js:/, 'Invalid collect options:'))
+      }
+    }
+    const configFile = path.resolve(root, parsed.webpackConfig || 'webpack.config.js')
+    if (!fs.existsSync(configFile)) {
+      throw commandError('configuration', `missing webpack configuration: ${projectRelative(root, configFile)}`)
+    }
+    const webpackConfig = await readWebpackConfig(configFile)
+    if (!webpackConfig || typeof webpackConfig !== 'object' || Array.isArray(webpackConfig)) {
+      throw commandError('configuration', 'collect accepts one webpack configuration object')
+    }
+    const pluginOptions = pluginOptionsFrom(webpackConfig)
+    emitDir = redirectEmit(webpackConfig)
+    const { error, stats } = await runCompiler(webpackConfig, hooks)
+    const failed = classifyBuild(error, stats)
+    if (failed) throw failed
+    if (stats && stats.hasErrors()) throw commandError('build', 'webpack reported a build failure')
+    const config = loadConfig({ root, pluginOptions })
+    const dictionaryFile = path.join(root, config.outputPath)
+    if (!fs.existsSync(dictionaryFile)) throw commandError('collection', 'collection finished without a dictionary')
+    return reportFrom(config, dictionaryFile)
+  } finally {
+    if (restoreNetwork) restoreNetwork()
+    clearCollectionOverrides()
+    process.chdir(previous)
+    if (emitDir) fs.rmSync(emitDir, { recursive: true, force: true })
+  }
+}
+
+async function collect(args, hooks = {}) {
   const json = args.includes('--json')
-  const { COLLECT_REMOVED } = require('../mycommon/legacy-contraction')
-  return failure(commandError('configuration', COLLECT_REMOVED), json)
+  let parsed
+  try {
+    parsed = parseCollectArgs(args)
+  } catch (error) {
+    return failure(error, json)
+  }
+  try {
+    const report = await execute(parsed, hooks)
+    const stdout = parsed.json ? jsonText(report) : humanReport(report)
+    return outcome(EXIT.ok, stdout, '')
+  } catch (error) {
+    return failure(error, parsed.json)
+  }
 }
 
 module.exports = {
@@ -200,7 +324,9 @@ module.exports = {
   collect,
   forbidNetwork,
   parseCollectArgs,
+  pluginOptionsFrom,
   projectRelative,
   readWebpackConfig,
+  redirectEmit,
   runCompiler
 }

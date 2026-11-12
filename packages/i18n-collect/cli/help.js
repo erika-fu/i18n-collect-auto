@@ -1,13 +1,26 @@
 const COLLECT_HELP = `i18n-collect collect
 
-Removed. Use i18n-collect scan for source analysis and i18n-collect migrate-keys once
-for catalogs that still use per-occurrence automatic identities.
+Run a Webpack collection compilation and publish runtime messages from the live
+module graph. Unreachable resources are excluded. Collection failures do not
+publish partial results.
 
 Usage:
   i18n-collect collect [options]
 
+Options:
+  --cwd <dir>              Project root. Defaults to the current directory.
+  --webpack-config <file>  Webpack config path. Defaults to webpack.config.js.
+  --include <pattern>      Replace collection include patterns. Repeatable.
+  --exclude <pattern>      Replace collection exclude patterns. Repeatable.
+  --context-filter <name>  Replace collection-context filters. Repeatable.
+  --json                   Print the collection report as JSON on stdout.
+  -h, --help               Show this help.
+
 Exit codes:
-  1  configuration failure with migration guidance
+  0  collection finished
+  1  configuration failure
+  2  collection failure
+  3  webpack build failure
 `
 
 const TRANSLATE_HELP = `i18n-collect translate
@@ -154,7 +167,7 @@ Commands:
   replace       Preview source replacements, or write application source with --write.
   check         Read-only project localization completeness (including hybrid policy).
   migrate-keys  One-shot migration of per-occurrence automatic keys to text-hash keys.
-  collect       Removed; use scan (and migrate-keys for legacy catalogs).
+  collect       Webpack module-graph collection; publishes runtime dictionary outputs.
   verify        Removed; use scan then check.
   run           Removed; use scan, translate, replace, build, and check directly.
   check-policy  Removed; use check.

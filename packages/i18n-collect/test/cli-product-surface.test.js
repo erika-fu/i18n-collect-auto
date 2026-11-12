@@ -28,7 +28,7 @@ test('root help presents the five primary commands and migration stubs', () => {
   assert.match(result.stdout, /\breplace\b/)
   assert.match(result.stdout, /\bcheck\b/)
   assert.match(result.stdout, /migrate-keys/)
-  assert.match(result.stdout, /collect\s+Removed|Removed; use scan/i)
+  assert.match(result.stdout, /collect\s+Webpack module-graph collection/i)
   assert.match(result.stdout, /verify\s+Removed|Removed; use scan then check/i)
   assert.match(result.stdout, /run\s+Removed|Removed; use scan, translate, and replace/i)
   assert.match(result.stdout, /check-policy\s+Removed|Removed; use check/i)

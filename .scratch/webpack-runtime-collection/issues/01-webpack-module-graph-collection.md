@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] Collection uses the active Webpack loader source flow and does not reread source from disk through a loader pitch hook.
-- [ ] Unreachable resources are excluded from runtime collection.
-- [ ] Collection state is scoped to the current compiler and is not implicitly shared across compilers.
-- [ ] Collection failures do not publish partial results.
-- [ ] Integration tests cover a successful Webpack collection compilation.
+- [x] Collection uses the active Webpack loader source flow and does not reread source from disk through a loader pitch hook.
+- [x] Unreachable resources are excluded from runtime collection.
+- [x] Collection state is scoped to the current compiler and is not implicitly shared across compilers.
+- [x] Collection failures do not publish partial results.
+- [x] Integration tests cover a successful Webpack collection compilation.

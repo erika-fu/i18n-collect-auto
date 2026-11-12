@@ -1,22 +1,23 @@
 # Migration guide
 
-This project moved from webpack `collect` / `verify` / `check-policy` / `run` workflows to a five-command product surface: **scan**, **translate**, **build**, **replace**, and **check**. Use `migrate-keys` once for legacy catalogs.
+This project moved from legacy `verify` / `check-policy` / `run` workflows to a product surface of **scan**, **collect**, **translate**, **build**, **replace**, and **check**. Use `migrate-keys` once for legacy catalogs.
 
 ## Command map
 
 | Old | New |
 | --- | --- |
-| `i18n-collect collect` | `i18n-collect scan` (and `migrate-keys` once for per-occurrence catalogs) |
+| Filesystem-only discovery | `i18n-collect scan` for `source-catalog.json` / `analysis-report.json`; `i18n-collect collect` for Webpack module-graph runtime dictionary outputs |
 | `i18n-collect verify` | `i18n-collect scan` then `i18n-collect check` |
 | `i18n-collect check-policy` | `i18n-collect check` (policy is part of completeness) |
-| `i18n-collect run ...` | Call `scan`, `translate`, `replace`, `build`, and `check` directly |
-| Build that refreshed catalogs | `i18n-collect build` is read-only for localization artifacts; refresh catalogs with `scan` / `translate` |
+| `i18n-collect run ...` | Call `scan`, `collect`, `translate`, `replace`, `build`, and `check` directly |
+| Build that refreshed catalogs | `i18n-collect build` is read-only for localization artifacts; refresh catalogs with `scan` / `translate` (and Webpack dictionary via `collect`) |
 
-Removed commands exit with configuration failure and a short migration message.
+Removed commands (`verify`, `check-policy`, `run`) exit with configuration failure and a short migration message.
 
 ## Write ownership
 
 - **scan** writes `source-catalog.json` and `analysis-report.json` only.
+- **collect** runs a Webpack collection compilation and publishes runtime dictionary / source-map outputs from the live module graph.
 - **translate** writes target-locale catalogs and `translation-state.json` only.
 - **build** may rewrite in-memory modules and emitted bundles; it does not mutate catalogs.
 - **replace** previews by default; with `--write` it writes application source only.
@@ -46,7 +47,6 @@ These are no longer part of the supported product:
 
 - Occurrence identity, structural-anchor recovery, orphan retirement, and `pruneOrphaned`
 - Replacement bookkeeping / `replacements.json`
-- Webpack plugin catalog collection (`MyI18nPlugin` collection mode)
 - Full preprocessor Style IR collection (styles are Chinese source audit surfaces)
 
 ## Runtime catalog messages vs audit-only findings

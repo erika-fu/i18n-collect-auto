@@ -5,9 +5,7 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const {
-  COLLECT_REMOVED,
   LEGACY_IDENTITY_METADATA,
-  PLUGIN_COLLECTION_REMOVED,
   PRUNE_ORPHANED_REMOVED,
   VERIFY_REMOVED,
   assertNoLegacyIdentityMetadata,
@@ -27,20 +25,6 @@ function run(args, cwd) {
     env: { ...process.env, NO_COLOR: '1' }
   })
 }
-
-test('collect fails with migration guidance instead of allocating occurrence identities', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-collect-'))
-  fs.writeFileSync(path.join(root, 'webpack.config.js'), 'module.exports = {}\n')
-  const result = run(['collect', '--json'], root)
-  assert.strictEqual(result.status, 1, result.stderr)
-  assert.match(result.stderr, /collect is removed/i)
-  assert.match(result.stderr, /scan/i)
-  assert.match(result.stderr, /migrate-keys/i)
-  const report = JSON.parse(result.stdout)
-  assert.strictEqual(report.ok, false)
-  assert.strictEqual(report.command, 'collect')
-  assert.strictEqual(report.message, COLLECT_REMOVED)
-})
 
 test('verify fails with migration guidance pointing at scan and check', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-verify-'))
@@ -109,20 +93,6 @@ test('catalog schemas reject per-occurrence identity metadata with a migration d
     error => {
       assert.strictEqual(error.message, LEGACY_IDENTITY_METADATA)
       assert.match(error.message, /migrate-keys/)
-      return true
-    }
-  )
-})
-
-test('MyI18nPlugin refuses catalog collection with migration guidance', () => {
-  const MyI18nPlugin = require('../myplugin')
-  const plugin = new MyI18nPlugin()
-  const compiler = { hooks: {} }
-  compiler.root = compiler
-  assert.throws(
-    () => plugin.apply(compiler),
-    error => {
-      assert.strictEqual(error.message, PLUGIN_COLLECTION_REMOVED)
       return true
     }
   )
