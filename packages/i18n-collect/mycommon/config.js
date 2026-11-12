@@ -30,14 +30,13 @@ const DEFAULTS = {
   translationProvider: '',
   targetLocales: [],
   translationFailure: 'partial',
-  pruneOrphaned: false,
   externalKeys: [],
   buildReplacement: null
 }
 
 const FIELDS = new Set(Object.keys(DEFAULTS))
 const LOADER_FIELDS = new Set(['include', 'exclude', 'contextFilters', 'vueVersion', 'attributeAllowlist', 'styleExtensions'])
-const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'pruneOrphaned', 'externalKeys']
+const CATALOG_FIELDS = ['catalogDir', 'sourceLocale', 'catalogFormat', 'externalKeys']
 const TRANSLATION_FIELDS = ['translationProvider', 'targetLocales', 'translationFailure']
 const BUILD_FIELDS = ['buildReplacement']
 const BUILD_REPLACEMENT_FIELDS = new Set(['enabled', 'adapter', 'runtimeModule', 'runtimeExport'])
@@ -122,6 +121,10 @@ function filterList(root, values, field) {
 
 function validate(root, input) {
   if (!isObject(input)) fail('must export an object')
+  if (Object.prototype.hasOwnProperty.call(input, 'pruneOrphaned')) {
+    const { PRUNE_ORPHANED_REMOVED } = require('./legacy-contraction')
+    fail(PRUNE_ORPHANED_REMOVED)
+  }
   Object.keys(input).forEach(key => {
     if (!FIELDS.has(key)) fail(`unknown field "${key}"`)
   })
@@ -167,7 +170,6 @@ function validate(root, input) {
   if (!FAILURE_POLICIES.has(config.translationFailure)) {
     fail('translationFailure must be "partial" or "strict"')
   }
-  if (typeof config.pruneOrphaned !== 'boolean') fail('pruneOrphaned must be a boolean')
   array(
     config.externalKeys,
     'externalKeys',

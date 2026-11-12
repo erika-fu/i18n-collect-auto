@@ -1,12 +1,10 @@
+const { PREPROCESSOR_STYLE_IR_REMOVED } = require('../mycommon/legacy-contraction')
 const { collectStyle } = require('./collect-style')
 const { offsetToPosition } = require('./resource')
 const { parseCssStyle } = require('./style-parser-css')
-const { parseLessStyle } = require('./style-parser-less')
-const { parseSassStyle } = require('./style-parser-sass')
-const { parseScssStyle } = require('./style-parser-scss')
-const { parseStylusStyle } = require('./style-parser-stylus')
 
 const UNSUPPORTED_STYLE = 'unsupported-style-preprocessor'
+const PREPROCESSOR_LANGS = new Set(['less', 'scss', 'sass', 'styl', 'stylus'])
 const UNARY_TAGS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'frame', 'hr', 'img', 'input',
   'isindex', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr'
@@ -171,23 +169,20 @@ function parsesAsStandardCss(resource, located, config) {
 function parserFor(resource, located, config) {
   const requested = languageOf(resource.lang, 'css')
   const effective = languageOf(located.lang, requested)
-  if (requested === 'less' && effective === 'less') return parseLessStyle
-  if (requested === 'scss' && effective === 'scss') return parseScssStyle
-  if (requested === 'sass' && effective === 'sass') return parseSassStyle
-  if (
-    (requested === 'styl' || requested === 'stylus') &&
-    (effective === 'styl' || effective === 'stylus')
-  ) return parseStylusStyle
+  if (PREPROCESSOR_LANGS.has(requested) || PREPROCESSOR_LANGS.has(effective)) return null
   return parsesAsStandardCss(resource, located, config) ? parseCssStyle : null
 }
 
 function unsupportedWarning(resource, lang) {
   const identity = resource.identity ||
     `${projectPathOf(resource)}::style[index=${resource.styleIndex == null ? 0 : resource.styleIndex};lang=${lang}]`
+  const detail = PREPROCESSOR_LANGS.has(String(lang).toLowerCase())
+    ? PREPROCESSOR_STYLE_IR_REMOVED
+    : `i18n-collect does not parse ${lang} styles (${identity}); CSS content was not collected`
   return {
     code: UNSUPPORTED_STYLE,
     identity,
-    message: `i18n-collect does not parse ${lang} styles (${identity}); CSS content was not collected`
+    message: detail
   }
 }
 

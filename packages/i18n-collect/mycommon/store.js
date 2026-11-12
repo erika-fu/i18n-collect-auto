@@ -7,10 +7,7 @@ const SEMANTIC_KINDS = new Set([
   'template-literal',
   'html-text',
   'html-attribute',
-  'template-expression',
-  'css-generated-content',
-  'static-html-text',
-  'static-html-attribute'
+  'template-expression'
 ])
 
 function keyFor(value) {

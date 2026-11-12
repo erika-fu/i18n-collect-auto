@@ -7,11 +7,9 @@ const test = require('node:test')
 const { seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
-const loader = require.resolve('../myloader')
-const plugin = require.resolve('../myplugin')
 
-function run(args, cwd, extra = []) {
-  return spawnSync(process.execPath, [...extra, bin, ...args], {
+function run(args, cwd) {
+  return spawnSync(process.execPath, [bin, ...args], {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1' }
@@ -22,119 +20,62 @@ function tempProject(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 }
 
-function write(root, name, contents) {
-  const file = path.join(root, name)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, contents)
-}
-
-function json(value) {
-  return `${JSON.stringify(value, null, 2)}\n`
-}
-
-function projectFiles(root) {
-  const files = []
-  const visit = directory => {
-    for (const name of fs.readdirSync(directory)) {
-      const file = path.join(directory, name)
-      if (fs.statSync(file).isDirectory()) visit(file)
-      else files.push(file)
-    }
-  }
-  visit(root)
-  return files.sort()
-}
-
-function snapshotFiles(root) {
-  return new Map(projectFiles(root).map(file => [file, fs.readFileSync(file)]))
-}
-
-function assertUnchanged(root, before) {
-  for (const [file, bytes] of before) assert.deepStrictEqual(fs.readFileSync(file), bytes)
-  assert.deepStrictEqual(projectFiles(root), [...before.keys()].sort())
-}
-
 function jsFixture(root) {
-  const source = [
-    "import { t } from './i18n'",
-    "const message = /* i18n-key: home.hello */ \"你好\"",
-    'export default message',
-    ''
-  ].join('\n')
-  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(root, 'src/app.js', source)
-  seedSourceCatalog(root)
-  return source
-}
-
-function writeWebpackProject(root, { source, files = {}, configSource = '' } = {}) {
   fs.mkdirSync(path.join(root, 'src'), { recursive: true })
-  fs.writeFileSync(path.join(root, 'src/app.js'), source)
-  fs.writeFileSync(path.join(root, 'src/orphan.js'), 'module.exports = "孤儿词条"\n')
-  for (const [name, contents] of Object.entries(files)) write(root, name, contents)
-  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
-const MyI18nPlugin = require(${JSON.stringify(plugin)})
-module.exports = {
-  context: __dirname,
-  mode: 'development',
-  entry: './src/app.js',
-  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist'), clean: true },
-  module: { rules: [{ test: /\\.js$/, loader: ${JSON.stringify(loader)} }] },
-  plugins: [new MyI18nPlugin()]
-}
-`)
-  if (configSource) fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), configSource)
-  fs.mkdirSync(path.join(root, 'dist'), { recursive: true })
-  fs.writeFileSync(path.join(root, 'dist/keep.txt'), 'keep\n')
-}
-
-const APP_SOURCE = [
-  "const { t } = require('./i18n')",
-  'const message = "你好"',
-  'module.exports = message',
-  ''
-].join('\n')
-
-const LOCAL_PROVIDER = `module.exports = {
-  translate(request) {
-    return {
-      drafts: request.items.map(item => ({
-        key: item.key,
-        locale: item.locales[0],
-        text: 'Hello'
-      }))
-    }
-  }
-}
-`
-
-function webpackWorkflow(root) {
-  writeWebpackProject(root, {
-    source: APP_SOURCE,
-    files: {
-      'src/i18n.js': 'function t(key) { return key }\nmodule.exports = { t }\n',
-      'i18n/provider.js': LOCAL_PROVIDER
-    },
-    configSource: `module.exports = {\n  translationProvider: 'i18n/provider.js',\n  targetLocales: ['en']\n}\n`
-  })
-  seedSourceCatalog(root)
+  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
+  fs.writeFileSync(
+    path.join(root, 'src/app.js'),
+    "const { t } = require('./i18n')\nmodule.exports = '你好'\n"
+  )
+  fs.writeFileSync(path.join(root, 'src/i18n.js'), 'function t(key) { return key }\nmodule.exports = { t }\n')
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), [
+    'module.exports = {',
+    '  targetLocales: ["en"],',
+    '  translationProvider: "provider.js",',
+    '  buildReplacement: {',
+    '    enabled: true,',
+    '    adapter: "js",',
+    '    runtimeModule: "src/i18n.js",',
+    '    runtimeExport: "t"',
+    '  }',
+    '}',
+    ''
+  ].join('\n'))
+  fs.writeFileSync(path.join(root, 'provider.js'), [
+    'module.exports = {',
+    '  translate(request) {',
+    '    const drafts = []',
+    '    for (const item of request.items) {',
+    '      for (const locale of item.locales) {',
+    "        drafts.push({ key: item.key, locale, text: `EN:${item.source}` })",
+    '      }',
+    '    }',
+    '    return { drafts, failures: [] }',
+    '  }',
+    '}',
+    ''
+  ].join('\n'))
+  seedSourceCatalog(root, { writeLocaleCatalog: true })
 }
 
-test('run help describes stage composition and keeps replacement dry-run by default', () => {
+test('run help no longer advertises collect as a live stage', () => {
   const help = run(['run', '--help'])
   assert.strictEqual(help.status, 0)
   assert.strictEqual(help.stderr, '')
   assert.match(help.stdout, /i18n-collect run/)
-  assert.match(help.stdout, /--collect/)
+  assert.match(help.stdout, /collect stage is removed|Removed collect|use i18n-collect scan/i)
   assert.match(help.stdout, /--translate/)
   assert.match(help.stdout, /--replace/)
   assert.match(help.stdout, /--write/)
-  assert.match(help.stdout, /--allow-network/)
-  assert.match(help.stdout, /--strict/)
-  assert.match(help.stdout, /dry-run/)
-  assert.match(help.stdout, /collect, then translate, then replace/)
-  const root = run(['--help'])
-  assert.match(root.stdout, /\brun\b/)
+})
+
+test('run --collect fails with migration guidance', () => {
+  const root = tempProject('i18n-run-collect-gone-')
+  jsFixture(root)
+  const result = run(['run', '--collect', '--json'], root)
+  assert.strictEqual(result.status, 1, result.stderr)
+  assert.match(result.stderr, /run --collect is removed|collect is removed/i)
+  assert.match(result.stderr, /scan/i)
 })
 
 test('run requires a selected stage and rejects options for a stage that is off', () => {
@@ -142,7 +83,7 @@ test('run requires a selected stage and rejects options for a stage that is off'
   const missing = run(['run', '--json'], root)
   assert.strictEqual(missing.status, 1)
   assert.match(missing.stderr, /run requires --collect, --translate, or --replace/)
-  const extra = run(['run', '--collect', '--adapter', 'js', '--json'], root)
+  const extra = run(['run', '--translate', '--adapter', 'js', '--json'], root)
   assert.strictEqual(extra.status, 1)
   assert.match(extra.stderr, /--adapter requires --replace/)
 })
@@ -161,265 +102,36 @@ test('run --json keeps a replace configuration failure as that stage report', ()
   assert.strictEqual(report.results.length, 1)
   assert.strictEqual(report.results[0].command, 'replace')
   assert.strictEqual(report.results[0].ok, false)
-  assert.strictEqual(report.results[0].failure, 'configuration')
-  assert.match(report.results[0].message, /replace requires --adapter/)
 })
 
-test('run --collect collects without translating or rewriting source', { timeout: 20000 }, () => {
-  const root = tempProject('i18n-run-collect-')
-  webpackWorkflow(root)
-  write(root, 'i18n/provider.js', `const fs = require('fs')
-const path = require('path')
-module.exports = {
-  translate() {
-    fs.writeFileSync(path.join(__dirname, 'called'), 'yes')
-    throw new Error('translate ran during collect-only')
-  }
-}
-`)
-  const before = fs.readFileSync(path.join(root, 'src/app.js'))
-  const result = run(['run', '--collect', '--json'], root)
-  assert.strictEqual(result.status, 0, result.stderr)
-  const report = JSON.parse(result.stdout)
-  assert.strictEqual(report.command, 'run')
-  assert.strictEqual(report.ok, true)
-  assert.deepStrictEqual(report.stages, ['collect'])
-  assert.strictEqual(report.results.length, 1)
-  assert.strictEqual(report.results[0].command, 'collect')
-  assert.strictEqual(report.results[0].entries, 1)
-  assert.strictEqual(report.results[0].ok, true)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/app.js')), before)
-  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/called')), false)
-  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'dist/keep.txt'), 'utf8'), 'keep\n')
-  const messages = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/zh.json'), 'utf8'))
-  assert.deepStrictEqual(Object.values(messages), ['你好'])
-})
-
-test('run --translate fills a catalog without collecting or rewriting source', () => {
+test('run --translate fills a catalog without rewriting source', { timeout: 20000 }, () => {
   const root = tempProject('i18n-run-translate-')
-  const source = jsFixture(root)
-  write(root, 'src/extra.js', 'module.exports = "旁路"\n')
-  write(root, 'i18n/provider.js', LOCAL_PROVIDER)
-  write(root, 'i18n-collect.config.js', `module.exports = {\n  translationProvider: 'i18n/provider.js',\n  targetLocales: ['en']\n}\n`)
+  jsFixture(root)
+  const before = fs.readFileSync(path.join(root, 'src/app.js'))
   const result = run(['run', '--translate', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
   assert.deepStrictEqual(report.stages, ['translate'])
-  assert.strictEqual(report.results[0].command, 'translate')
-  assert.strictEqual(report.results[0].ok, true)
-  assert.deepStrictEqual(report.results[0].created, [{ key: 'home.hello', locale: 'en' }])
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/extra.js'), 'utf8'), 'module.exports = "旁路"\n')
-  assert.strictEqual(fs.existsSync(path.join(root, 'lang/zh_hash.json')), false)
-  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.hello'], 'Hello')
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js')).equals(before), true)
+  assert.ok(fs.existsSync(path.join(root, 'lang/catalog/en.json')))
 })
 
-test('run replacement stays a dry-run until --write and forwards strict mode', () => {
-  const root = tempProject('i18n-run-replace-')
-  const source = jsFixture(root)
-  const preview = run(['run', '--replace', '--adapter', 'js', '--json'], root)
-  assert.strictEqual(preview.status, 0, preview.stderr)
-  const dry = JSON.parse(preview.stdout)
-  assert.deepStrictEqual(dry.stages, ['replace'])
-  assert.strictEqual(dry.results[0].dryRun, true)
-  assert.strictEqual(dry.results[0].written, false)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
-
-  const written = run(['run', '--replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(written.status, 0, written.stderr)
-  const report = JSON.parse(written.stdout)
-  assert.strictEqual(report.results[0].dryRun, false)
-  assert.strictEqual(report.results[0].written, true)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
-    "import { t } from './i18n'",
-    "const message = /* i18n-key: home.hello */ t('home.hello')",
-    'export default message',
-    ''
-  ].join('\n'))
-
-  const strictRoot = tempProject('i18n-run-strict-')
-  const skipped = [
-    "import { t } from './i18n'",
-    "const labels = { '标题': '你好' }",
-    'export default labels',
-    ''
-  ].join('\n')
-  write(strictRoot, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(strictRoot, 'src/app.js', skipped)
-  seedSourceCatalog(strictRoot)
-  const before = snapshotFiles(strictRoot)
-  const strict = run(['run', '--replace', '--adapter', 'js', '--strict', '--write', '--json'], strictRoot)
-  assert.strictEqual(strict.status, 7)
-  assert.match(strict.stderr, /^replacement: skipped candidates fail strict mode/)
-  const strictReport = JSON.parse(strict.stdout)
-  assert.strictEqual(strictReport.ok, false)
-  assert.strictEqual(strictReport.failure, 'replacement')
-  assert.strictEqual(strictReport.results.length, 1)
-  assert.strictEqual(strictReport.results[0].failure, 'replacement')
-  assertUnchanged(strictRoot, before)
-})
-
-test('run stops before replacement when network translation is not authorized', () => {
-  const root = tempProject('i18n-run-network-')
-  const source = jsFixture(root)
-  write(root, 'i18n/provider.js', `const fs = require('fs')
-const path = require('path')
-module.exports = {
-  network: true,
-  translate(request) {
-    fs.writeFileSync(path.join(__dirname, 'sent.json'), JSON.stringify(request.items))
-    return { drafts: [{ key: 'home.hello', locale: 'en', text: 'Hello' }] }
-  }
-}
-`)
-  write(root, 'i18n-collect.config.js', `module.exports = {\n  translationProvider: 'i18n/provider.js',\n  targetLocales: ['en']\n}\n`)
-  const denied = run(['run', '--translate', '--replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(denied.status, 5, denied.stderr)
-  assert.match(denied.stderr, /^authorization: /)
-  const deniedReport = JSON.parse(denied.stdout)
-  assert.deepStrictEqual(deniedReport.stages, ['translate', 'replace'])
-  assert.strictEqual(deniedReport.ok, false)
-  assert.strictEqual(deniedReport.failure, 'authorization')
-  assert.strictEqual(deniedReport.results.length, 1)
-  assert.strictEqual(deniedReport.results[0].command, 'translate')
-  assert.strictEqual(fs.existsSync(path.join(root, 'i18n/sent.json')), false)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
-  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
-
-  const allowed = run(['run', '--translate', '--replace', '--adapter', 'js', '--write', '--allow-network', '--json'], root)
-  assert.strictEqual(allowed.status, 0, allowed.stderr)
-  const report = JSON.parse(allowed.stdout)
-  assert.deepStrictEqual(report.stages, ['translate', 'replace'])
-  assert.deepStrictEqual(report.results.map(item => item.command), ['translate', 'replace'])
-  assert.strictEqual(report.results[1].written, true)
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'i18n/sent.json'), 'utf8')), [
-    { key: 'home.hello', source: '你好', locales: ['en'] }
-  ])
-  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.hello'], 'Hello')
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
-    "import { t } from './i18n'",
-    "const message = /* i18n-key: home.hello */ t('home.hello')",
-    'export default message',
-    ''
-  ].join('\n'))
-})
-
-test('run --collect --translate translates the collected catalog and leaves source unchanged', { timeout: 20000 }, () => {
-  const root = tempProject('i18n-run-both-')
-  webpackWorkflow(root)
-  const before = fs.readFileSync(path.join(root, 'src/app.js'))
-  const result = run(['run', '--translate', '--collect', '--json'], root)
-  assert.strictEqual(result.status, 0, result.stderr)
-  const report = JSON.parse(result.stdout)
-  assert.deepStrictEqual(report.stages, ['collect', 'translate'])
-  assert.deepStrictEqual(report.results.map(item => item.command), ['collect', 'translate'])
-  assert.strictEqual(report.results[1].ok, true)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/app.js')), before)
-  const messages = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/zh.json'), 'utf8'))
-  const [key, text] = Object.entries(messages)[0]
-  assert.strictEqual(text, '你好')
-  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))[key], 'Hello')
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/orphan.js'), 'utf8'), 'module.exports = "孤儿词条"\n')
-})
-
-test('run --collect --replace previews the collected source until --write commits it', { timeout: 20000 }, () => {
-  const root = tempProject('i18n-run-collect-replace-')
-  webpackWorkflow(root)
-  const before = fs.readFileSync(path.join(root, 'src/app.js'))
-  const preview = run(['run', '--collect', '--replace', '--adapter', 'js', '--json'], root)
-  assert.strictEqual(preview.status, 0, preview.stderr)
-  const dry = JSON.parse(preview.stdout)
-  assert.deepStrictEqual(dry.stages, ['collect', 'replace'])
-  assert.strictEqual(dry.results[1].command, 'replace')
-  assert.strictEqual(dry.results[1].dryRun, true)
-  assert.strictEqual(dry.results[1].written, false)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/app.js')), before)
-  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
-
-  const written = run(['run', '--replace', '--adapter', 'js', '--write', '--collect', '--json'], root)
-  assert.strictEqual(written.status, 0, written.stderr)
-  const report = JSON.parse(written.stdout)
-  assert.deepStrictEqual(report.stages, ['collect', 'replace'])
-  assert.strictEqual(report.results[1].written, true)
-  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
-  const key = Object.keys(sourceCatalog).find(name => sourceCatalog[name] === '你好')
-  assert.ok(key)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
-    "const { t } = require('./i18n')",
-    `const message = t('${key}')`,
-    'module.exports = message',
-    ''
-  ].join('\n'))
-  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
-  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
-})
-
-test('run collects, translates, and writes replacements in that order', { timeout: 20000 }, () => {
-  const root = tempProject('i18n-run-full-')
-  webpackWorkflow(root)
+test('run --translate --replace --write commits replacements after translation', { timeout: 30000 }, () => {
+  const root = tempProject('i18n-run-translate-replace-')
+  jsFixture(root)
   const result = run([
     'run',
-    '--replace',
-    '--adapter', 'js',
-    '--write',
     '--translate',
-    '--collect',
+    '--replace',
+    '--adapter',
+    'js',
+    '--write',
     '--json'
   ], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.ok, true)
-  assert.deepStrictEqual(report.stages, ['collect', 'translate', 'replace'])
-  assert.deepStrictEqual(report.results.map(item => item.command), ['collect', 'translate', 'replace'])
-  assert.strictEqual(report.results[2].dryRun, false)
-  assert.strictEqual(report.results[2].written, true)
-  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
-  const key = Object.keys(sourceCatalog).find(name => sourceCatalog[name] === '你好')
-  assert.ok(key)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
-    "const { t } = require('./i18n')",
-    `const message = t('${key}')`,
-    'module.exports = message',
-    ''
-  ].join('\n'))
-  // Translate still keys off the collect catalog; replace keys off source-catalog.
-  const en = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))
-  assert.ok(Object.values(en).includes('Hello'))
-  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
-  assert.deepStrictEqual(report.results[2].files, ['src/app.js'])
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/orphan.js'), 'utf8'), 'module.exports = "孤儿词条"\n')
-})
-
-test('a failed write through run restores the project and exits with the storage code', () => {
-  const root = tempProject('i18n-run-rollback-')
-  const source = jsFixture(root)
-  const hook = path.join(root, 'fail-replacement.js')
-  fs.writeFileSync(hook, `const fs = require('fs')
-const rename = fs.renameSync.bind(fs)
-fs.renameSync = (from, to) => {
-  if (String(from).includes('.tmp-') && String(to).endsWith('app.js')) {
-    const error = new Error('simulated storage failure')
-    error.code = 'EIO'
-    throw error
-  }
-  return rename(from, to)
-}
-`)
-  const before = snapshotFiles(root)
-  const result = run(['run', '--replace', '--adapter', 'js', '--write', '--json'], root, ['-r', hook])
-  assert.strictEqual(result.status, 6, result.stderr)
-  assert.match(result.stderr, /^storage: /)
-  const report = JSON.parse(result.stdout)
-  assert.strictEqual(report.command, 'run')
-  assert.strictEqual(report.ok, false)
-  assert.strictEqual(report.failure, 'storage')
-  assert.strictEqual(report.results.length, 1)
-  assert.strictEqual(report.results[0].failure, 'storage')
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
-  for (const [file, bytes] of before) {
-    if (file === hook) continue
-    assert.deepStrictEqual(fs.readFileSync(file), bytes)
-  }
-  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
+  assert.deepStrictEqual(report.stages, ['translate', 'replace'])
+  assert.match(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), /t\(/)
 })

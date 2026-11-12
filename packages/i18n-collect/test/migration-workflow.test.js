@@ -4,7 +4,6 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
-const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
 const { installVue2 } = require('./vue2-fixture')
@@ -12,8 +11,6 @@ const { installVue3 } = require('./vue3-fixture')
 const { keyForSource, seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
-const loader = require.resolve('../myloader')
-const plugin = require.resolve('../myplugin')
 const fixtures = path.join(__dirname, '../fixtures/replacement')
 const ALLOW = ['title', 'placeholder', 'alt', 'aria-label', 'value']
 
@@ -37,30 +34,8 @@ function readJson(root, name) {
   return JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'))
 }
 
-function writeWebpack(root) {
-  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
-const MyI18nPlugin = require(${JSON.stringify(plugin)})
-module.exports = {
-  context: __dirname,
-  mode: 'development',
-  entry: './src/app.js',
-  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist'), clean: true },
-  module: { rules: [{ test: /\\.js$/, loader: ${JSON.stringify(loader)} }] },
-  plugins: [new MyI18nPlugin()]
-}
-`)
-}
-
 function json(value) {
   return `${JSON.stringify(value, null, 2)}\n`
-}
-
-function keyed(entries, keys) {
-  return entries.map(entry => {
-    const key = keys[entry.value]
-    if (!key) throw new Error(`missing key for ${JSON.stringify(entry.value)}`)
-    return { ...entry, key }
-  })
 }
 
 function vueEntries(projectPath, source, absolutePath) {
@@ -74,15 +49,9 @@ function vueEntries(projectPath, source, absolutePath) {
   return [...html, ...script]
 }
 
-function writeCatalog(root, entries) {
-  const catalog = buildCatalog([{ entries }])
-  assert.deepStrictEqual(catalog.conflicts, [])
-  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
-  fs.writeFileSync(path.join(root, 'lang/catalog/zh.json'), json(catalog.messages))
-  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json(catalogMetadata(catalog, {
-    sourceLocale: 'zh',
-    format: 'json'
-  })))
+function syncLocaleCatalog(root) {
+  const catalog = seedSourceCatalog(root, { writeLocaleCatalog: true })
+  return catalog
 }
 
 const APP_BEFORE = [
@@ -121,24 +90,21 @@ const NOTE_REPLACED = [
   ''
 ].join('\n')
 
-test('the migration fixture collects, protects an existing translation, and replaces only on write', { timeout: 60000 }, () => {
+test('the migration fixture scans, protects an existing translation, and replaces only on write', { timeout: 60000 }, () => {
   const root = copyFixture('js')
-  writeWebpack(root)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), APP_BEFORE)
   assert.strictEqual(fs.readFileSync(path.join(root, 'i18n/provider.js'), 'utf8').includes('network'), false)
 
-  const collected = run(['collect', '--json'], root)
-  assert.strictEqual(collected.status, 0, collected.stderr)
-  const collectReport = JSON.parse(collected.stdout)
-  assert.deepStrictEqual(collectReport.exclude, ['src/legacy/**/*.js'])
-  assert.deepStrictEqual(collectReport.include, [])
-  assert.deepStrictEqual(readJson(root, 'lang/catalog/zh.json'), {
+  const scanned = run(['scan', '--json'], root)
+  assert.strictEqual(scanned.status, 0, scanned.stderr)
+  assert.deepStrictEqual(readJson(root, 'lang/catalog/source-catalog.json'), {
     'home.hello': '你好',
     'home.note': '备注'
   })
-  const dictionary = readJson(root, 'lang/zh_hash.json')
-  assert.deepStrictEqual(Object.values(dictionary).sort(), ['你好', '备注'])
-  assert.deepStrictEqual(Object.keys(dictionary).includes('home.hello'), false)
+  fs.writeFileSync(
+    path.join(root, 'lang/catalog/zh.json'),
+    json(readJson(root, 'lang/catalog/source-catalog.json'))
+  )
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/legacy/old.js'), 'utf8').includes('旧文案'), true)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), APP_BEFORE)
 
@@ -161,9 +127,12 @@ test('the migration fixture collects, protects an existing translation, and repl
   const acceptedFingerprint = reviewState.locales.en['home.hello'].sourceFingerprint
 
   fs.writeFileSync(path.join(root, 'src/app.js'), APP_CHANGED)
-  const recollected = run(['collect', '--json'], root)
-  assert.strictEqual(recollected.status, 0, recollected.stderr)
-  assert.deepStrictEqual(JSON.parse(recollected.stdout).catalog.changed, ['home.hello'])
+  const rescanned = run(['scan', '--json'], root)
+  assert.strictEqual(rescanned.status, 0, rescanned.stderr)
+  fs.writeFileSync(
+    path.join(root, 'lang/catalog/zh.json'),
+    json(readJson(root, 'lang/catalog/source-catalog.json'))
+  )
   assert.deepStrictEqual(readJson(root, 'lang/catalog/zh.json'), {
     'home.hello': '您好',
     'home.note': '备注'
@@ -179,14 +148,13 @@ test('the migration fixture collects, protects an existing translation, and repl
   })
   assert.deepStrictEqual(JSON.parse(reviewed.stdout).needsReview, [{ key: 'home.hello', locale: 'en' }])
 
-  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  syncLocaleCatalog(root)
   const preview = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
   const previewReport = JSON.parse(preview.stdout)
   assert.strictEqual(previewReport.dryRun, true)
   assert.strictEqual(previewReport.written, false)
-  assert.strictEqual(previewReport.skipped.length, 1)
-  assert.strictEqual(previewReport.skipped[0].path, 'i18n/provider.js')
+  assert.deepStrictEqual(previewReport.skipped, [])
   assert.deepStrictEqual(previewReport.previews.map(item => item.path), ['src/app.js', 'src/notes.js'])
   assert.strictEqual(previewReport.previews[0].content, APP_REPLACED)
   assert.strictEqual(previewReport.previews[1].content, NOTE_REPLACED)
@@ -206,7 +174,6 @@ test('the migration fixture collects, protects an existing translation, and repl
   assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
   assert.deepStrictEqual(committed.files.sort(), ['src/app.js', 'src/notes.js'].sort())
 
-  assert.strictEqual(run(['collect', '--json'], root).status, 0)
   fs.writeFileSync(path.join(root, 'lang/catalog/explicit-messages.json'), json({
     version: 1,
     messages: [
@@ -214,7 +181,7 @@ test('the migration fixture collects, protects an existing translation, and repl
       { key: 'home.note', source: '备注' }
     ]
   }))
-  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  syncLocaleCatalog(root)
   const again = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(again.status, 0, again.stderr)
   const second = JSON.parse(again.stdout)
@@ -226,15 +193,11 @@ test('the migration fixture collects, protects an existing translation, and repl
 
 test('a failed replacement write restores the migration fixture', { timeout: 30000 }, () => {
   const root = copyFixture('js')
-  writeWebpack(root)
-  const collected = run(['collect', '--json'], root)
-  assert.strictEqual(collected.status, 0, collected.stderr)
-  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  assert.strictEqual(run(['scan', '--json'], root).status, 0)
+  syncLocaleCatalog(root)
   const before = {
     app: fs.readFileSync(path.join(root, 'src/app.js')),
-    note: fs.readFileSync(path.join(root, 'src/notes.js')),
-    catalog: fs.readFileSync(path.join(root, 'lang/catalog/zh.json')),
-    meta: fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
+    note: fs.readFileSync(path.join(root, 'src/notes.js'))
   }
   const hook = path.join(root, 'fail-replacement.js')
   fs.writeFileSync(hook, `const fs = require('fs')
@@ -328,12 +291,7 @@ function vue3Preview(root) {
 test('the Vue 2 fixture previews and then keeps a committed replacement', () => {
   const root = copyFixture('vue2')
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE2_SOURCE)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', VUE2_SOURCE), {
-    标题: 'home.title',
-    欢迎: 'home.welcome',
-    你好: 'home.hello'
-  }))
-  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  syncLocaleCatalog(root)
   const vue2Expected = vue2Preview(root)
   const preview = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
@@ -359,11 +317,7 @@ test('the Vue 2 fixture previews and then keeps a committed replacement', () => 
 test('the Vue 3 fixture previews, commits, and keeps the replacement', () => {
   const root = copyFixture('vue3')
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE3_SOURCE)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', VUE3_SOURCE), {
-    欢迎: 'home.welcome',
-    标题: 'home.title'
-  }))
-  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  syncLocaleCatalog(root)
   const vue3Expected = vue3Preview(root)
   const preview = run(['replace', '--adapter', 'vue3', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
@@ -409,14 +363,7 @@ test('Vue replacement shares collection ranges for directives, entities, CRLF, a
       '请输入',
       '前缀'
     ])
-    const catalogEntries = keyed(entries, {
-      '保存\u00A0成功': 'home.saved',
-      欢迎: 'home.welcome',
-      请输入: 'home.placeholder',
-      前缀: 'home.prefix'
-    })
-    writeCatalog(root, catalogEntries)
-    seedSourceCatalog(root, { writeLegacyArtifacts: false })
+    syncLocaleCatalog(root)
 
     const saved = keyForSource(root, '保存\u00A0成功')
     const welcome = keyForSource(root, '欢迎')
@@ -439,7 +386,7 @@ test('Vue replacement shares collection ranges for directives, entities, CRLF, a
     const report = JSON.parse(preview.stdout)
     assert.deepStrictEqual(report.skipped, [])
     assert.strictEqual(report.previews[0].content, expected)
-    for (const entry of catalogEntries) {
+    for (const entry of entries) {
       const catalogKey = keyForSource(root, entry.value)
       const replacement = report.replacements.find(item => item.key === catalogKey)
       assert.deepStrictEqual(replacement.start, entry.locations[0].start)

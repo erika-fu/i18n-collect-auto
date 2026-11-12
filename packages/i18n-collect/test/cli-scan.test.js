@@ -8,8 +8,6 @@ const { keyFor } = require('../mycommon/store')
 const { installVue3 } = require('./vue3-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
-const loader = require.resolve('../myloader')
-const plugin = require.resolve('../myplugin')
 const HELLO = keyFor('你好')
 
 function run(args, cwd) {
@@ -296,27 +294,15 @@ test('scan fails with an actionable diagnostic for a malformed HTML i18n-ignore'
   assert.match(report.message, /i18n-ignore/)
 })
 
-test('collect remains operational alongside scan', { timeout: 20000 }, () => {
+test('collect is rejected with migration guidance while scan remains the write path', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-collect-'))
   writeScanProject(root)
-  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
-const MyI18nPlugin = require(${JSON.stringify(plugin)})
-module.exports = {
-  context: __dirname,
-  mode: 'development',
-  entry: './src/app.js',
-  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist'), clean: true },
-  module: { rules: [{ test: /\\.js$/, loader: ${JSON.stringify(loader)} }] },
-  plugins: [new MyI18nPlugin()]
-}
-`)
   const scanResult = run(['scan', '--json'], root)
   assert.strictEqual(scanResult.status, 0, scanResult.stderr)
-  const collectResult = run(['collect', '--json'], root)
-  assert.strictEqual(collectResult.status, 0, collectResult.stderr)
-  const collectReport = JSON.parse(collectResult.stdout)
-  assert.strictEqual(collectReport.command, 'collect')
-  assert.ok(collectReport.catalog.keys >= 1)
-  assert.ok(fs.existsSync(path.join(root, 'lang/zh_hash.json')))
+  assert.ok(fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
   assert.ok(fs.existsSync(path.join(root, 'lang/catalog/analysis-report.json')))
+  const collectResult = run(['collect', '--json'], root)
+  assert.strictEqual(collectResult.status, 1, collectResult.stderr)
+  assert.match(collectResult.stderr, /collect is removed/i)
+  assert.match(collectResult.stderr, /scan/i)
 })

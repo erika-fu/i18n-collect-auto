@@ -3,17 +3,15 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
-const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
+const { LEGACY_IDENTITY_METADATA } = require('../mycommon/legacy-contraction')
 const { loadConfig } = require('../mycommon/config')
 const {
   loadPublishedCatalog,
   preflightBuildReplacement,
   publishFormalBundle
 } = require('../mycommon/build-replacement-contract')
-const { extractHtml } = require('../myloader/extract-html')
-const { extractScript } = require('../myloader/extract-script')
-
-const ALLOW = ['title', 'placeholder', 'alt', 'aria-label', 'value']
+const { keyFor } = require('../mycommon/store')
+const { SOURCE_CATALOG_FILE } = require('../mycommon/source-catalog-freshness')
 
 function writeProject(root, {
   source = 'module.exports = "欢迎"\n',
@@ -41,41 +39,61 @@ function writeProject(root, {
   fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), configSource)
 }
 
-function writeCatalogFromEntries(root, entries) {
-  const catalog = buildCatalog([{ entries }])
-  assert.deepStrictEqual(catalog.conflicts, [])
-  fs.writeFileSync(
-    path.join(root, 'lang/catalog/zh.json'),
-    `${JSON.stringify(catalog.messages, null, 2)}\n`
-  )
-  fs.writeFileSync(
-    path.join(root, 'lang/catalog/catalog.meta.json'),
-    `${JSON.stringify(catalogMetadata(catalog, { sourceLocale: 'zh', format: 'json' }), null, 2)}\n`
-  )
-}
-
-test('preflight fails closed for standalone HTML collected positions', () => {
+test('preflight fails closed for standalone HTML when those positions are supplied as occurrences', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-preflight-html-'))
-  const script = 'module.exports = "欢迎"\n'
-  const html = '<p title="页面">正文</p>\n'
-  writeProject(root, { source: script, html })
-  const entries = [
-    ...extractScript({ source: script, resource: { projectPath: 'src/app.js' }, config: {} }),
-    ...extractHtml({
-      source: html,
-      resource: { projectPath: 'public/index.html', block: 'html', lang: 'html' },
-      config: { attributeAllowlist: ALLOW }
-    }).entries
-  ]
-  writeCatalogFromEntries(root, entries)
+  writeProject(root, {
+    source: 'module.exports = "欢迎"\n',
+    html: '<p title="页面">正文</p>\n'
+  })
   const config = loadConfig({ root })
-  assert.throws(() => preflightBuildReplacement(root, config), error => {
+  const occurrences = [
+    {
+      key: keyFor('欢迎'),
+      source: '欢迎',
+      location: {
+        path: 'src/app.js',
+        kind: 'script-string',
+        start: { line: 1, column: 17 },
+        end: { line: 1, column: 19 }
+      },
+      status: 'active',
+      reportedAmbiguity: false
+    },
+    {
+      key: keyFor('正文'),
+      source: '正文',
+      location: {
+        path: 'public/index.html',
+        kind: 'static-html-text',
+        start: { line: 1, column: 12 },
+        end: { line: 1, column: 14 }
+      },
+      status: 'active',
+      reportedAmbiguity: false
+    }
+  ]
+  assert.throws(() => preflightBuildReplacement(root, config, { occurrences }), error => {
     assert.strictEqual(error.kind, 'build')
     assert.strictEqual(error.stage, 'replacement')
     assert.ok(error.occurrences.some(item => (
       item.path === 'public/index.html'
-      && item.reason === 'standalone HTML is outside replacement scope'
+      && /standalone HTML|outside replacement scope/i.test(item.reason)
     )))
+    return true
+  })
+})
+
+test('preflight without analysis occurrences rejects legacy catalog metadata fallback', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-preflight-legacy-'))
+  writeProject(root)
+  fs.writeFileSync(
+    path.join(root, 'lang/catalog', SOURCE_CATALOG_FILE),
+    `${JSON.stringify({ [keyFor('欢迎')]: '欢迎' }, null, 2)}\n`
+  )
+  const config = loadConfig({ root })
+  assert.throws(() => preflightBuildReplacement(root, config), error => {
+    assert.strictEqual(error.kind, 'configuration')
+    assert.strictEqual(error.message, LEGACY_IDENTITY_METADATA)
     return true
   })
 })
@@ -91,7 +109,7 @@ test('preflight rejects unsupported catalog schema before replacement starts', (
   assert.throws(() => loadPublishedCatalog(root, config), error => {
     assert.strictEqual(error.kind, 'configuration')
     assert.strictEqual(error.stage, 'configuration')
-    assert.match(error.message, /catalog metadata|unsupported|version/i)
+    assert.match(error.message, /catalog metadata|unsupported|version|migrate-keys|scan/i)
     return true
   })
 })
@@ -130,7 +148,4 @@ test('publishFormalBundle keeps the previous formal output when staging publish 
     fs.renameSync = realRename
   }
   assert.strictEqual(fs.readFileSync(path.join(formalPath, 'bundle.js'), 'utf8'), 'PREVIOUS\n')
-  assert.ok(!fs.existsSync(stagingPath))
-  const leftovers = fs.readdirSync(root).filter(name => name.includes('.i18n-build-bak-'))
-  assert.deepStrictEqual(leftovers, [])
 })

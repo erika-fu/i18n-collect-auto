@@ -500,6 +500,8 @@ function applyLocalizedCallReferences(entries, callPlacements, previousMetadata,
 }
 
 function buildCatalog(snapshots, options = {}) {
+  const { LEGACY_IDENTITY_METADATA } = require('./legacy-contraction')
+  throw migrationError(LEGACY_IDENTITY_METADATA)
   const previousMetadata = options && options.previousMetadata != null
     ? upgradeCatalogMetadata(options.previousMetadata)
     : null
@@ -973,6 +975,13 @@ function upgradeCatalogMetadata(metadata) {
   if (typeof metadata !== 'object' || Array.isArray(metadata)) {
     throw migrationError('catalog metadata must be an object')
   }
+  const {
+    LEGACY_IDENTITY_METADATA,
+    hasOccurrenceIdentity
+  } = require('./legacy-contraction')
+  if (hasOccurrenceIdentity(metadata)) {
+    throw migrationError(LEGACY_IDENTITY_METADATA)
+  }
   if (metadata.version === CATALOG_VERSION) {
     if (!metadata.entries || typeof metadata.entries !== 'object' || Array.isArray(metadata.entries)) {
       throw migrationError(`catalog metadata version ${CATALOG_VERSION} has no entries object`)
@@ -980,10 +989,11 @@ function upgradeCatalogMetadata(metadata) {
     for (const key of Object.keys(metadata.entries)) assertCurrentEntry(metadata.entries[key], key)
     return metadata
   }
-  if (metadata.version === CATALOG_VERSION_V2) return migrateV2ToV3(metadata)
-  if (metadata.version === CATALOG_VERSION_V1) return migrateV2ToV3(migrateV1ToV2(metadata))
+  if (metadata.version === CATALOG_VERSION_V2 || metadata.version === CATALOG_VERSION_V1) {
+    throw migrationError(LEGACY_IDENTITY_METADATA)
+  }
   throw migrationError(
-    `catalog metadata version ${metadata.version} cannot be upgraded to version ${CATALOG_VERSION}; rewrite catalogs with i18n-collect collect or restore a version ${CATALOG_VERSION_V1}, ${CATALOG_VERSION_V2}, or ${CATALOG_VERSION} catalog.meta.json`
+    `catalog metadata version ${metadata.version} is not supported; run i18n-collect migrate-keys then i18n-collect scan`
   )
 }
 
@@ -1077,7 +1087,9 @@ function readExplicitMessages(file) {
 }
 
 function readIdentityAmbiguities(file) {
+  const { LEGACY_IDENTITY_ARTIFACT } = require('./legacy-contraction')
   if (!fs.existsSync(file)) return []
+  throw new Error(LEGACY_IDENTITY_ARTIFACT)
   let parsed
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -1124,7 +1136,9 @@ function readIdentityAmbiguities(file) {
 }
 
 function readRetirementConfirmations(file) {
+  const { LEGACY_IDENTITY_ARTIFACT } = require('./legacy-contraction')
   if (!fs.existsSync(file)) return []
+  throw new Error(LEGACY_IDENTITY_ARTIFACT)
   let parsed
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -1152,7 +1166,9 @@ function readRetirementConfirmations(file) {
 }
 
 function readIdentityConfirmations(file) {
+  const { LEGACY_IDENTITY_ARTIFACT } = require('./legacy-contraction')
   if (!fs.existsSync(file)) return []
+  throw new Error(LEGACY_IDENTITY_ARTIFACT)
   let parsed
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'))

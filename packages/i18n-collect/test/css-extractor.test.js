@@ -141,7 +141,7 @@ test('finds a root style block after void elements in the template', () => {
   assert.strictEqual(sliceAt(source, result.entries[0].locations[0]), '必填')
 })
 
-test('ignores an external SCSS style block because the referenced resource is collected separately', () => {
+test('external SCSS style blocks stay out of Style IR collection after preprocessor contraction', () => {
   const source = '<style lang="scss" src="./theme.scss">\n.a { content: "必填"; }\n</style>\n'
   const result = extract(source, {
     projectPath: 'src/App.vue',
@@ -150,9 +150,10 @@ test('ignores an external SCSS style block because the referenced resource is co
     identity: 'src/App.vue::style[index=0;lang=scss]'
   })
   assert.deepStrictEqual(result.entries, [])
-  assert.deepStrictEqual(result.warnings, [])
+  assert.strictEqual(result.warnings.length, 1)
+  assert.strictEqual(result.warnings[0].code, 'unsupported-style-preprocessor')
+  assert.match(result.warnings[0].message, /Style IR|audit/i)
 })
-
 test('uses original Vue style coordinates for each style index', () => {
   const source = [
     '<template>',
@@ -205,14 +206,14 @@ test('uses original Vue style coordinates for each style index', () => {
   )
 })
 
-test('warns once for unsupported style languages and parses configured standalone preprocessors', () => {
+test('warns for preprocessor Style IR contraction instead of collecting SCSS or Stylus', () => {
   const source = [
     '<style lang="scss">',
     '$color: red;',
     '.a { content: "必填"; }',
     '</style>'
   ].join('\n')
-  for (const lang of ['stylus']) {
+  for (const lang of ['stylus', 'scss']) {
     const result = extract(source, {
       projectPath: 'src/App.vue',
       styleIndex: 0,
@@ -222,22 +223,22 @@ test('warns once for unsupported style languages and parses configured standalon
     assert.deepStrictEqual(result.entries, [])
     assert.deepStrictEqual(result.warnings.map(warning => warning.code), ['unsupported-style-preprocessor'])
     assert.strictEqual(result.warnings[0].identity, `src/App.vue::style[index=0;lang=${lang}]`)
-    assert.match(result.warnings[0].message, new RegExp(lang))
+    assert.match(result.warnings[0].message, /Style IR|SCSS|Stylus|audit/i)
   }
   const standalone = extract('.a { content: "必填"; }\n', {
     projectPath: 'src/theme.scss',
     lang: 'scss',
     identity: 'src/theme.scss::style[index=0;lang=scss]'
   }, { styleExtensions: ['.css', '.scss'] })
-  assert.deepStrictEqual(values(standalone), ['必填'])
-  assert.deepStrictEqual(standalone.warnings, [])
+  assert.deepStrictEqual(standalone.entries, [])
+  assert.strictEqual(standalone.warnings[0].code, 'unsupported-style-preprocessor')
   const less = extract('.a { content: "Less 必填"; }\n', {
     projectPath: 'src/theme.less',
     lang: 'less',
     identity: 'src/theme.less::style[index=0;lang=less]'
   }, { styleExtensions: ['.css', '.less'] })
-  assert.deepStrictEqual(values(less), ['Less 必填'])
-  assert.deepStrictEqual(less.warnings, [])
+  assert.deepStrictEqual(less.entries, [])
+  assert.strictEqual(less.warnings[0].code, 'unsupported-style-preprocessor')
 })
 
 test('an exclusion directive before a content declaration excludes only its next string', () => {

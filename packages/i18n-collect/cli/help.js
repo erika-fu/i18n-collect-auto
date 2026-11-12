@@ -1,29 +1,13 @@
 const COLLECT_HELP = `i18n-collect collect
 
-Run collection once through the project's existing webpack integration.
-The webpack configuration must already use i18n-collect/myloader and i18n-collect/myplugin.
-This command does not translate, does not rewrite application source, and does not make network requests.
-It writes the hash dictionary, its source map, and the keyed source-locale catalog with its metadata,
-then reports which localization keys were added, removed, changed, or unchanged.
+Removed. Use i18n-collect scan for source analysis and i18n-collect migrate-keys once
+for catalogs that still use per-occurrence automatic identities.
 
 Usage:
   i18n-collect collect [options]
 
-Options:
-  --cwd <dir>               Project root. Defaults to the current directory.
-  --webpack-config <path>   Webpack configuration to run. Defaults to webpack.config.js.
-  --include <pattern>       Replace the configured include scope. Repeat to set several patterns.
-  --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
-  --context-filter <name>   Replace configured context filters. Repeat to select several.
-                            Names: logging, tests, analytics.
-  --json                    Print the collection report as JSON on stdout.
-  -h, --help                Show this help.
-
 Exit codes:
-  0  collection finished
-  1  configuration failure
-  2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
-  3  build failure
+  1  configuration failure with migration guidance
 `
 
 const TRANSLATE_HELP = `i18n-collect translate
@@ -134,33 +118,14 @@ Exit codes:
 
 const VERIFY_HELP = `i18n-collect verify
 
-Confirm formal collection outputs are current, then run hybrid localization policy checks.
-Runs collection once through the project's webpack integration, fails when generated dictionary,
-source map, source-locale catalog, or catalog metadata bytes differ from the committed files
-(restoring those files before exit), then runs check-policy with baseline comparison.
-Collection failures, key conflicts, identity ambiguities, and invalid metadata stay hard failures
-and cannot be suppressed by the complete-static-copy baseline.
+Removed. Use i18n-collect scan then i18n-collect check for freshness and
+project localization completeness.
 
 Usage:
   i18n-collect verify [options]
 
-Options:
-  --cwd <dir>               Project root. Defaults to the current directory.
-  --webpack-config <path>   Webpack configuration to run. Defaults to webpack.config.js.
-  --include <pattern>       Replace the configured include scope. Repeat to set several patterns.
-  --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
-  --context-filter <name>   Replace configured context filters. Repeat to select several.
-                            Names: logging, tests, analytics.
-  --json                    Print the verification report as JSON on stdout.
-  -h, --help                Show this help.
-
 Exit codes:
-  0  formal outputs are current and policy checks passed (grandfathered baseline entries allowed)
-  1  configuration failure
-  2  collection failure, including a malformed i18n-key directive, a localization key conflict, or an occurrence identity ambiguity
-  3  build failure
-  8  authoring-policy violation: new or modified complete-static-copy findings, or runtime-multilingual boundary violations
-  9  stale formal collection output
+  1  configuration failure with migration guidance
 `
 
 const CHECK_POLICY_HELP = `i18n-collect check-policy
@@ -210,32 +175,31 @@ Usage:
 Commands:
   scan          Analyze project sources and write the source catalog plus analysis report.
   migrate-keys  Migrate per-occurrence automatic keys to deterministic exact-text hash keys.
-  collect       Collect Chinese user-facing copy through the project's webpack integration.
   translate     Fill target-locale catalogs through a project translation provider.
   replace       Preview safe source replacements, or commit them with --write.
-  build         Run collection, then build replacement into the formal webpack bundle.
-  run           Run selected collect, translate, and replace stages.
+  build         Read-only build replacement into the formal webpack bundle.
   check         Evaluate project localization completeness without writing files.
   check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
-  verify        Confirm formal outputs are current, then run hybrid localization policy checks.
+  collect       Removed; use scan (and migrate-keys for legacy catalogs).
+  verify        Removed; use scan then check.
+  run           Removed collect stage; prefer scan, translate, and replace directly.
 
 Run i18n-collect <command> --help for command options.
 `
 
 const RUN_HELP = `i18n-collect run
 
-Compose collection, translation, and replacement into one non-interactive workflow.
-Selected stages always run in this order: collect, then translate, then replace.
+Compose translation and replacement into one non-interactive workflow.
+The collect stage is removed; use i18n-collect scan (and migrate-keys for legacy catalogs).
+Selected stages run in this order: translate, then replace.
 A failing stage stops the workflow and keeps that stage's exit code and diagnostic.
 Replacement stays a dry-run unless --write is set. --allow-network and --strict mean the same thing here as they do on translate and replace.
 
 Workflows:
-  --collect                         Collect only.
   --translate                       Translate only.
-  --collect --translate             Collect, then translate.
-  --collect --replace --adapter js  Collect, then preview replacements.
-  --collect --translate --replace --adapter js --write
-                                    Collect, translate, and commit replacements.
+  --replace --adapter js            Preview replacements.
+  --translate --replace --adapter js --write
+                                    Translate, then commit replacements.
 
 Usage:
   i18n-collect run (--collect | --translate | --replace)... [options]

@@ -90,16 +90,22 @@ function mapVerifyExit(code) {
 }
 
 function verifyReactDemo(runners) {
-  const result = runners.runNode([BIN, 'verify', '--cwd', path.join(ROOT, 'apps/react-demo')])
-  if (result.status === 0) {
-    return { code: EXIT.ok, stdout: result.stdout, stderr: result.stderr || '', category: null }
+  // collect/verify are contracted; React demo policy stays check-policy until issue 12 migrates examples.
+  const cwd = path.join(ROOT, 'apps/react-demo')
+  const policy = runners.runNode([BIN, 'check-policy', '--cwd', cwd])
+  if (policy.status === 0) {
+    return {
+      code: EXIT.ok,
+      stdout: policy.stdout || '',
+      stderr: policy.stderr || '',
+      category: null
+    }
   }
-  const category = mapVerifyExit(result.status)
   return {
-    code: result.status == null ? EXIT.build : result.status,
-    stdout: result.stdout || '',
-    stderr: result.stderr || `${category}: react-demo verify failed\n`,
-    category
+    code: policy.status == null ? EXIT.policy : policy.status,
+    stdout: policy.stdout || '',
+    stderr: policy.stderr || 'policy: react-demo check-policy failed\n',
+    category: policy.status === EXIT.configuration ? 'configuration' : 'policy'
   }
 }
 

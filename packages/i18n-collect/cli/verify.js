@@ -167,6 +167,9 @@ function mapPolicyFailure(policyOutcome, json) {
 }
 
 async function verify(args) {
+  const json = args.includes('--json')
+  const { VERIFY_REMOVED } = require('../mycommon/legacy-contraction')
+  return configurationFailure(VERIFY_REMOVED, json)
   let parsed
   try {
     parsed = parseVerifyArgs(args)

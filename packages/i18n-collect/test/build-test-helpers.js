@@ -89,33 +89,17 @@ function metadataFromAnalysis(analysis, catalog) {
 }
 
 function seedSourceCatalog(root, options = {}) {
-  const writeLegacyArtifacts = options.writeLegacyArtifacts !== false
+  const writeLocaleCatalog = options.writeLocaleCatalog === true
   const config = loadConfig({ root })
   const catalogDir = path.join(root, config.catalogDir)
   const sourceCatalogFile = path.join(catalogDir, SOURCE_CATALOG_FILE)
-  let previous = {}
-  if (fs.existsSync(sourceCatalogFile)) {
-    try {
-      previous = JSON.parse(fs.readFileSync(sourceCatalogFile, 'utf8'))
-    } catch (error) {
-      previous = {}
-    }
-  }
   const sources = listProjectSources(config.root, config)
   const analysis = analyzeProject({ files: sources, config })
   const catalog = buildSourceCatalog(analysis)
-  const metaLookup = { ...catalog }
-  for (const finding of analysis.localizedCallFindings || []) {
-    if (!finding.key || metaLookup[finding.key] != null) continue
-    if (typeof previous[finding.key] === 'string') {
-      metaLookup[finding.key] = previous[finding.key]
-    }
-  }
   fs.mkdirSync(catalogDir, { recursive: true })
   fs.writeFileSync(sourceCatalogFile, json(catalog))
-  if (writeLegacyArtifacts) {
+  if (writeLocaleCatalog) {
     fs.writeFileSync(path.join(catalogDir, `${config.sourceLocale}.json`), json(catalog))
-    fs.writeFileSync(path.join(catalogDir, 'catalog.meta.json'), json(metadataFromAnalysis(analysis, metaLookup)))
   }
   return catalog
 }

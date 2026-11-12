@@ -5,7 +5,6 @@ const path = require('path')
 const test = require('node:test')
 const { loadConfig, validate } = require('../mycommon/config')
 const { CollectionStore, keyFor } = require('../mycommon/store')
-const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
 const { writeOutputs } = require('../mycommon/output')
 
 test('uses the MD5 of the final decoded value', () => {
@@ -284,7 +283,7 @@ test('writes stable pretty JSON output', async () => {
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, config.sourceMapFilename)), null), { version: 1, entries: [] })
 })
 
-test('a failed catalog metadata publish restores dictionary, source map, and metadata', async () => {
+test('a failed catalog publish restores dictionary and source map', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-meta-publish-'))
   const config = {
     outputPath: 'lang/zh_hash.json',
@@ -292,26 +291,16 @@ test('a failed catalog metadata publish restores dictionary, source map, and met
   }
   const previousDictionary = '{\n  "old": "旧"\n}\n'
   const previousMap = '{\n  "version": 1,\n  "entries": []\n}\n'
-  const previousMetadata = '{\n  "version": 1,\n  "entries": {}\n}\n'
   fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
   fs.writeFileSync(path.join(root, config.outputPath), previousDictionary)
   fs.writeFileSync(path.join(root, config.sourceMapFilename), previousMap)
-  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), previousMetadata)
 
-  const catalog = buildCatalog([{
-    identity: 'src/a.js::script',
-    entries: [{
-      value: '你好',
-      locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 2 } }]
-    }]
-  }])
-  const nextMetadata = `${JSON.stringify(catalogMetadata(catalog, { sourceLocale: 'zh', format: 'json' }), null, 2)}\n`
   const realRename = fs.renameSync.bind(fs)
   let failed = false
   fs.renameSync = (from, to) => {
-    if (!failed && String(to).endsWith('catalog.meta.json')) {
+    if (!failed && String(to).endsWith('zh.json')) {
       failed = true
-      throw new Error('forced metadata publish failure')
+      throw new Error('forced catalog publish failure')
     }
     return realRename(from, to)
   }
@@ -325,10 +314,10 @@ test('a failed catalog metadata publish restores dictionary, source map, and met
         fs,
         [
           { path: 'lang/catalog/zh.json', content: '{\n  "k": "你好"\n}\n' },
-          { path: 'lang/catalog/catalog.meta.json', content: nextMetadata }
+          { path: 'lang/catalog/source-catalog.json', content: '{\n  "k": "你好"\n}\n' }
         ]
       ),
-      /forced metadata publish failure/
+      /forced catalog publish failure/
     )
   } finally {
     fs.renameSync = realRename
@@ -336,7 +325,6 @@ test('a failed catalog metadata publish restores dictionary, source map, and met
 
   assert.strictEqual(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), previousDictionary)
   assert.strictEqual(fs.readFileSync(path.join(root, config.sourceMapFilename), 'utf8'), previousMap)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'), previousMetadata)
   assert.deepStrictEqual(
     fs.readdirSync(path.join(root, 'lang')).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
     []
@@ -347,27 +335,9 @@ test('a failed catalog metadata publish restores dictionary, source map, and met
   )
 })
 
-test('catalog metadata serialization is deterministic for the same snapshots', () => {
-  const snapshots = [{
-    identity: 'src/a.js::script',
-    entries: [
-      { value: '乙', locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 2, column: 0 }, end: { line: 2, column: 1 } }] },
-      { value: '甲', locations: [{ path: 'src/a.js', kind: 'script-string', start: { line: 1, column: 0 }, end: { line: 1, column: 1 } }] }
-    ]
-  }]
-  let sequence = 0
-  const createUlid = () => `0000000000${String(sequence++).padStart(16, '0')}`
-  const firstCatalog = buildCatalog(snapshots, { createUlid })
-  sequence = 0
-  const secondCatalog = buildCatalog(snapshots, { createUlid })
-  const first = JSON.stringify(catalogMetadata(firstCatalog, { sourceLocale: 'zh', format: 'json' }))
-  const second = JSON.stringify(catalogMetadata(secondCatalog, { sourceLocale: 'zh', format: 'json' }))
+test('source catalog object keys stay stable for the same messages', () => {
+  const first = JSON.stringify({ [keyFor('甲')]: '甲', [keyFor('乙')]: '乙' })
+  const second = JSON.stringify({ [keyFor('甲')]: '甲', [keyFor('乙')]: '乙' })
   assert.strictEqual(first, second)
-  const parsed = JSON.parse(first)
-  assert.strictEqual(parsed.version, 3)
-  assert.ok(Object.values(parsed.entries).every(entry => entry.representation === 'source-text'))
-  assert.ok(Object.values(parsed.entries).every(entry =>
-    entry.occurrences.every(occurrence => occurrence.representation === 'source-text')
-  ))
 })
 

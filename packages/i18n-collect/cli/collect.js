@@ -330,19 +330,8 @@ async function execute(parsed, hooks = {}) {
 
 async function collect(args, hooks = {}) {
   const json = args.includes('--json')
-  let parsed
-  try {
-    parsed = parseCollectArgs(args)
-  } catch (error) {
-    return failure(error, json)
-  }
-  try {
-    const report = await execute(parsed, hooks)
-    const stdout = parsed.json ? jsonText(report) : humanReport(report)
-    return outcome(EXIT.ok, stdout, '')
-  } catch (error) {
-    return failure(error, parsed.json)
-  }
+  const { COLLECT_REMOVED } = require('../mycommon/legacy-contraction')
+  return failure(commandError('configuration', COLLECT_REMOVED), json)
 }
 
 module.exports = {

@@ -1,10 +1,5 @@
 const path = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
-const MyI18nPlugin = require('i18n-collect/myplugin')
-
-const loaderPath = require.resolve('i18n-collect/myloader')
-const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')
-const template = path.resolve(__dirname, 'public/index.html')
 
 module.exports = {
   context: __dirname,
@@ -23,7 +18,6 @@ module.exports = {
         test: /\.jsx?$/,
         exclude: /node_modules/,
         use: [
-          loaderPath,
           {
             loader: require.resolve('babel-loader'),
             options: {
@@ -39,17 +33,15 @@ module.exports = {
         test: /\.css$/,
         use: [
           require.resolve('style-loader'),
-          require.resolve('css-loader'),
-          loaderPath
+          require.resolve('css-loader')
         ]
       }
     ]
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: `!!${htmlLoader}?${JSON.stringify({ force: true })}!${loaderPath}!${template}`,
+      template: path.resolve(__dirname, 'public/index.html'),
       title: 'React 文案收集示例'
-    }),
-    new MyI18nPlugin()
+    })
   ]
 }

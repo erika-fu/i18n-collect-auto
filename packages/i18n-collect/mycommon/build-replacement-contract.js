@@ -309,27 +309,15 @@ function stripCollectionIntegration(webpackConfig) {
 
 function preflightBuildReplacement(root, config, options = {}) {
   const adapter = config.buildReplacement && config.buildReplacement.adapter
-  let metadata = null
-  let orphaned = []
-  let open
-  let extraSkipped = []
-  if (Array.isArray(options.occurrences)) {
-    open = options.occurrences.map(item => ({
-      ...item,
-      reportedAmbiguity: Boolean(item && item.reportedAmbiguity)
-    }))
-  } else {
-    metadata = loadPublishedCatalog(root, config)
-    const items = catalogOccurrences(metadata)
-    const ambiguities = readAmbiguities(root, config)
-    const active = []
-    for (const item of items) {
-      if (item.status === 'orphaned') orphaned.push(skipDetail(item, ORPHANED))
-      else active.push(item)
-    }
-    open = withReportedAmbiguities(active, ambiguities)
-    extraSkipped = unrepresentedAmbiguities(open, ambiguities)
+  if (!Array.isArray(options.occurrences)) {
+    const { LEGACY_IDENTITY_METADATA } = require('./legacy-contraction')
+    throw contractError('configuration', 'configuration', LEGACY_IDENTITY_METADATA)
   }
+  const open = options.occurrences.map(item => ({
+    ...item,
+    reportedAmbiguity: false,
+    status: 'active'
+  }))
   const sources = readSources(root, open)
   const planner = new ReplacementPlanner({
     adapter,
@@ -344,12 +332,8 @@ function preflightBuildReplacement(root, config, options = {}) {
     occurrences: open,
     resources: plannerResources(root, config, adapter, open, sources)
   })
-  const occurrences = sortOccurrences([
-    ...orphaned,
-    ...planned.skipped,
-    ...extraSkipped
-  ])
-  if (occurrences.length === 0) return { metadata, occurrences: [] }
+  const occurrences = sortOccurrences(planned.skipped)
+  if (occurrences.length === 0) return { metadata: null, occurrences: [] }
   throw buildReplacementError(occurrences)
 }
 

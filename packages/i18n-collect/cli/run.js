@@ -1,3 +1,4 @@
+const { RUN_COLLECT_REMOVED } = require('../mycommon/legacy-contraction')
 const { collect } = require('./collect')
 const { replace } = require('./replace')
 const { translate } = require('./translate')
@@ -129,6 +130,9 @@ async function run(args) {
     parsed = parseRunArgs(args)
   } catch (error) {
     return failure(error, json)
+  }
+  if (parsed.stages.collect || (parsed.selected && parsed.selected.includes('collect'))) {
+    return failure(commandError(RUN_COLLECT_REMOVED), json)
   }
   const results = []
   const sections = []

@@ -1,14 +1,8 @@
 const fs = require('fs')
 const path = require('path')
-const { readCatalogMetadataFile } = require('../mycommon/catalog')
 const {
-  buildReplacementError,
   transformBuildReplacement
 } = require('../mycommon/build-replace')
-const {
-  catalogOccurrences,
-  ORPHANED
-} = require('../mycommon/build-replacement-contract')
 const { getBuildReplacementContext } = require('../mycommon/build-replacement-context')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
 const { SCRIPT_EXTENSIONS } = require('../mycommon/replace-preview')
@@ -24,48 +18,14 @@ function looksLikeVueSfc(source) {
   return typeof source === 'string' && /<(?:template|script|style)\b/i.test(source)
 }
 
-function activeOccurrences(metadata, projectPath) {
-  const orphaned = []
-  const open = []
-  for (const item of catalogOccurrences(metadata)) {
-    if (item.location.path !== projectPath) continue
-    if (item.status === 'orphaned') {
-      orphaned.push({
-        path: item.location.path,
-        key: item.key,
-        kind: item.location.kind,
-        source: item.source,
-        start: item.location.start,
-        end: item.location.end,
-        reason: ORPHANED
-      })
-    } else {
-      open.push(item)
-    }
-  }
-  return { open, orphaned }
-}
-
 function activeOccurrencesFromList(items, projectPath) {
-  const orphaned = []
   const open = []
   for (const item of items || []) {
     if (!item || !item.location || item.location.path !== projectPath) continue
-    if (item.status === 'orphaned') {
-      orphaned.push({
-        path: item.location.path,
-        key: item.key,
-        kind: item.location.kind,
-        source: item.source,
-        start: item.location.start,
-        end: item.location.end,
-        reason: ORPHANED
-      })
-    } else {
-      open.push(item)
-    }
+    if (item.status === 'orphaned') continue
+    open.push({ ...item, status: 'active', reportedAmbiguity: false })
   }
-  return { open, orphaned }
+  return { open }
 }
 
 function loader(source, sourceMap, meta) {
@@ -90,21 +50,12 @@ function loader(source, sourceMap, meta) {
       return
     }
     const context = getBuildReplacementContext(root)
-    let selected
-    if (context && Array.isArray(context.occurrences)) {
-      selected = activeOccurrencesFromList(context.occurrences, projectPath)
-    } else {
-      const metadata = readCatalogMetadataFile(path.join(root, catalogFiles(config).metadata))
-      if (!metadata) {
-        callback(new Error('i18n-collect build replacement requires a published catalog'))
-        return
-      }
-      selected = activeOccurrences(metadata, projectPath)
-    }
-    if (selected.orphaned.length > 0) {
-      callback(buildReplacementError(selected.orphaned))
+    if (!context || !Array.isArray(context.occurrences)) {
+      const { LEGACY_IDENTITY_METADATA } = require('../mycommon/legacy-contraction')
+      callback(new Error(LEGACY_IDENTITY_METADATA))
       return
     }
+    const selected = activeOccurrencesFromList(context.occurrences, projectPath)
     if (selected.open.length === 0) {
       callback(null, source, sourceMap, meta)
       return

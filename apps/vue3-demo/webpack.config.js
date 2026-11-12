@@ -7,11 +7,6 @@ const vueLoaderCompiler = require('vue-loader/dist/compiler')
 vueLoaderCompiler.compiler = require('@vue/compiler-sfc')
 
 const { VueLoaderPlugin } = require('vue-loader')
-const MyI18nPlugin = require('i18n-collect/myplugin')
-
-const collector = require.resolve('i18n-collect/myloader')
-const htmlLoader = require.resolve('html-webpack-plugin/lib/loader.js')
-const htmlTemplate = path.resolve(__dirname, 'public/index.html')
 
 module.exports = {
   context: __dirname,
@@ -35,31 +30,13 @@ module.exports = {
       {
         test: /\.m?js$/,
         exclude: /node_modules/,
-        use: [collector]
-      },
-      // These rules run in vue-loader's block requests. The collector pitch
-      // reads the owning SFC before template, script, or style transforms.
-      {
-        test: /\.vue$/,
-        resourceQuery: /type=template/,
-        use: [collector]
-      },
-      {
-        test: /\.vue$/,
-        resourceQuery: /type=script/,
-        use: [collector]
-      },
-      {
-        test: /\.vue$/,
-        resourceQuery: /type=style/,
-        use: [collector]
+        use: []
       },
       {
         test: /\.css$/,
         use: [
           require.resolve('style-loader'),
-          require.resolve('css-loader'),
-          collector
+          require.resolve('css-loader')
         ]
       },
       {
@@ -106,8 +83,7 @@ module.exports = {
   plugins: [
     new VueLoaderPlugin(),
     new HtmlWebpackPlugin({
-      template: `!!${htmlLoader}?${JSON.stringify({ force: true })}!${collector}!${htmlTemplate}`
-    }),
-    new MyI18nPlugin()
+      template: path.resolve(__dirname, 'public/index.html')
+    })
   ]
 }
