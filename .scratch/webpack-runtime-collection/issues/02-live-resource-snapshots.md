@@ -4,12 +4,12 @@
 
 **Blocked by:** 01: Establish Webpack module graph collection.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each processed resource submits a complete snapshot that replaces its previous snapshot.
-- [ ] Edited resources replace old findings.
-- [ ] Deleted or unreachable resources disappear from the aggregate result.
-- [ ] Failed compilations preserve the previous complete snapshot and formal outputs.
-- [ ] Vue blocks, resource queries, and other resource identities cannot overwrite one another.
-- [ ] Watch tests cover additions, edits, removals, and failed rounds.
-- [ ] Formal output publication is atomic.
+- [x] Each processed resource submits a complete snapshot that replaces its previous snapshot.
+- [x] Edited resources replace old findings.
+- [x] Deleted or unreachable resources disappear from the aggregate result.
+- [x] Failed compilations preserve the previous complete snapshot and formal outputs.
+- [x] Vue blocks, resource queries, and other resource identities cannot overwrite one another.
+- [x] Watch tests cover additions, edits, removals, and failed rounds.
+- [x] Formal output publication is atomic.

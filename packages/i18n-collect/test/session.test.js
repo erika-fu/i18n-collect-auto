@@ -175,6 +175,110 @@ test('replacing a candidate snapshot drops the previous copy for that identity',
   assert.deepStrictEqual(session.committedSnapshots()[0].entries, [])
 })
 
+function snapshotEntry(value, projectPath, kind = 'script-string') {
+  return {
+    value,
+    locations: [{
+      path: projectPath,
+      kind,
+      start: { line: 1, column: 0 },
+      end: { line: 1, column: value.length }
+    }]
+  }
+}
+
+test('vue blocks and resource-query identities replace independently', () => {
+  const root = compiler()
+  const session = getSession(root)
+  const script = {
+    identity: 'src/App.vue::script[lang=js]',
+    projectPath: 'src/App.vue',
+    entries: [snapshotEntry('脚本文案', 'src/App.vue')]
+  }
+  const template = {
+    identity: 'src/App.vue::template[lang=html]',
+    projectPath: 'src/App.vue',
+    entries: [snapshotEntry('模板文案', 'src/App.vue', 'html-text')]
+  }
+  const styleZero = {
+    identity: 'src/App.vue::style[index=0;lang=css]',
+    projectPath: 'src/App.vue',
+    entries: []
+  }
+  const styleOne = {
+    identity: 'src/App.vue::style[index=1;lang=scss]',
+    projectPath: 'src/App.vue',
+    entries: []
+  }
+  const htmlDocument = {
+    identity: 'src/copy.html::html',
+    projectPath: 'src/copy.html',
+    entries: [snapshotEntry('页面文案', 'src/copy.html', 'html-text')]
+  }
+  const htmlAsTemplate = {
+    identity: 'src/copy.html::template[lang=html]',
+    projectPath: 'src/copy.html',
+    entries: [snapshotEntry('查询模板', 'src/copy.html', 'html-text')]
+  }
+  const first = compilation(root)
+  session.begin(first)
+  for (const snapshot of [script, template, styleZero, styleOne, htmlDocument, htmlAsTemplate]) {
+    session.submit(first, { buildInfo: {} }, snapshot)
+  }
+  session.commit(first, session.candidateSnapshots(first), 'hash-1')
+  assert.deepStrictEqual(
+    session.committedSnapshots().map(snapshot => snapshot.identity).sort(),
+    [
+      'src/App.vue::script[lang=js]',
+      'src/App.vue::style[index=0;lang=css]',
+      'src/App.vue::style[index=1;lang=scss]',
+      'src/App.vue::template[lang=html]',
+      'src/copy.html::html',
+      'src/copy.html::template[lang=html]'
+    ]
+  )
+  assert.deepStrictEqual(new Set(Object.values(session.committed.runtimeDictionary())), new Set([
+    '脚本文案',
+    '模板文案',
+    '页面文案',
+    '查询模板'
+  ]))
+
+  const next = compilation(root)
+  session.begin(next)
+  const updatedTemplate = {
+    ...template,
+    entries: [snapshotEntry('新模板', 'src/App.vue', 'html-text')]
+  }
+  const updatedHtmlDocument = {
+    ...htmlDocument,
+    entries: [snapshotEntry('新页面', 'src/copy.html', 'html-text')]
+  }
+  for (const snapshot of [script, updatedTemplate, styleZero, styleOne, updatedHtmlDocument, htmlAsTemplate]) {
+    session.submit(next, { buildInfo: {} }, snapshot)
+  }
+  session.commit(next, session.candidateSnapshots(next), 'hash-2')
+  assert.deepStrictEqual(
+    session.committedSnapshots().map(snapshot => snapshot.identity).sort(),
+    [
+      'src/App.vue::script[lang=js]',
+      'src/App.vue::style[index=0;lang=css]',
+      'src/App.vue::style[index=1;lang=scss]',
+      'src/App.vue::template[lang=html]',
+      'src/copy.html::html',
+      'src/copy.html::template[lang=html]'
+    ]
+  )
+  assert.deepStrictEqual(new Set(Object.values(session.committed.runtimeDictionary())), new Set([
+    '脚本文案',
+    '新模板',
+    '新页面',
+    '查询模板'
+  ]))
+  assert.ok(!Object.values(session.committed.runtimeDictionary()).includes('模板文案'))
+  assert.ok(!Object.values(session.committed.runtimeDictionary()).includes('页面文案'))
+})
+
 const ROOT = '/project'
 const FILE_HASH = 'file-hash'
 
@@ -191,6 +295,26 @@ function cachedModule(snapshot, overrides = {}) {
     }
   }
 }
+
+test('assembleLiveSet keeps distinct identities that share a project path', () => {
+  const script = helloSnapshot('src/App.vue::script[lang=js]')
+  script.projectPath = 'src/App.vue'
+  const template = helloSnapshot('src/App.vue::template[lang=html]')
+  template.projectPath = 'src/App.vue'
+  template.entries = [snapshotEntry('模板文案', 'src/App.vue', 'html-text')]
+  const live = assembleLiveSet([
+    cachedModule(script),
+    cachedModule(template)
+  ], { root: ROOT, fileConfigHash: FILE_HASH })
+  assert.deepStrictEqual(live.snapshots.map(snapshot => snapshot.identity).sort(), [
+    'src/App.vue::script[lang=js]',
+    'src/App.vue::template[lang=html]'
+  ])
+  assert.deepStrictEqual(
+    live.snapshots.map(snapshot => snapshot.entries[0].value).sort(),
+    ['你好', '模板文案']
+  )
+})
 
 test('cached module metadata restores a snapshot without a loader invocation', () => {
   const live = assembleLiveSet([
