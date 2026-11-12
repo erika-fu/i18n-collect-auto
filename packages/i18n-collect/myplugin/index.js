@@ -51,9 +51,20 @@ function liveRound(compilation, context) {
   }
 }
 
+function pluginConfigOptions(options = {}) {
+  const {
+    publishOutputs,
+    onAnalysis,
+    ...configOptions
+  } = options
+  return configOptions
+}
+
 class MyI18nPlugin {
   constructor(options = {}) {
-    this.options = options
+    this.options = pluginConfigOptions(options)
+    this.publishOutputs = options.publishOutputs !== false
+    this.onAnalysis = typeof options.onAnalysis === 'function' ? options.onAnalysis : null
   }
 
   apply(compiler) {
@@ -87,14 +98,27 @@ class MyI18nPlugin {
       const config = loadConfig({ root: compiler.context, pluginOptions: this.options })
       let catalog
       let report
+      let analysis
       try {
         const staticSnapshots = collectStaticAuditSnapshots({ root: config.root, config })
-        const analysis = analyzeSnapshots([...round.snapshots, ...staticSnapshots], config)
+        analysis = analyzeSnapshots([...round.snapshots, ...staticSnapshots], config)
         catalog = buildSourceCatalog(analysis)
         report = analysisReport(analysis)
       } catch (error) {
         session.abandon(compilation)
         throw error
+      }
+      if (this.onAnalysis) {
+        this.onAnalysis({
+          analysis,
+          sourceCatalog: catalog,
+          report,
+          snapshots: round.snapshots
+        })
+      }
+      if (!this.publishOutputs) {
+        session.commit(compilation, round.snapshots, config.configHash)
+        return
       }
       // Module-graph snapshots alone enter the committed store used by build
       // replacement; static audit snapshots stay analysis-report only.
@@ -113,3 +137,4 @@ class MyI18nPlugin {
 }
 
 module.exports = MyI18nPlugin
+module.exports.liveRound = liveRound

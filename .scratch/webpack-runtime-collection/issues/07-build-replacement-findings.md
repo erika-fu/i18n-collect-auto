@@ -4,13 +4,13 @@
 
 **Blocked by:** 04: Collect safe user-facing text from Vue render functions; 05: Atomically publish and verify collection outputs.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Build replacement consumes findings from the current compilation.
-- [ ] No independent filesystem reanalysis is performed to derive keys or occurrences.
-- [ ] JavaScript, Vue 2, and Vue 3 adapters define explicit call shapes and safe rewrite positions.
-- [ ] Adapters verify that the required runtime `t` or `$t` integration is already available.
-- [ ] The initial implementation does not guess or inject runtime imports or helpers.
-- [ ] Collection may succeed when a finding cannot be safely replaced, but strict replacement mode fails closed.
-- [ ] Standalone HTML and CSS are excluded from replacement.
-- [ ] Emitted bundles contain the expected runtime lookups while application source remains unchanged.
+- [x] Build replacement consumes findings from the current compilation.
+- [x] No independent filesystem reanalysis is performed to derive keys or occurrences.
+- [x] JavaScript, Vue 2, and Vue 3 adapters define explicit call shapes and safe rewrite positions.
+- [x] Adapters verify that the required runtime `t` or `$t` integration is already available.
+- [x] The initial implementation does not guess or inject runtime imports or helpers.
+- [x] Collection may succeed when a finding cannot be safely replaced, but strict replacement mode fails closed.
+- [x] Standalone HTML and CSS are excluded from replacement.
+- [x] Emitted bundles contain the expected runtime lookups while application source remains unchanged.

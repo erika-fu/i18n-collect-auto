@@ -3,10 +3,16 @@ const path = require('path')
 const {
   transformBuildReplacement
 } = require('../mycommon/build-replace')
+const {
+  occurrencesForReplacement,
+  occurrencesFromModuleSource
+} = require('../mycommon/build-replacement-findings')
 const { getBuildReplacementContext } = require('../mycommon/build-replacement-context')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
 const { SCRIPT_EXTENSIONS } = require('../mycommon/replace-preview')
 const { SOURCE_CATALOG_FILE } = require('../mycommon/source-catalog-freshness')
+const { COLLECT_METADATA } = require('../mycommon/session')
+const { analyzeSnapshots } = require('../mycommon/project-analysis')
 
 function supportedResource(projectPath, adapter) {
   const extension = path.posix.extname(projectPath).toLowerCase()
@@ -28,6 +34,17 @@ function activeOccurrencesFromList(items, projectPath) {
   return { open }
 }
 
+function occurrencesFromCollectMetadata(mod, projectPath, config) {
+  const metadata = mod && mod.buildInfo && mod.buildInfo[COLLECT_METADATA]
+  const snapshot = metadata && metadata.snapshot
+  if (!snapshot || !Array.isArray(snapshot.entries)) return []
+  const analysis = analyzeSnapshots([{
+    ...snapshot,
+    projectPath: snapshot.projectPath || projectPath
+  }], config)
+  return activeOccurrencesFromList(occurrencesForReplacement(analysis), projectPath).open
+}
+
 function loader(source, sourceMap, meta) {
   const callback = this.async()
   try {
@@ -45,23 +62,55 @@ function loader(source, sourceMap, meta) {
       callback(null, source, sourceMap, meta)
       return
     }
-    if ((build.adapter === 'vue2' || build.adapter === 'vue3') && path.posix.extname(projectPath).toLowerCase() === '.vue' && !looksLikeVueSfc(source)) {
+    const sourceText = Buffer.isBuffer(source) ? source.toString('utf8') : source
+    if ((build.adapter === 'vue2' || build.adapter === 'vue3') && path.posix.extname(projectPath).toLowerCase() === '.vue' && !looksLikeVueSfc(sourceText)) {
       callback(null, source, sourceMap, meta)
       return
     }
     const context = getBuildReplacementContext(root)
-    if (!context || !Array.isArray(context.occurrences)) {
+    if (!context || (!Array.isArray(context.occurrences) && !context.sourceCatalog)) {
       const { LEGACY_IDENTITY_METADATA } = require('../mycommon/legacy-contraction')
       callback(new Error(LEGACY_IDENTITY_METADATA))
       return
     }
-    const selected = activeOccurrencesFromList(context.occurrences, projectPath)
+    // Vue SFC pre-replacement edits original template/script coordinates. Webpack
+    // collection findings for templates live on render-function sources, so derive
+    // SFC occurrences from the in-memory module buffer instead of those locations.
+    const vueSfc = (build.adapter === 'vue2' || build.adapter === 'vue3')
+      && path.posix.extname(projectPath).toLowerCase() === '.vue'
+      && looksLikeVueSfc(sourceText)
+    let selected = { open: [] }
+    if (vueSfc) {
+      selected = {
+        open: occurrencesFromModuleSource({
+          source: sourceText,
+          projectPath,
+          config
+        })
+      }
+    } else {
+      selected = activeOccurrencesFromList(context.occurrences, projectPath)
+      if (selected.open.length === 0) {
+        selected = {
+          open: occurrencesFromCollectMetadata(this._module, projectPath, config)
+        }
+      }
+      if (selected.open.length === 0) {
+        selected = {
+          open: occurrencesFromModuleSource({
+            source: sourceText,
+            projectPath,
+            config
+          })
+        }
+      }
+    }
     if (selected.open.length === 0) {
       callback(null, source, sourceMap, meta)
       return
     }
     const result = transformBuildReplacement({
-      source: Buffer.isBuffer(source) ? source.toString('utf8') : source,
+      source: sourceText,
       root,
       projectPath,
       resourcePath,

@@ -12,12 +12,18 @@ const {
 } = require('../mycommon/build-replacement-contract')
 const {
   clearBuildReplacementContext,
-  setBuildReplacementContext
+  prepareBuildReplacementContext
 } = require('../mycommon/build-replacement-context')
+const { prepareCompilationBuildReplacement } = require('../mycommon/build-replacement-findings')
 const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
-const { assertSourceCatalogFresh } = require('../mycommon/source-catalog-freshness')
+const {
+  assertSourceCatalogFresh,
+  readCommittedSourceCatalog,
+  sourceCatalogPath
+} = require('../mycommon/source-catalog-freshness')
 const I18nBuildReplacementPlugin = require('../myplugin/build-replacement')
+const MyI18nPlugin = require('../myplugin')
 const {
   EXIT,
   classifyBuild,
@@ -123,6 +129,18 @@ function cloneWebpackConfig(config) {
   }
 }
 
+function isMyI18nPlugin(plugin) {
+  return Boolean(plugin && plugin.constructor && plugin.constructor.name === 'MyI18nPlugin')
+}
+
+function ensureVerifyCollectionPlugin(webpackConfig, { onAnalysis }) {
+  webpackConfig.plugins = (webpackConfig.plugins || []).filter(plugin => !isMyI18nPlugin(plugin))
+  webpackConfig.plugins.push(new MyI18nPlugin({
+    publishOutputs: false,
+    onAnalysis
+  }))
+}
+
 function classifyReplacementBuild(error, stats) {
   const occurrences = extractBuildReplacementOccurrences(error, stats)
   if (occurrences.length > 0) {
@@ -147,8 +165,87 @@ function classifyReplacementBuild(error, stats) {
   return null
 }
 
+/**
+ * Load the committed source catalog only. Occurrence locations come from a
+ * Webpack collection compilation, not a filesystem source reanalysis.
+ */
 function prepareReadOnlyBuild(root, config) {
-  return assertSourceCatalogFresh(root, config)
+  const sourceCatalog = readCommittedSourceCatalog(root, config)
+  return {
+    analysis: null,
+    sourceCatalog,
+    occurrences: [],
+    sourceCatalogPath: sourceCatalogPath(config)
+  }
+}
+
+async function applyOverrides(root, parsed) {
+  const overrides = overridesFrom(parsed)
+  if (Object.keys(overrides).length === 0) return
+  setCollectionOverrides(overrides)
+  try {
+    loadConfig({ root })
+  } catch (error) {
+    throw commandError(
+      'configuration',
+      error.message.replace(/^Invalid i18n-collect\.config\.js:/, 'Invalid build options:')
+    )
+  }
+}
+
+async function loadProjectWebpackConfig(root, parsed) {
+  const configFile = path.resolve(root, parsed.webpackConfig || 'webpack.config.js')
+  if (!fs.existsSync(configFile)) {
+    throw commandError('configuration', `missing webpack configuration: ${projectRelative(root, configFile)}`)
+  }
+  const loaded = await readWebpackConfig(configFile)
+  if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded)) {
+    throw commandError('configuration', 'build accepts one webpack configuration object')
+  }
+  return loaded
+}
+
+/**
+ * Run a Webpack collection compilation and return its analysis.
+ * Does not publish formal collection outputs or the application bundle.
+ */
+async function runCollectionAnalysisCompilation(root, parsed, config, hooks = {}) {
+  const loaded = hooks.loaded || await loadProjectWebpackConfig(root, parsed)
+  const webpackConfig = cloneWebpackConfig(loaded)
+  let compilationResult = null
+  ensureVerifyCollectionPlugin(webpackConfig, {
+    onAnalysis(result) {
+      compilationResult = result
+    }
+  })
+  webpackConfig.watch = false
+  webpackConfig.cache = false
+  webpackConfig.infrastructureLogging = { level: 'error' }
+  const staging = stageFormalBundle(webpackConfig, root)
+  try {
+    const { error, stats } = await runCompiler(webpackConfig, {
+      onCompiler(next) {
+        if (typeof hooks.onCompiler === 'function') hooks.onCompiler(next)
+      },
+      onCompilerClosed(next) {
+        if (typeof hooks.onCompilerClosed === 'function') hooks.onCompilerClosed(next)
+      }
+    })
+    const failed = classifyBuild(error, stats)
+    if (failed) {
+      failed.stage = failed.stage || 'analysis'
+      throw failed
+    }
+    if (stats && stats.hasErrors()) {
+      throw commandError('collection', 'webpack reported a collection failure')
+    }
+    if (!compilationResult || !compilationResult.analysis) {
+      throw commandError('collection', 'build compilation finished without collection analysis')
+    }
+    return compilationResult
+  } finally {
+    cleanupBundleArtifacts(root, staging.stagingPath)
+  }
 }
 
 async function runReplacementCompilation(root, parsed, config, hooks = {}) {
@@ -161,32 +258,48 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
   clearCollectionOverrides()
   try {
     restoreNetwork = forbidNetwork()
-    const overrides = overridesFrom(parsed)
-    if (Object.keys(overrides).length > 0) {
-      setCollectionOverrides(overrides)
+    await applyOverrides(root, parsed)
+    const loaded = await loadProjectWebpackConfig(root, parsed)
+    const prepared = hooks.prepared || prepareReadOnlyBuild(root, config)
+    let compilationResult = hooks.compilationResult || null
+    if (!compilationResult) {
       try {
-        loadConfig({ root })
+        compilationResult = await runCollectionAnalysisCompilation(root, parsed, config, {
+          loaded,
+          onCompiler: hooks.onCompiler,
+          onCompilerClosed: hooks.onCompilerClosed
+        })
       } catch (error) {
-        throw commandError(
-          'configuration',
-          error.message.replace(/^Invalid i18n-collect\.config\.js:/, 'Invalid build options:')
-        )
+        // Transitional fallback until demos gain Webpack collect loaders (issue 08).
+        if (!/loader is not integrated/i.test(String(error && error.message || error))) {
+          throw error
+        }
+        const fresh = assertSourceCatalogFresh(root, config)
+        prepared.analysis = fresh.analysis
+        prepared.occurrences = fresh.occurrences
+        prepared.sourceCatalog = fresh.sourceCatalog
+        prepareBuildReplacementContext(root, {
+          occurrences: prepared.occurrences,
+          sourceCatalog: prepared.sourceCatalog,
+          analysis: prepared.analysis
+        })
+        compilationResult = null
       }
     }
-    const configFile = path.resolve(root, parsed.webpackConfig || 'webpack.config.js')
-    if (!fs.existsSync(configFile)) {
-      throw commandError('configuration', `missing webpack configuration: ${projectRelative(root, configFile)}`)
+    if (compilationResult) {
+      const verified = prepareCompilationBuildReplacement(root, config, compilationResult)
+      prepared.analysis = verified.analysis
+      prepared.occurrences = verified.occurrences
+      prepared.sourceCatalog = verified.sourceCatalog
     }
-    const loaded = await readWebpackConfig(configFile)
-    if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded)) {
-      throw commandError('configuration', 'build accepts one webpack configuration object')
+    // JS compilation findings share script coordinates with replacement. Vue
+    // template findings are collected from render-function JavaScript while
+    // build replacement still edits the original SFC, so preflight against the
+    // disk SFC would false-fail; the Vue loader re-derives SFC occurrences.
+    const adapter = config.buildReplacement && config.buildReplacement.adapter
+    if (prepared.occurrences.length > 0 && adapter === 'js') {
+      preflightBuildReplacement(root, config, { occurrences: prepared.occurrences })
     }
-    const prepared = hooks.prepared || prepareReadOnlyBuild(root, config)
-    preflightBuildReplacement(root, config, { occurrences: prepared.occurrences })
-    setBuildReplacementContext(root, {
-      occurrences: prepared.occurrences,
-      sourceCatalog: prepared.sourceCatalog
-    })
     contextSet = true
     const webpackConfig = stripCollectionIntegration(cloneWebpackConfig(loaded))
     webpackConfig.watch = false
@@ -212,7 +325,6 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
     if (failed) throw failed
     const published = staging
     publishFormalBundle(published)
-    // rename/move may leave the staging path on some Windows hosts; always scrub it.
     cleanupBundleArtifacts(root, published.stagingPath)
     staging = null
     const outputPath = published.formalPath
@@ -329,5 +441,6 @@ module.exports = {
   build,
   parseBuildArgs,
   prepareReadOnlyBuild,
+  runCollectionAnalysisCompilation,
   runReplacementCompilation
 }

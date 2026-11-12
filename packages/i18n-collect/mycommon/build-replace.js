@@ -1,6 +1,5 @@
 const path = require('path')
 const parser = require('@babel/parser')
-const traverse = require('@babel/traverse').default
 const { SourceMapConsumer, SourceMapGenerator } = require('source-map')
 const { SCRIPT_EXTENSIONS } = require('./replace-preview')
 const { ReplacementPlanner } = require('./replacement-planner')
@@ -152,226 +151,69 @@ function composeSourceMaps(transformMap, incomingMap, file) {
   return generator.toJSON()
 }
 
-function isRequireHelperBinding(binding) {
-  if (!binding || !binding.path) return false
-  let current = binding.path
-  while (current && !current.isVariableDeclarator()) current = current.parentPath
-  if (!current) return false
-  const init = current.node.init
-  return Boolean(
-    init
-    && init.type === 'CallExpression'
-    && init.callee.type === 'Identifier'
-    && init.callee.name === 'require'
-  )
-}
-
-function isReusableHelperBinding(binding) {
-  if (!binding) return false
-  if (binding.kind === 'module') return true
-  return isRequireHelperBinding(binding)
-}
-
-function inspectSource(source, runtimeExport = 't') {
-  let ast
+function parseSourceError(source) {
   try {
-    ast = parser.parse(source, PARSE)
+    parser.parse(source, PARSE)
+    return null
   } catch (error) {
-    return { bindings: new Set(), esm: false, reusableHelper: false, error }
+    return error
   }
-  let esm = ast.program.sourceType === 'module'
-  let bindings = new Set()
-  let reusableHelper = false
-  traverse(ast, {
-    Program(nodePath) {
-      bindings = new Set(Object.keys(nodePath.scope.bindings))
-      reusableHelper = isReusableHelperBinding(nodePath.scope.getBinding(runtimeExport))
-    },
-    ImportDeclaration() {
-      esm = true
-    },
-    ExportNamedDeclaration() {
-      esm = true
-    },
-    ExportDefaultDeclaration() {
-      esm = true
-    },
-    ExportAllDeclaration() {
-      esm = true
-    }
-  })
-  return { bindings, esm, reusableHelper, error: null }
-}
-
-function chooseHelperName(bindings) {
-  if (!bindings.has('t')) return 't'
-  let index = 0
-  while (true) {
-    const name = index === 0 ? '__i18n_t' : `__i18n_t${index}`
-    if (!bindings.has(name)) return name
-    index += 1
-  }
-}
-
-function runtimeRequest(root, runtimeModule, resourcePath) {
-  const absoluteRuntime = path.resolve(root, runtimeModule)
-  let relative = path.relative(path.dirname(resourcePath), absoluteRuntime)
-  relative = relative.split(path.sep).join('/')
-  if (!relative.startsWith('.')) relative = `./${relative}`
-  return relative
-}
-
-function injectionStatement(esm, helperName, runtimeExport, request) {
-  const moduleLiteral = JSON.stringify(request)
-  if (esm) {
-    if (helperName === runtimeExport) return `import { ${runtimeExport} } from ${moduleLiteral}\n`
-    return `import { ${runtimeExport} as ${helperName} } from ${moduleLiteral}\n`
-  }
-  if (helperName === runtimeExport) return `const { ${runtimeExport} } = require(${moduleLiteral})\n`
-  return `const { ${runtimeExport}: ${helperName} } = require(${moduleLiteral})\n`
-}
-
-function vueScriptBlocks(source) {
-  const blocks = []
-  const pattern = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi
-  let match = pattern.exec(source)
-  while (match) {
-    const openTag = match[0].slice(0, match[0].length - match[2].length - '</script>'.length)
-    const innerStart = match.index + openTag.length
-    const inner = match[2]
-    blocks.push({
-      setup: /\bsetup\b/.test(match[1] || ''),
-      innerStart,
-      innerEnd: innerStart + inner.length,
-      inner
-    })
-    match = pattern.exec(source)
-  }
-  return blocks
-}
-
-function helperCallPrefix(helperName) {
-  return `${helperName}(`
-}
-
-function isReusableAlias(source, helperName, runtimeExport) {
-  let ast
-  try {
-    ast = parser.parse(source, PARSE)
-  } catch (error) {
-    return false
-  }
-  let reusable = false
-  traverse(ast, {
-    ImportDeclaration(nodePath) {
-      for (const specifier of nodePath.node.specifiers || []) {
-        if (specifier.type !== 'ImportSpecifier') continue
-        const local = specifier.local && specifier.local.name
-        const imported = specifier.imported && specifier.imported.name
-        if (local === helperName && imported === runtimeExport) reusable = true
-      }
-    },
-    VariableDeclarator(nodePath) {
-      const id = nodePath.node.id
-      const init = nodePath.node.init
-      if (!init || init.type !== 'CallExpression' || init.callee.type !== 'Identifier' || init.callee.name !== 'require') {
-        return
-      }
-      if (id.type === 'ObjectPattern') {
-        reusable = id.properties.some(property => (
-          property.type === 'ObjectProperty'
-          && !property.computed
-          && property.key.type === 'Identifier'
-          && property.key.name === runtimeExport
-          && property.value.type === 'Identifier'
-          && property.value.name === helperName
-        )) || reusable
-      }
-    }
-  })
-  return reusable
-}
-
-function chooseVueHelperName(source, runtimeExport) {
-  const bindings = new Set()
-  let anyReusable = false
-  for (const block of vueScriptBlocks(source)) {
-    const inspected = inspectSource(block.inner, runtimeExport)
-    for (const name of inspected.bindings) bindings.add(name)
-    if (inspected.reusableHelper) anyReusable = true
-  }
-  if (anyReusable || !bindings.has(runtimeExport)) {
-    return runtimeExport
-  }
-  return chooseHelperName(bindings)
 }
 
 function transformScriptBuildReplacement({
   source,
-  root,
   projectPath,
-  resourcePath,
   occurrences,
   adapter,
-  runtimeModule,
   runtimeExport,
   styleExtensions,
   inputSourceMap
 }) {
-  const inspected = inspectSource(source, runtimeExport)
-  if (inspected.error) {
-    return { code: source, map: null, changed: false, planned: null, error: inspected.error }
+  const parseError = parseSourceError(source)
+  if (parseError) {
+    return { code: source, map: null, changed: false, planned: null, injected: false, error: parseError }
   }
 
-  const helperName = inspected.reusableHelper ? runtimeExport : chooseHelperName(inspected.bindings)
-  const inject = !inspected.reusableHelper
+  const helperName = runtimeExport || 't'
   const planner = new ReplacementPlanner({
     adapter,
     styleExtensions,
     runtime: {
       localizationFunction: true,
       helperName,
-      helperAvailable: true
+      helperAvailable: false
     }
   })
   const planned = planner.plan({
     occurrences,
     resources: new Map([[projectPath, source]])
   })
+  planned.injected = false
   const skippedFailure = failureFromSkipped(planned)
   if (skippedFailure) {
-    return { code: source, map: null, changed: false, planned, helperName, error: skippedFailure }
+    return { code: source, map: null, changed: false, planned, helperName, injected: false, error: skippedFailure }
   }
   const fileEdits = planned.edits
     .filter(edit => edit.path === projectPath)
     .map(({ start, end, text }) => ({ start, end, text }))
   if (fileEdits.length === 0) {
-    return { code: source, map: null, changed: false, planned, helperName }
+    return { code: source, map: null, changed: false, planned, helperName, injected: false }
   }
 
   const edited = applyEditsWithSegments(source, fileEdits)
-  let code = edited.code
-  let prefixLength = 0
-  if (inject) {
-    const request = runtimeRequest(root, runtimeModule, resourcePath)
-    const statement = injectionStatement(inspected.esm, helperName, runtimeExport, request)
-    prefixLength = statement.length
-    code = statement + code
-  }
-
   const map = composeSourceMaps(
-    buildSourceMap(source, code, projectPath, prefixLength, edited.segments),
+    buildSourceMap(source, edited.code, projectPath, 0, edited.segments),
     inputSourceMap,
     projectPath
   )
 
   return {
-    code,
+    code: edited.code,
     map,
     changed: true,
     planned,
     helperName,
-    injected: inject
+    injected: false
   }
 }
 
@@ -403,14 +245,14 @@ function transformVueBuildReplacement({
     return { code: source, map: null, changed: false, planned: null, error }
   }
 
-  const helperName = chooseVueHelperName(source, runtimeExport)
+  const helperName = runtimeExport || 't'
   const planner = new ReplacementPlanner({
     adapter,
     styleExtensions,
     runtime: {
       localizationFunction: true,
       helperName,
-      helperAvailable: adapter === 'vue3',
+      helperAvailable: false,
       vueVersion
     }
   })
@@ -418,46 +260,22 @@ function transformVueBuildReplacement({
     occurrences,
     resources: new Map([[projectPath, { source, template }]])
   })
+  planned.injected = false
 
   const skippedFailure = failureFromSkipped(planned)
   if (skippedFailure) {
-    return { code: source, map: null, changed: false, planned, helperName, error: skippedFailure }
+    return { code: source, map: null, changed: false, planned, helperName, injected: false, error: skippedFailure }
   }
 
   const fileEdits = planned.edits
     .filter(edit => edit.path === projectPath)
     .map(({ start, end, text }) => ({ start, end, text }))
 
-  const request = runtimeRequest(root, runtimeModule, resourcePath)
-  const injectionTargets = []
-  if (adapter === 'vue3') {
-    for (const block of vueScriptBlocks(source)) {
-      const helperEdits = fileEdits.filter(edit => (
-        edit.start >= block.innerStart
-        && edit.start < block.innerEnd
-        && planned.replacements.some(item => item.call && item.call.startsWith(helperCallPrefix(helperName)) && edit.text.includes(item.call))
-      ))
-      if (helperEdits.length === 0) continue
-      const inspected = inspectSource(block.inner, runtimeExport)
-      const reuse = helperName === runtimeExport
-        ? inspected.reusableHelper
-        : isReusableAlias(block.inner, helperName, runtimeExport)
-      if (reuse) continue
-      const esm = inspected.esm || block.setup || /^\s*import\b/m.test(block.inner) || /^\s*export\b/m.test(block.inner)
-      injectionTargets.push({
-        start: block.innerStart,
-        end: block.innerStart,
-        text: injectionStatement(esm, helperName, runtimeExport, request)
-      })
-    }
+  if (fileEdits.length === 0) {
+    return { code: source, map: null, changed: false, planned, helperName, injected: false }
   }
 
-  const allEdits = [...fileEdits, ...injectionTargets]
-  if (allEdits.length === 0) {
-    return { code: source, map: null, changed: false, planned, helperName }
-  }
-
-  const edited = applyEditsWithSegments(source, allEdits)
+  const edited = applyEditsWithSegments(source, fileEdits)
   const map = composeSourceMaps(
     buildSourceMap(source, edited.code, projectPath, 0, edited.segments),
     inputSourceMap,
@@ -470,7 +288,7 @@ function transformVueBuildReplacement({
     changed: true,
     planned,
     helperName,
-    injected: injectionTargets.length > 0
+    injected: false
   }
 }
 
@@ -511,17 +329,14 @@ function transformBuildReplacement({
   }
 
   if (!SCRIPT_EXTENSIONS.has(extension)) {
-    return { code: source, map: null, changed: false, planned: null }
+    return { code: source, map: null, changed: false, planned: null, injected: false }
   }
 
   return transformScriptBuildReplacement({
     source,
-    root,
     projectPath,
-    resourcePath,
     occurrences: relevant,
     adapter: adapter === 'vue2' || adapter === 'vue3' ? adapter : 'js',
-    runtimeModule,
     runtimeExport,
     styleExtensions,
     inputSourceMap

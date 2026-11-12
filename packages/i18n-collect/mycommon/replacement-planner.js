@@ -61,8 +61,66 @@ function planReplacement(options) {
     .plan({ occurrences, resources })
 }
 
+/**
+ * Plan safe in-memory edits for one module using adapter call shapes.
+ * Does not invent runtime imports or helpers; callers must already have t / $t.
+ */
+function planReplacementForModule({
+  adapter,
+  projectPath,
+  source,
+  occurrences = [],
+  styleExtensions = [],
+  runtime = {},
+  template = null
+} = {}) {
+  if (!ADAPTERS.has(adapter)) throw new Error(`unknown replacement adapter "${adapter}"`)
+  const relevant = occurrences.filter(item => item && item.location && item.location.path === projectPath)
+  const resource = template ? { source, template } : source
+  const planned = new ReplacementPlanner({
+    adapter,
+    styleExtensions,
+    runtime: {
+      ...runtime,
+      helperName: runtime.helperName || 't',
+      // Never pretend a helper is globally available for injection. Scope-local
+      // t / $t detection inside the planner remains the authority.
+      helperAvailable: false
+    }
+  }).plan({
+    occurrences: relevant,
+    resources: new Map([[projectPath, resource]])
+  })
+  return {
+    ...planned,
+    projectPath,
+    injected: false
+  }
+}
+
+function applyModuleReplacement({ source, planned }) {
+  if (typeof source !== 'string' || !planned || !Array.isArray(planned.edits) || planned.edits.length === 0) {
+    return { code: source, changed: false, planned: planned || null }
+  }
+  const projectPath = planned.projectPath
+  const fileEdits = planned.edits
+    .filter(edit => !projectPath || edit.path === projectPath)
+    .map(({ start, end, text }) => ({ start, end, text }))
+    .sort((left, right) => right.start - left.start)
+  if (fileEdits.length === 0) {
+    return { code: source, changed: false, planned }
+  }
+  let code = source
+  for (const edit of fileEdits) {
+    code = code.slice(0, edit.start) + edit.text + code.slice(edit.end)
+  }
+  return { code, changed: code !== source, planned }
+}
+
 module.exports = {
   ADAPTERS,
   ReplacementPlanner,
-  planReplacement
+  applyModuleReplacement,
+  planReplacement,
+  planReplacementForModule
 }

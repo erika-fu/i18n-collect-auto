@@ -10,6 +10,7 @@ const {
   sourceCatalogMessages,
   sourceCatalogPath
 } = require('./formal-outputs')
+const { occurrencesForReplacement } = require('./build-replacement-findings')
 const { listProjectSources } = require('./project-sources')
 const { keyFor } = require('./store')
 
@@ -119,6 +120,50 @@ function assertSourceCatalogFresh(root, config) {
   }
 }
 
+/**
+ * Verify the committed source catalog against a compilation analysis result.
+ * Does not walk the project filesystem or reanalyze application sources.
+ */
+function verifyCommittedCatalogAgainstCompilation(root, config, compilationResult = {}) {
+  const committedDocument = readCommittedSourceCatalogDocument(root, config)
+  const committed = sourceCatalogMessages(committedDocument)
+  let current = compilationResult.sourceCatalog
+  if (!current) {
+    if (!compilationResult.analysis) {
+      throw commandError(
+        'collection',
+        'analysis',
+        'compilation result is missing a source catalog'
+      )
+    }
+    try {
+      current = buildSourceCatalog(compilationResult.analysis)
+    } catch (error) {
+      throw commandError(
+        'collection',
+        'analysis',
+        error && error.message ? error.message : String(error)
+      )
+    }
+  }
+  if (!catalogEqual(current, committed)) {
+    throw commandError(
+      'collection',
+      'analysis',
+      'compilation result differs from the committed source catalog; run collect before build'
+    )
+  }
+  const analysis = compilationResult.analysis || null
+  return {
+    analysis,
+    sourceCatalog: committed,
+    occurrences: analysis
+      ? occurrencesForReplacement(analysis)
+      : (compilationResult.occurrences || []),
+    sourceCatalogPath: sourceCatalogPath(config)
+  }
+}
+
 // Source replacement shares build's current analysis and catalog keys, but does not
 // require the committed source catalog to equal buildSourceCatalog after a write:
 // already-localized calls keep catalog keys without regenerating source text rows.
@@ -171,5 +216,6 @@ module.exports = {
   readCommittedSourceCatalog,
   readCommittedSourceCatalogDocument,
   sourceCatalogMessages,
-  sourceCatalogPath
+  sourceCatalogPath,
+  verifyCommittedCatalogAgainstCompilation
 }

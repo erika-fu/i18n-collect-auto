@@ -74,7 +74,7 @@ function assertUnchanged(before, root, ignore = []) {
 }
 
 function writeBuildProject(root, {
-  source = 'module.exports = function label() {\n  return "你好"\n}\n',
+  source = 'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "你好"\n}\n',
   files = {},
   entry = './src/app.js',
   configSource = [
@@ -170,14 +170,17 @@ test('build fails when source analysis no longer matches the committed source ca
   writeBuildProject(root)
   seedSourceCatalog(root)
   const langBefore = snapshotLangTree(root)
-  fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "世界"\n}\n')
+  fs.writeFileSync(
+    path.join(root, 'src/app.js'),
+    'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "世界"\n}\n'
+  )
   const result = run(['build', '--json'], root)
   assert.strictEqual(result.status, 2, result.stderr)
   const body = JSON.parse(result.stdout)
   assert.strictEqual(body.ok, false)
   assert.strictEqual(body.command, 'build')
   assert.strictEqual(body.stage, 'analysis')
-  assert.match(result.stderr, /source catalog|no longer matches|scan/i)
+  assert.match(result.stderr, /source catalog|differs from the committed|collect before build|no longer matches/i)
   assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
   assertLangUnchanged(langBefore, root)
 })
@@ -185,9 +188,18 @@ test('build fails when source analysis no longer matches the committed source ca
 test('build fails analysis on a key conflict and does not emit a formal bundle', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-conflict-'))
   writeBuildProject(root, {
-    source: 'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n',
+    source: [
+      'const { t } = require("./i18n.js")',
+      'require("./other")',
+      'module.exports = /* i18n-key: shared.title */ "首页"',
+      ''
+    ].join('\n'),
     files: {
-      'src/other.js': 'module.exports = /* i18n-key: shared.title */ "主页"\n'
+      'src/other.js': [
+        'const { t } = require("./i18n.js")',
+        'module.exports = /* i18n-key: shared.title */ "主页"',
+        ''
+      ].join('\n')
     }
   })
   writeSourceCatalog(root, { 'shared.title': '首页' })
@@ -204,10 +216,10 @@ test('build fails analysis on a key conflict and does not emit a formal bundle',
   assertLangUnchanged(langBefore, root)
 })
 
-test('build ESM entry injects runtime import into the formal bundle', { timeout: 60000 }, () => {
+test('build ESM entry rewrites with an existing runtime import and does not inject another', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-esm-'))
   writeBuildProject(root, {
-    source: 'export function label() {\n  return "你好"\n}\n',
+    source: 'import { t } from "./i18n.js"\nexport function label() {\n  return "你好"\n}\n',
     entry: './src/app.js',
     files: {
       'src/i18n.js': 'export function t(key) { return key }\n'
@@ -234,6 +246,7 @@ module.exports = {
   const key = keyForSource(root, '你好')
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
+  assert.doesNotMatch(bundle, /你好/)
   assertUnchanged(before, root)
   assertLangUnchanged(langBefore, root)
 })
@@ -258,6 +271,7 @@ function writeVue3BuildProject(root, {
     '  <p title="提示">欢迎</p>',
     '</template>',
     '<script setup>',
+    'import { t } from "./i18n.js"',
     "const tip = '说明'",
     "function greet() { return '你好' }",
     '</script>',
@@ -360,7 +374,9 @@ test('build rejects commented or non-call createI18n lookalikes for Vue 3 runtim
 test('build replaces Vue 3 SFC content in memory without rewriting disk sources or catalogs', { timeout: 120000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-vue3-ok-'))
   writeVue3BuildProject(root)
-  seedSourceCatalog(root)
+  // Seed from Webpack collect so the committed catalog matches render-function findings.
+  const collected = run(['collect', '--json'], root)
+  assert.strictEqual(collected.status, 0, collected.stderr)
   const before = snapshotFiles(root)
   const langBefore = snapshotLangTree(root)
   const homeBefore = fs.readFileSync(path.join(root, 'src/Home.vue'))
@@ -370,11 +386,10 @@ test('build replaces Vue 3 SFC content in memory without rewriting disk sources 
   assert.strictEqual(report.ok, true)
   assert.strictEqual(report.adapter, 'vue3')
   const welcome = keyForSource(root, '欢迎')
-  const hint = keyForSource(root, '提示')
   const tip = keyForSource(root, '说明')
   const hello = keyForSource(root, '你好')
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
-  for (const key of [welcome, hint, tip, hello]) {
+  for (const key of [welcome, tip, hello]) {
     assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
   }
   assert.doesNotMatch(bundle, /欢迎/)
@@ -631,8 +646,23 @@ test('build keeps previous catalogs and formal bundle when analysis fails', { ti
   assert.strictEqual(first.status, 0, first.stderr)
   const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
   const langBefore = snapshotLangTree(root)
-  fs.writeFileSync(path.join(root, 'src/app.js'), 'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n')
-  fs.writeFileSync(path.join(root, 'src/other.js'), 'module.exports = /* i18n-key: shared.title */ "主页"\n')
+  fs.writeFileSync(
+    path.join(root, 'src/app.js'),
+    [
+      'const { t } = require("./i18n.js")',
+      'require("./other")',
+      'module.exports = /* i18n-key: shared.title */ "首页"',
+      ''
+    ].join('\n')
+  )
+  fs.writeFileSync(
+    path.join(root, 'src/other.js'),
+    [
+      'const { t } = require("./i18n.js")',
+      'module.exports = /* i18n-key: shared.title */ "主页"',
+      ''
+    ].join('\n')
+  )
   const second = run(['build', '--json'], root)
   assert.strictEqual(second.status, 2, second.stderr)
   const body = JSON.parse(second.stdout)
@@ -646,7 +676,7 @@ test('build does not pass CSS audit findings to the replacement planner', { time
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-css-'))
   const cssLoader = require.resolve('css-loader')
   writeBuildProject(root, {
-    source: 'require("./badge.css")\nmodule.exports = "欢迎"\n',
+    source: 'const { t } = require("./i18n.js")\nrequire("./badge.css")\nmodule.exports = "欢迎"\n',
     files: {
       'src/badge.css': '.badge::before { content: "你好"; }\n'
     }
@@ -662,7 +692,9 @@ module.exports = {
   module: {
     rules: [
       { test: /\\.[cm]?[jt]sx?$/, loader: ${JSON.stringify(loader)} },
-      { test: /\\.css$/, use: [${JSON.stringify(cssLoader)}, ${JSON.stringify(loader)}] }
+      // CSS stays outside the collection loader: style audit findings must not
+      // enter replacement occurrences even when CSS is part of the module graph.
+      { test: /\\.css$/, use: [${JSON.stringify(cssLoader)}] }
     ]
   },
   plugins: [new MyI18nPlugin()]

@@ -52,36 +52,40 @@ function transform(source, {
   })
 }
 
-test('ESM modules inject a named runtime import and replace supported strings', () => {
-  const source = 'export function label() {\n  return "你好"\n}\n'
+test('ESM modules replace supported strings when t is already imported', () => {
+  const source = 'import { t } from "./i18n.js"\nexport function label() {\n  return "你好"\n}\n'
   const result = transform(source)
-  assert.match(result.code, /import\s*\{\s*t(?:\s+as\s+\w+)?\s*\}\s*from\s*['"]\.\/i18n\.js['"]/)
+  assert.strictEqual(result.injected, false)
+  assert.strictEqual((result.code.match(/from\s*['"]\.\/i18n\.js['"]/g) || []).length, 1)
   assert.match(result.code, /\bt\('home\.hello'\)/)
   assert.doesNotMatch(result.code, /"你好"/)
   assert.strictEqual(result.changed, true)
 })
 
-test('CommonJS modules inject a require binding for the runtime export', () => {
-  const source = 'module.exports = function label() {\n  return "你好"\n}\n'
+test('CommonJS modules replace supported strings when t is already required', () => {
+  const source = 'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "你好"\n}\n'
   const result = transform(source)
-  assert.match(result.code, /const\s+\{\s*t(?:\s*:\s*\w+)?\s*\}\s*=\s*require\(['"]\.\/i18n\.js['"]\)/)
+  assert.strictEqual(result.injected, false)
+  assert.strictEqual((result.code.match(/require\(['"]\.\/i18n\.js['"]\)/g) || []).length, 1)
   assert.match(result.code, /\bt\('home\.hello'\)/)
   assert.strictEqual(result.changed, true)
 })
 
-test('runtime module requests are resolved relative to the current resource', () => {
+test('modules without t in scope fail closed instead of injecting a runtime import', () => {
   const source = 'export const label = "你好"\n'
   const result = transform(source, {
     projectPath: 'src/components/Button.js',
     occurrences: [occurrence('home.hello', '你好', source, 'src/components/Button.js')]
   })
-  assert.match(result.code, /from\s*['"]\.\.\/i18n\.js['"]/)
+  assert.ok(result.error)
+  assert.strictEqual(result.injected, false)
+  assert.strictEqual(result.code, source)
+  assert.match(result.error.occurrences[0].reason, /requires t to already be in scope/)
 })
 
-test('generated helper names avoid existing bindings and stay unique for every call', () => {
+test('in-scope t binding is reused without inventing helper aliases or imports', () => {
   const source = [
-    'const t = 1',
-    'const __i18n_t = 2',
+    'function t(key) { return key }',
     'export function label() {',
     '  return "你好" + "世界"',
     '}',
@@ -90,11 +94,10 @@ test('generated helper names avoid existing bindings and stay unique for every c
   const hello = occurrence('home.hello', '你好', source)
   const world = occurrence('home.world', '世界', source)
   const result = transform(source, { occurrences: [hello, world] })
-  const match = result.code.match(/import\s*\{\s*t as (\w+)\s*\}/)
-  assert.ok(match)
-  assert.notStrictEqual(match[1], 't')
-  assert.notStrictEqual(match[1], '__i18n_t')
-  const calls = result.code.match(new RegExp(`${match[1]}\\('home\\.(hello|world)'\\)`, 'g')) || []
+  assert.strictEqual(result.injected, false)
+  assert.doesNotMatch(result.code, /import\s*\{/)
+  assert.doesNotMatch(result.code, /__i18n_t/)
+  const calls = result.code.match(/t\('home\.(hello|world)'\)/g) || []
   assert.strictEqual(calls.length, 2)
 })
 
@@ -207,14 +210,14 @@ test('template literals replace only complete static Chinese copies', () => {
 })
 
 test('TypeScript syntax is accepted and rewritten', () => {
-  const source = 'export function label(): string {\n  return "你好"\n}\n'
+  const source = 'import { t } from "./i18n.js"\nexport function label(): string {\n  return "你好"\n}\n'
   const result = transform(source, { projectPath: 'src/app.ts' })
-  assert.match(result.code, /import\s*\{\s*t(?:\s+as\s+\w+)?\s*\}/)
+  assert.strictEqual(result.injected, false)
   assert.match(result.code, /\bt\('home\.hello'\)/)
 })
 
 test('transform emits a source map that maps generated code back to the original source', async () => {
-  const source = 'export const label = "你好"\n'
+  const source = 'import { t } from "./i18n.js"\nexport const label = "你好"\n'
   const result = transform(source)
   assert.ok(result.map)
   const consumer = await new SourceMapConsumer(result.map)
@@ -226,6 +229,7 @@ test('transform emits a source map that maps generated code back to the original
 
 test('downstream compile errors map through the emitted source map to the original disk source', async () => {
   const source = [
+    'import { t } from "./i18n.js"',
     'export function label() {',
     '  return "你好"',
     '}',
@@ -245,7 +249,7 @@ test('downstream compile errors map through the emitted source map to the origin
   const consumer = await new SourceMapConsumer(result.map)
   const original = consumer.originalPositionFor({ line: generatedLine, column: generatedColumn })
   assert.strictEqual(original.source, 'src/app.js')
-  assert.strictEqual(original.line, 2)
+  assert.strictEqual(original.line, 3)
 
   const { SourceMapGenerator } = require('source-map')
   const downstream = new SourceMapGenerator({ file: 'app.out.js' })
@@ -258,9 +262,8 @@ test('downstream compile errors map through the emitted source map to the origin
   const remapped = await new SourceMapConsumer(downstream.toJSON())
   const reported = remapped.originalPositionFor({ line: 1, column: 0 })
   assert.strictEqual(reported.source, 'src/app.js')
-  assert.strictEqual(reported.line, 2)
+  assert.strictEqual(reported.line, 3)
 })
-
 function vueScriptEntries(projectPath, source) {
   const resource = { projectPath }
   const entries = []
@@ -366,7 +369,7 @@ test('Vue 3 build replacement rewrites Options API methods with this.$t', () => 
   assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
 })
 
-test('Vue 3 build replacement injects a runtime import into script setup when t is missing', () => {
+test('Vue 3 build replacement fails closed when script setup lacks t instead of injecting', () => {
   const source = [
     '<template><p>欢迎</p></template>',
     '<script setup>',
@@ -377,9 +380,11 @@ test('Vue 3 build replacement injects a runtime import into script setup when t 
   const result = transformVue(source, {
     occurrences: vueOccurrences('src/Home.vue', source, { 欢迎: 'home.welcome', 标题: 'home.title' })
   })
-  assert.match(result.code, /<script setup>\s*import\s*\{\s*t(?:\s+as\s+\w+)?\s*\}\s*from\s*['"]\.\/i18n\.js['"]/)
-  assert.match(result.code, /const title = t\('home\.title'\)/)
-  assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
+  assert.ok(result.error)
+  assert.strictEqual(result.injected, false)
+  assert.strictEqual(result.changed, false)
+  assert.strictEqual(result.code, source)
+  assert.ok(result.error.occurrences.some(item => /requires t to already be in scope/.test(item.reason)))
 })
 
 test('Vue 3 build replacement recognizes existing localized calls without nesting', () => {
@@ -446,6 +451,7 @@ test('Vue 3 build replacement merges template and script edits with full SFC coo
     '}',
     '</script>',
     '<script setup>',
+    "import { t } from './i18n.js'",
     "const tip = '说明'",
     '</script>',
     ''
@@ -460,20 +466,22 @@ test('Vue 3 build replacement merges template and script edits with full SFC coo
     })
   })
   assert.strictEqual(result.changed, true)
+  assert.strictEqual(result.injected, false)
   assert.match(result.code, /:title="\$t\('home\.hint'\)"|:title='\$t\('home\.hint'\)'/)
   assert.match(result.code, /\{\{\s*\$t\('home\.welcome'\)\s*\}\}/)
   assert.match(result.code, /label:\s*this\.\$t\('home\.title'\)/)
   assert.match(result.code, /return this\.\$t\('home\.hello'\)/)
   assert.match(result.code, /const tip = t\('home\.note'\)/)
-  assert.match(result.code, /<script setup>\s*import\s*\{/)
+  assert.strictEqual((result.code.match(/from\s*['"]\.\/i18n\.js['"]/g) || []).length, 1)
 })
 
-test('Vue 3 build replacement keeps template expression structure and uses helpers outside instance methods', () => {
+test('Vue 3 build replacement keeps template expression structure and uses in-scope helpers', () => {
   const source = [
     '<template>',
     "  <p>{{ '前缀' + name }}</p>",
     '</template>',
     '<script>',
+    "import { t } from './i18n.js'",
     "const top = '顶层'",
     'export default {',
     '  mounted() {',
@@ -490,10 +498,11 @@ test('Vue 3 build replacement keeps template expression structure and uses helpe
       挂载: 'home.mounted'
     })
   })
+  assert.strictEqual(result.injected, false)
   assert.match(result.code, /\{\{\s*\$t\('home\.prefix'\)\s*\+\s*name\s*\}\}/)
   assert.match(result.code, /const top = t\('home\.top'\)/)
   assert.match(result.code, /this\.msg = this\.\$t\('home\.mounted'\)/)
-  assert.match(result.code, /<script>\s*import\s*\{\s*t(?:\s+as\s+\w+)?\s*\}\s*from/)
+  assert.strictEqual((result.code.match(/from\s*['"]\.\/i18n\.js['"]/g) || []).length, 1)
 })
 
 test('Vue 3 build replacement source map still points at the original SFC', async () => {
@@ -502,6 +511,7 @@ test('Vue 3 build replacement source map still points at the original SFC', asyn
     '  <p>欢迎</p>',
     '</template>',
     '<script setup>',
+    "import { t } from './i18n.js'",
     "const title = '标题'",
     '</script>',
     ''

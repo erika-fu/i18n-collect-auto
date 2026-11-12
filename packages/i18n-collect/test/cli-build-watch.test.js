@@ -18,7 +18,7 @@ const loader = require.resolve('../myloader')
 const plugin = require.resolve('../myplugin')
 
 function writeBuildProject(root, {
-  source = 'module.exports = function label() {\n  return "你好"\n}\n',
+  source = 'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "你好"\n}\n',
   files = {},
   entry = './src/app.js',
   configSource = [
@@ -115,7 +115,7 @@ test('editing collected copy without scanning fails closed and leaves catalogs b
     await outcome.watch.waitForIdle({ settleMs: 200 })
     assert.strictEqual(outcome.watch.publishes.length, before)
     assertLangUnchanged(langBefore, root)
-    assert.match(outcome.watch.lastStderr, /source catalog|no longer matches|scan/i)
+    assert.match(outcome.watch.lastStderr, /source catalog|differs from the committed|collect before build|no longer matches|scan/i)
   } finally {
     await outcome.watch.close()
   }
@@ -129,7 +129,10 @@ test('updating the committed source catalog after a source edit republishes the 
   const outcome = await startWatch(root)
   try {
     const before = outcome.watch.publishes.length
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "世界"\n}\n')
+    fs.writeFileSync(
+      path.join(root, 'src/app.js'),
+      'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "世界"\n}\n'
+    )
     await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
     await outcome.watch.waitForIdle({ settleMs: 200 })
 
@@ -153,18 +156,18 @@ test('rapid consecutive catalog-aligned edits coalesce into serial cycles', {
   try {
     const before = outcome.watch.publishes.length
     const source = path.join(root, 'src/app.js')
-    fs.writeFileSync(source, 'module.exports = function label() {\n  return "你好"\n}\n')
+    fs.writeFileSync(source, 'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "你好"\n}\n')
     fs.writeFileSync(
       source,
-      'module.exports = function label() {\n  const marker = "one"\n  return "你好"\n}\n'
+      'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  const marker = "one"\n  return "你好"\n}\n'
     )
     fs.writeFileSync(
       source,
-      'module.exports = function label() {\n  const marker = "two"\n  return "你好"\n}\n'
+      'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  const marker = "two"\n  return "你好"\n}\n'
     )
     fs.writeFileSync(
       source,
-      'module.exports = function label() {\n  const marker = "three"\n  return "你好"\n}\n'
+      'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  const marker = "three"\n  return "你好"\n}\n'
     )
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 400 })
@@ -193,11 +196,11 @@ test('analysis failure keeps the previous catalog and bundle; a fix recovers wat
     const before = outcome.watch.publishes.length
     fs.writeFileSync(
       path.join(root, 'src/other.js'),
-      'module.exports = /* i18n-key: shared.title */ "主页"\n'
+      'const { t } = require("./i18n.js")\nmodule.exports = /* i18n-key: shared.title */ "主页"\n'
     )
     fs.writeFileSync(
       path.join(root, 'src/app.js'),
-      'require("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n'
+      'const { t } = require("./i18n.js")\nrequire("./other")\nmodule.exports = /* i18n-key: shared.title */ "首页"\n'
     )
     await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
     await outcome.watch.waitForIdle({ settleMs: 200 })
@@ -207,7 +210,10 @@ test('analysis failure keeps the previous catalog and bundle; a fix recovers wat
     assertLangUnchanged(langBefore, root)
     assert.notStrictEqual(outcome.watch.lastExitCode, 0)
 
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "你好"\n}\n')
+    fs.writeFileSync(
+      path.join(root, 'src/app.js'),
+      'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "你好"\n}\n'
+    )
     fs.rmSync(path.join(root, 'src/other.js'))
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 200 })
@@ -227,7 +233,7 @@ test('replacement failure keeps catalogs byte-identical, leaves the previous bun
   try {
     const before = outcome.watch.publishes.length
     const previousBundle = fs.readFileSync(path.join(root, 'dist/bundle.js'))
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = { "你好": 1 }\n')
+    fs.writeFileSync(path.join(root, 'src/app.js'), 'const { t } = require("./i18n.js")\nmodule.exports = { "你好": 1 }\n')
     seedSourceCatalog(root)
     const langAfterSeed = snapshotLangTree(root)
     await outcome.watch.waitForStatus(state => state.lastExitCode !== 0)
@@ -239,7 +245,10 @@ test('replacement failure keeps catalogs byte-identical, leaves the previous bun
     const staging = fs.readdirSync(root).filter(name => name.startsWith('.i18n-build-staging-'))
     assert.deepStrictEqual(staging, [])
 
-    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = function label() {\n  return "你好"\n}\n')
+    fs.writeFileSync(
+      path.join(root, 'src/app.js'),
+      'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "你好"\n}\n'
+    )
     seedSourceCatalog(root)
     const published = await outcome.watch.waitForPublish(before)
     await outcome.watch.waitForIdle({ settleMs: 200 })
@@ -263,6 +272,10 @@ test('config and webpack changes trigger a new coordinated cycle', {
       'module.exports = { translate }',
       ''
     ].join('\n'))
+    fs.writeFileSync(
+      path.join(root, 'src/app.js'),
+      'const { translate } = require("./i18n2.js")\nmodule.exports = function label() {\n  return "你好"\n}\n'
+    )
     fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), [
       'module.exports = {',
       '  buildReplacement: {',
@@ -308,6 +321,7 @@ test('non-message source edits still republish the formal bundle without catalog
     fs.writeFileSync(
       path.join(root, 'src/app.js'),
       [
+        'const { t } = require("./i18n.js")',
         'module.exports = {',
         '  marker: "watch-rebuild",',
         '  label() { return "你好" }',

@@ -242,7 +242,7 @@ function preflightBuildReplacement(root, config, options = {}) {
     runtime: {
       localizationFunction: true,
       helperName: (config.buildReplacement && config.buildReplacement.runtimeExport) || 't',
-      helperAvailable: adapter === 'js' || adapter === 'vue3'
+      helperAvailable: false
     }
   })
   const planned = planner.plan({

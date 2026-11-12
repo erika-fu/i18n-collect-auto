@@ -50,8 +50,28 @@ function clearBuildReplacementContext(root) {
   if (fs.existsSync(file)) fs.unlinkSync(file)
 }
 
+/**
+ * Publish the current compilation's replacement findings into the loader context.
+ * Callers supply occurrences already derived from the compilation analysis.
+ */
+function prepareBuildReplacementContext(root, compilationResult = {}) {
+  let occurrences = compilationResult.occurrences
+  if (!Array.isArray(occurrences)) {
+    const { occurrencesForReplacement } = require('./build-replacement-findings')
+    occurrences = occurrencesForReplacement(compilationResult.analysis)
+  }
+  const context = {
+    occurrences,
+    sourceCatalog: compilationResult.sourceCatalog || null,
+    analysis: compilationResult.analysis || null
+  }
+  setBuildReplacementContext(root, context)
+  return context
+}
+
 module.exports = {
   clearBuildReplacementContext,
   getBuildReplacementContext,
+  prepareBuildReplacementContext,
   setBuildReplacementContext
 }
