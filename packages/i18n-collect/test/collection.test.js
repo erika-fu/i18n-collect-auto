@@ -5,7 +5,7 @@ const path = require('path')
 const test = require('node:test')
 const { loadConfig, validate } = require('../mycommon/config')
 const { CollectionStore, keyFor } = require('../mycommon/store')
-const { writeOutputs } = require('../mycommon/output')
+const { commitFiles, json, unchanged } = require('../mycommon/output')
 
 test('uses the MD5 of the final decoded value', () => {
   assert.strictEqual(keyFor('你好'), '7eca689f0d3389d9dea66ae112e5cfd7')
@@ -252,14 +252,15 @@ test('configHash covers the normalized configuration and fileConfigHash ignores 
   assert.notStrictEqual(next.configHash, fromFile.configHash)
 })
 
-test('identical output does not create temporary files', async () => {
+test('identical output does not create temporary files', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-identical-'))
-  const config = { outputPath: 'lang/runtime.json', sourceMapFilename: 'lang/map.json' }
+  const dictionaryFile = path.join(root, 'lang/runtime.json')
+  const sourceMapFile = path.join(root, 'lang/map.json')
   const dictionary = '{\n  "a": "甲"\n}\n'
   const sourceMap = '{\n  "version": 1,\n  "entries": []\n}\n'
   const files = new Map([
-    [path.join(root, config.outputPath), dictionary],
-    [path.join(root, config.sourceMapFilename), sourceMap]
+    [dictionaryFile, dictionary],
+    [sourceMapFile, sourceMap]
   ])
   const calls = []
   const fsImpl = {
@@ -268,32 +269,39 @@ test('identical output does not create temporary files', async () => {
     mkdirSync() { calls.push('mkdir') },
     writeFileSync() { calls.push('write') },
     renameSync() { calls.push('rename') },
-    unlinkSync() { calls.push('unlink') }
+    unlinkSync() { calls.push('unlink') },
+    readdirSync: () => []
   }
-  await writeOutputs(root, config, { a: '甲' }, { version: 1, entries: [] }, fsImpl)
+  const targets = [
+    { file: dictionaryFile, content: json({ a: '甲' }) },
+    { file: sourceMapFile, content: json({ version: 1, entries: [] }) }
+  ].filter(target => !unchanged(fsImpl, target.file, target.content))
+  commitFiles(targets, fsImpl)
   assert.deepStrictEqual(calls, [])
 })
 
-test('writes stable pretty JSON output', async () => {
+test('writes stable pretty JSON output', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-'))
-  const config = { outputPath: 'lang/runtime.json', sourceMapFilename: 'lang/map.json' }
-  await writeOutputs(root, config, { b: '乙', a: '甲' }, { version: 1, entries: [] })
-  assert.match(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), /"a"/)
-  assert.match(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), /乙/)
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, config.sourceMapFilename)), null), { version: 1, entries: [] })
+  const dictionaryFile = path.join(root, 'lang/runtime.json')
+  const sourceMapFile = path.join(root, 'lang/map.json')
+  commitFiles([
+    { file: dictionaryFile, content: json({ b: '乙', a: '甲' }) },
+    { file: sourceMapFile, content: json({ version: 1, entries: [] }) }
+  ])
+  assert.match(fs.readFileSync(dictionaryFile, 'utf8'), /"a"/)
+  assert.match(fs.readFileSync(dictionaryFile, 'utf8'), /乙/)
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(sourceMapFile, 'utf8')), { version: 1, entries: [] })
 })
 
-test('a failed catalog publish restores dictionary and source map', async () => {
+test('a failed catalog publish restores dictionary and source map', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-meta-publish-'))
-  const config = {
-    outputPath: 'lang/zh_hash.json',
-    sourceMapFilename: 'lang/zh_hash.map.json'
-  }
+  const dictionaryFile = path.join(root, 'lang/zh_hash.json')
+  const sourceMapFile = path.join(root, 'lang/zh_hash.map.json')
   const previousDictionary = '{\n  "old": "旧"\n}\n'
   const previousMap = '{\n  "version": 1,\n  "entries": []\n}\n'
   fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
-  fs.writeFileSync(path.join(root, config.outputPath), previousDictionary)
-  fs.writeFileSync(path.join(root, config.sourceMapFilename), previousMap)
+  fs.writeFileSync(dictionaryFile, previousDictionary)
+  fs.writeFileSync(sourceMapFile, previousMap)
 
   const realRename = fs.renameSync.bind(fs)
   let failed = false
@@ -305,26 +313,21 @@ test('a failed catalog publish restores dictionary and source map', async () => 
     return realRename(from, to)
   }
   try {
-    await assert.rejects(
-      () => writeOutputs(
-        root,
-        config,
-        { next: '新' },
-        { version: 1, entries: [{ value: '你好' }] },
-        fs,
-        [
-          { path: 'lang/catalog/zh.json', content: '{\n  "k": "你好"\n}\n' },
-          { path: 'lang/catalog/source-catalog.json', content: '{\n  "k": "你好"\n}\n' }
-        ]
-      ),
+    assert.throws(
+      () => commitFiles([
+        { file: dictionaryFile, content: json({ next: '新' }) },
+        { file: sourceMapFile, content: json({ version: 1, entries: [{ value: '你好' }] }) },
+        { file: path.join(root, 'lang/catalog/zh.json'), content: '{\n  "k": "你好"\n}\n' },
+        { file: path.join(root, 'lang/catalog/source-catalog.json'), content: '{\n  "k": "你好"\n}\n' }
+      ]),
       /forced catalog publish failure/
     )
   } finally {
     fs.renameSync = realRename
   }
 
-  assert.strictEqual(fs.readFileSync(path.join(root, config.outputPath), 'utf8'), previousDictionary)
-  assert.strictEqual(fs.readFileSync(path.join(root, config.sourceMapFilename), 'utf8'), previousMap)
+  assert.strictEqual(fs.readFileSync(dictionaryFile, 'utf8'), previousDictionary)
+  assert.strictEqual(fs.readFileSync(sourceMapFile, 'utf8'), previousMap)
   assert.deepStrictEqual(
     fs.readdirSync(path.join(root, 'lang')).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
     []

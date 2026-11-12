@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { upgradeCatalogMetadata } = require('./catalog')
-const { catalogFiles, identityFiles } = require('./config')
+const { catalogFiles } = require('./config')
 const {
   buildReplacementError,
   sortOccurrences
@@ -14,89 +14,6 @@ function contractError(kind, stage, message) {
   error.kind = kind
   error.stage = stage
   return error
-}
-
-const ORPHANED = 'orphaned occurrence is outside the current collection'
-const AMBIGUOUS = 'occurrence identity is ambiguous'
-
-function positionBefore(left, right) {
-  return left.line < right.line || (left.line === right.line && left.column < right.column)
-}
-
-function rangesOverlap(left, right) {
-  if (!left || !right || left.path !== right.path) return false
-  return positionBefore(left.start, right.end) && positionBefore(right.start, left.end)
-}
-
-function skipDetail(item, reason) {
-  return {
-    path: item.location.path,
-    key: item.key,
-    kind: item.location.kind,
-    source: item.source,
-    start: item.location.start,
-    end: item.location.end,
-    reason
-  }
-}
-
-function catalogOccurrences(metadata) {
-  const items = []
-  if (!metadata || !metadata.entries) return items
-  for (const key of Object.keys(metadata.entries).sort()) {
-    const entry = metadata.entries[key]
-    if (!entry || typeof entry.source !== 'string' || !Array.isArray(entry.occurrences)) continue
-    for (const occurrence of entry.occurrences) {
-      const location = occurrence && occurrence.location
-      if (!location || typeof location.path !== 'string') continue
-      items.push({
-        key,
-        source: entry.source,
-        location,
-        status: entry.status === 'orphaned' ? 'orphaned' : 'active',
-        reportedAmbiguity: false
-      })
-    }
-  }
-  return items
-}
-
-function readAmbiguities(root, config) {
-  const file = path.join(root, identityFiles(config).ambiguities)
-  if (!fs.existsSync(file)) return []
-  let parsed
-  try {
-    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (error) {
-    const failure = new Error('occurrence identity ambiguity report could not be read')
-    failure.kind = 'build'
-    failure.stage = 'replacement'
-    throw failure
-  }
-  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.ambiguities)) {
-    const failure = new Error('occurrence identity ambiguity report is not version 1')
-    failure.kind = 'build'
-    failure.stage = 'replacement'
-    throw failure
-  }
-  return parsed.ambiguities
-}
-
-function withReportedAmbiguities(items, ambiguities) {
-  return items.map(item => ({
-    ...item,
-    reportedAmbiguity: ambiguities.some(report => rangesOverlap(item.location, report.location))
-  }))
-}
-
-function unrepresentedAmbiguities(items, ambiguities) {
-  return ambiguities
-    .filter(report => !items.some(item => rangesOverlap(item.location, report.location)))
-    .map(report => skipDetail({
-      key: report.proposedKey,
-      source: report.source,
-      location: report.location
-    }, AMBIGUOUS))
 }
 
 function insideRoot(root, projectPath) {
@@ -422,9 +339,6 @@ function cleanupBundleArtifacts(root, stagingPath) {
 }
 
 module.exports = {
-  AMBIGUOUS,
-  ORPHANED,
-  catalogOccurrences,
   cleanupBundleArtifacts,
   extractBuildReplacementOccurrences,
   formatHumanFailure,

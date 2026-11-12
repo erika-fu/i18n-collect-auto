@@ -4,16 +4,16 @@
 
 - [Repository README](README.md)
   The executable product contract: supported sources, configuration, integration, commands, files, exit codes, and deliberate limits. Use first for externally observable behavior.
-- [Collection architecture record](docs/collection-architecture.md)
-  The primary design record for the loader-owned collection pipeline, resource snapshots, Webpack lifecycle, cache behavior, and transactional publication.
-- [Collection troubleshooting guide](docs/collection.md)
-  Operational explanation of watch behavior, failed rounds, loader integration diagnostics, output freshness, and common collection failures.
+- [Migration guide](docs/migration.md)
+  Old command names, per-occurrence catalogs, removed state files, and the bounded migration errors returned by superseded workflows.
 - [Project domain glossary](CONTEXT.md)
-  Canonical vocabulary for collected text, semantic kinds, resource snapshots, catalogs, replacement, and review state. Use these terms consistently.
+  Canonical vocabulary for runtime-localizable messages, Chinese source audit findings, catalogs, replacement, and review state. Use these terms consistently.
+- [Command write ownership ADR](docs/adr/0008-command-write-ownership.md)
+  Which workflow command may write which artifacts.
 - [Webpack loaders documentation](https://webpack.js.org/concepts/loaders/)
-  Primary framework reference for loader chaining and the transformation boundary.
+  Primary framework reference for loader chaining used by Build replacement.
 - [Webpack plugin API documentation](https://webpack.js.org/api/plugins/)
-  Primary framework reference for compiler and compilation lifecycle hooks used by the plugin.
+  Primary framework reference for compiler and compilation lifecycle hooks used by Build replacement.
 - [Webpack loader API documentation](https://webpack.js.org/api/loaders/)
   Primary framework reference for loader context, pitch execution, dependency tracking, and transparent callbacks.
 
