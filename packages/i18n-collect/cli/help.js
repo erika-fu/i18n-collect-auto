@@ -75,9 +75,11 @@ Exit codes:
 
 const REPLACE_HELP = `i18n-collect replace
 
-Preview safe source replacements backed by the keyed catalog.
+Preview safe source replacements from the same current analysis and source-catalog keys as build.
 Without --write, this command is a dry-run: it does not write source files or catalog files, does not install dependencies, and does not rewrite application bootstrap.
---write prepares every changed source file, the keyed catalogs, and replacement metadata, then commits that set together. A failed commit restores those files.
+--write prepares every changed JavaScript, TypeScript, and Vue source file and commits that set together.
+It does not write catalogs or maintain replacement bookkeeping; version control is the rollback mechanism.
+A failed commit restores the original source set. Source text and ranges are revalidated immediately before writing.
 
 Usage:
   i18n-collect replace --adapter <name> [options]
@@ -86,7 +88,7 @@ Options:
   --adapter <name>   Runtime adapter. Names: vue2, vue3, js.
   --cwd <dir>        Project root. Defaults to the current directory.
   --strict           Fail when any candidate is skipped. Nothing is written.
-  --write            Commit source replacements, keyed catalogs, and replacement metadata.
+  --write            Commit source replacements only. Does not write catalogs or replacement metadata.
   --json             Print the replacement report as JSON on stdout.
   -h, --help         Show this help.
 
@@ -115,19 +117,19 @@ Supported script positions:
 
 Skipped:
   React JSX, standalone HTML, and CSS generated content are outside replacement scope.
+  Dynamic, structured, audit-only, and needs-review findings are not automatically rewritten.
   Object keys, switch cases, and other unsupported positions are skipped with a source location and a reason.
-  Identical text is rewritten with the localization key of each occurrence. An explicit shared key is reused at every location that names it.
-  A location that does not match the current source is skipped. An orphaned occurrence is skipped.
+  Equal exact text shares one automatic key; an explicit i18n-key directive selects its declared key.
   Overlapping occurrence claims are skipped, and neither claim is rewritten.
-  A location named by identity-ambiguities.json is skipped. Other locations in that file are still replaced.
-  An already localized t(), $t(), or this.$t() call is left unchanged, including a legacy call whose argument is the MD5 of the collected text. The hash dictionary is not modified.
+  An already localized t(), $t(), or this.$t() call is left unchanged, including a legacy call whose argument is the MD5 of the collected text.
   --strict turns skipped candidates into failure. Already localized calls are not skipped.
 
 Exit codes:
   0  finished
   1  configuration failure, including a missing runtime integration
-  6  replacement files could not be saved
-  7  strict mode found a skipped candidate
+  2  analysis failure, including a stale or missing source catalog
+  6  source files could not be saved
+  7  strict mode found a skipped candidate, or source changed between planning and write
 `
 
 const VERIFY_HELP = `i18n-collect verify
@@ -254,7 +256,7 @@ Options:
   --allow-network           Translate: allow a network provider to send source text.
   --adapter <name>          Replace: vue2, vue3, or js.
   --strict                  Replace: fail when any candidate is skipped. Nothing is written.
-  --write                   Replace: commit source files, keyed catalogs, and replacement metadata.
+  --write                   Replace: commit application source files only.
   --json                    Print the workflow report as JSON on stdout.
   -h, --help                Show this help.
 

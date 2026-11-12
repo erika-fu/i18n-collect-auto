@@ -251,8 +251,8 @@ test('after Build replacement, Source replacement preview matches the pre-build 
   const written = JSON.parse(write.stdout)
   assert.strictEqual(written.written, true)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), previewContent)
-  assert.ok(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
-  assert.strictEqual(readJson(root, 'lang/catalog/replacements.json').replacements[0].call, call)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
+  assert.deepStrictEqual(written.files, ['src/app.js'])
 })
 
 test('after replace --write, Build replacement keeps localized calls and leaves metadata untouched', { timeout: 120000 }, () => {
@@ -271,12 +271,11 @@ test('after replace --write, Build replacement keeps localized calls and leaves 
   const replaced = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8')
   assert.match(replaced, new RegExp(`t\\('${key.replace(/\./g, '\\.')}'\\)`))
   assert.doesNotMatch(replaced, /你好/)
-  const metadataBefore = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
   seedSourceCatalog(root)
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), metadataBefore)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), replaced)
 
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
@@ -308,26 +307,12 @@ test('mixed localized-call and source-text occurrences keep separate identities 
     ''
   ].join('\n')
   fs.writeFileSync(path.join(root, 'src/app.js'), mixed)
-  fs.writeFileSync(path.join(root, 'lang/catalog/replacements.json'), `${JSON.stringify({
-    version: 1,
-    adapter: 'js',
-    replacements: [{
-      path: 'src/app.js',
-      key: migratedKey,
-      kind: 'script-string',
-      source: '已迁移',
-      call: `t('${migratedKey}')`,
-      start: { line: 2, column: 17 },
-      end: { line: 2, column: 21 }
-    }]
-  }, null, 2)}\n`)
-  const recordedBytes = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
   seedSourceCatalog(root)
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), mixed)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recordedBytes)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(migratedKey.replace(/\./g, '\\.')))
@@ -341,10 +326,10 @@ test('mixed localized-call and source-text occurrences keep separate identities 
   assert.strictEqual(report.replacements.length, 1)
   assert.strictEqual(report.replacements[0].key, pendingKey)
   assert.strictEqual(report.replacements[0].call, `t('${pendingKey}')`)
-  assert.ok(report.recognized.some(item => item.key === migratedKey && item.call === `t('${migratedKey}')`))
+  assert.strictEqual(report.replacements[0].source, '待迁移')
 })
 
-test('projects with existing replacement metadata can enable Build replacement without rebuilding history', { timeout: 120000 }, () => {
+test('build replacement does not require replacement bookkeeping', { timeout: 120000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dual-upgrade-'))
   const source = [
     "const { t } = require('./i18n')",
@@ -354,26 +339,9 @@ test('projects with existing replacement metadata can enable Build replacement w
   writeJsProject(root, { source })
   seedSourceCatalog(root)
   const key = catalogKeyFor(root, '你好')
-  const recorded = {
-    version: 1,
-    adapter: 'js',
-    replacements: [{
-      path: 'src/notes.js',
-      key: 'home.notes',
-      kind: 'script-string',
-      source: '备注',
-      call: "t('home.notes')",
-      start: { line: 1, column: 0 },
-      end: { line: 1, column: 4 }
-    }]
-  }
-  fs.writeFileSync(path.join(root, 'lang/catalog/replacements.json'), `${JSON.stringify(recorded, null, 2)}\n`)
-  const recordedBytes = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
-  seedSourceCatalog(root)
 
   const build = run(['build', '--json'], root)
   assert.strictEqual(build.status, 0, build.stderr)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recordedBytes)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
   const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
   assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
@@ -640,15 +608,6 @@ test('Vue 3 build-then-replace and replace-then-build keep the same keys without
   const before = JSON.parse(previewBefore.stdout)
   assert.strictEqual(before.replacements.length, 2)
 
-  seedSourceCatalog(root)
-  const build = run(['build', '--json'], root)
-  assert.strictEqual(build.status, 0, build.stderr)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), source)
-  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
-  const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
-  assert.match(bundle, new RegExp(welcomeKey.replace(/\./g, '\\.')))
-  assert.match(bundle, new RegExp(tipKey.replace(/\./g, '\\.')))
-
   const previewAfter = run(['replace', '--adapter', 'vue3', '--json'], root)
   assert.strictEqual(previewAfter.status, 0, previewAfter.stderr)
   const after = JSON.parse(previewAfter.stdout)
@@ -662,17 +621,12 @@ test('Vue 3 build-then-replace and replace-then-build keep the same keys without
   const replaced = fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8')
   assert.match(replaced, new RegExp(`\\$t\\('${welcomeKey.replace(/\./g, '\\.')}'\\)`))
   assert.match(replaced, new RegExp(`t\\('${tipKey.replace(/\./g, '\\.')}'\\)`))
-  const recorded = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 
-  seedSourceCatalog(root)
-  const rebuild = run(['build', '--json'], root)
-  assert.strictEqual(rebuild.status, 0, rebuild.stderr)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), replaced)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recorded)
-  const rebuilt = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
-  assert.match(rebuilt, new RegExp(welcomeKey.replace(/\./g, '\\.')))
-  assert.match(rebuilt, new RegExp(tipKey.replace(/\./g, '\\.')))
-  assert.doesNotMatch(rebuilt, /\$t\(\$t\(|t\(t\(/)
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  const previewAfterWrite = run(['replace', '--adapter', 'vue3', '--json'], root)
+  assert.strictEqual(previewAfterWrite.status, 0, previewAfterWrite.stderr)
+  assert.deepStrictEqual(JSON.parse(previewAfterWrite.stdout).replacements, [])
 })
 
 test('Vue 2 build-then-replace and replace-then-build keep the same keys without nesting', { timeout: 180000 }, () => {
@@ -718,12 +672,12 @@ test('Vue 2 build-then-replace and replace-then-build keep the same keys without
   const replaced = fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8')
   assert.match(replaced, new RegExp(`\\$t\\('${welcomeKey.replace(/\./g, '\\.')}'\\)`))
   assert.match(replaced, new RegExp(`this\\.\\$t\\('${helloKey.replace(/\./g, '\\.')}'\\)`))
-  const recorded = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 
   seedSourceCatalog(root)
   const rebuild = run(['build', '--json'], root)
   assert.strictEqual(rebuild.status, 0, rebuild.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), replaced)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recorded)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8'), /\$t\(\$t\(|this\.\$t\(this\.\$t\(/)
 })

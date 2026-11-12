@@ -101,6 +101,25 @@ test('planner reports missing resource content as a skip', () => {
   assert.strictEqual(result.skipped[0].reason, 'source file is missing')
 })
 
+test('planner skips overlapping occurrence claims without rewriting either', () => {
+  const source = 'function render(t) { return "你好" }'
+  const item = occurrence('home.one', '你好', source)
+  const rival = {
+    ...item,
+    key: 'home.two'
+  }
+  const result = planReplacement({
+    adapter: 'js',
+    runtime: { localizationFunction: true },
+    occurrences: [item, rival],
+    resources: { 'src/app.js': source }
+  })
+
+  assert.deepStrictEqual(result.replacements, [])
+  assert.strictEqual(result.skipped.length, 2)
+  assert.ok(result.skipped.every(entry => entry.reason === 'overlapping occurrence claims'))
+})
+
 test('planner consumes supplied Vue Template IR without resolving project files', () => {
   const source = '<template><p>你好</p></template>'
   const result = planReplacement({

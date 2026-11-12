@@ -9,6 +9,7 @@ const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
 const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
+const { keyForSource, seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -178,12 +179,14 @@ test('the migration fixture collects, protects an existing translation, and repl
   })
   assert.deepStrictEqual(JSON.parse(reviewed.stdout).needsReview, [{ key: 'home.hello', locale: 'en' }])
 
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const preview = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
   const previewReport = JSON.parse(preview.stdout)
   assert.strictEqual(previewReport.dryRun, true)
   assert.strictEqual(previewReport.written, false)
-  assert.deepStrictEqual(previewReport.skipped, [])
+  assert.strictEqual(previewReport.skipped.length, 1)
+  assert.strictEqual(previewReport.skipped[0].path, 'i18n/provider.js')
   assert.deepStrictEqual(previewReport.previews.map(item => item.path), ['src/app.js', 'src/notes.js'])
   assert.strictEqual(previewReport.previews[0].content, APP_REPLACED)
   assert.strictEqual(previewReport.previews[1].content, NOTE_REPLACED)
@@ -200,25 +203,25 @@ test('the migration fixture collects, protects an existing translation, and repl
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/notes.js'), 'utf8'), NOTE_REPLACED)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/legacy/old.js'), 'utf8').includes('旧文案'), true)
   assert.deepStrictEqual(readJson(root, 'lang/catalog/en.json'), { 'home.hello': 'Hello there' })
-  const metadata = readJson(root, 'lang/catalog/replacements.json')
-  assert.strictEqual(metadata.version, 1)
-  assert.strictEqual(metadata.adapter, 'js')
-  assert.deepStrictEqual(metadata.replacements.map(item => item.call).sort(), [
-    "t('home.hello')",
-    "t('home.note')"
-  ])
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
+  assert.deepStrictEqual(committed.files.sort(), ['src/app.js', 'src/notes.js'].sort())
 
+  assert.strictEqual(run(['collect', '--json'], root).status, 0)
+  fs.writeFileSync(path.join(root, 'lang/catalog/explicit-messages.json'), json({
+    version: 1,
+    messages: [
+      { key: 'home.hello', source: '您好' },
+      { key: 'home.note', source: '备注' }
+    ]
+  }))
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const again = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(again.status, 0, again.stderr)
   const second = JSON.parse(again.stdout)
   assert.strictEqual(second.written, false)
   assert.deepStrictEqual(second.replacements, [])
-  assert.deepStrictEqual(second.recognized.map(item => item.call).sort(), [
-    "t('home.hello')",
-    "t('home.note')"
-  ])
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), APP_REPLACED)
-  assert.deepStrictEqual(readJson(root, 'lang/catalog/replacements.json'), metadata)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
 })
 
 test('a failed replacement write restores the migration fixture', { timeout: 30000 }, () => {
@@ -226,6 +229,7 @@ test('a failed replacement write restores the migration fixture', { timeout: 300
   writeWebpack(root)
   const collected = run(['collect', '--json'], root)
   assert.strictEqual(collected.status, 0, collected.stderr)
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const before = {
     app: fs.readFileSync(path.join(root, 'src/app.js')),
     note: fs.readFileSync(path.join(root, 'src/notes.js')),
@@ -255,8 +259,6 @@ fs.renameSync = (from, to) => {
   assert.strictEqual(JSON.parse(result.stdout).failure, 'storage')
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/app.js')), before.app)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/notes.js')), before.note)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), before.catalog)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), before.meta)
   assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
 })
 
@@ -276,21 +278,26 @@ const VUE2_SOURCE = [
   ''
 ].join('\n')
 
-const VUE2_PREVIEW = [
-  '<template>',
-  '  <p :title="$t(\'home.title\')">{{ $t(\'home.welcome\') }}</p>',
-  '</template>',
-  '<script>',
-  'export default {',
-  '  methods: {',
-  '    greet() {',
-  "      return this.$t('home.hello')",
-  '    }',
-  '  }',
-  '}',
-  '</script>',
-  ''
-].join('\n')
+function vue2Preview(root) {
+  const title = keyForSource(root, '标题')
+  const welcome = keyForSource(root, '欢迎')
+  const hello = keyForSource(root, '你好')
+  return [
+    '<template>',
+    `  <p :title="$t('${title}')">{{ $t('${welcome}') }}</p>`,
+    '</template>',
+    '<script>',
+    'export default {',
+    '  methods: {',
+    '    greet() {',
+    `      return this.$t('${hello}')`,
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+}
 
 const VUE3_SOURCE = [
   '<template>',
@@ -303,16 +310,20 @@ const VUE3_SOURCE = [
   ''
 ].join('\n')
 
-const VUE3_PREVIEW = [
-  '<template>',
-  '  <p>{{ $t(\'home.welcome\') }}</p>',
-  '</template>',
-  '<script setup>',
-  "import { t } from './i18n'",
-  "const title = t('home.title')",
-  '</script>',
-  ''
-].join('\n')
+function vue3Preview(root) {
+  const welcome = keyForSource(root, '欢迎')
+  const title = keyForSource(root, '标题')
+  return [
+    '<template>',
+    `  <p>{{ $t('${welcome}') }}</p>`,
+    '</template>',
+    '<script setup>',
+    "import { t } from './i18n'",
+    `const title = t('${title}')`,
+    '</script>',
+    ''
+  ].join('\n')
+}
 
 test('the Vue 2 fixture previews and then keeps a committed replacement', () => {
   const root = copyFixture('vue2')
@@ -322,30 +333,27 @@ test('the Vue 2 fixture previews and then keeps a committed replacement', () => 
     欢迎: 'home.welcome',
     你好: 'home.hello'
   }))
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  const vue2Expected = vue2Preview(root)
   const preview = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
   const previewReport = JSON.parse(preview.stdout)
   assert.strictEqual(previewReport.dryRun, true)
   assert.deepStrictEqual(previewReport.skipped, [])
-  assert.strictEqual(previewReport.previews[0].content, VUE2_PREVIEW)
+  assert.strictEqual(previewReport.previews[0].content, vue2Expected)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE2_SOURCE)
 
   const written = run(['replace', '--adapter', 'vue2', '--write', '--json'], root)
   assert.strictEqual(written.status, 0, written.stderr)
   assert.strictEqual(JSON.parse(written.stdout).written, true)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE2_PREVIEW)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), vue2Expected)
 
   const again = run(['replace', '--adapter', 'vue2', '--write', '--json'], root)
   assert.strictEqual(again.status, 0, again.stderr)
   const second = JSON.parse(again.stdout)
   assert.strictEqual(second.written, false)
   assert.deepStrictEqual(second.replacements, [])
-  assert.deepStrictEqual(second.recognized.map(item => item.call).sort(), [
-    "$t('home.title')",
-    "$t('home.welcome')",
-    "this.$t('home.hello')"
-  ])
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE2_PREVIEW)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), vue2Expected)
 })
 
 test('the Vue 3 fixture previews, commits, and keeps the replacement', () => {
@@ -355,30 +363,28 @@ test('the Vue 3 fixture previews, commits, and keeps the replacement', () => {
     欢迎: 'home.welcome',
     标题: 'home.title'
   }))
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
+  const vue3Expected = vue3Preview(root)
   const preview = run(['replace', '--adapter', 'vue3', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
   const previewReport = JSON.parse(preview.stdout)
   assert.strictEqual(previewReport.adapter, 'vue3')
   assert.strictEqual(previewReport.dryRun, true)
   assert.deepStrictEqual(previewReport.skipped, [])
-  assert.strictEqual(previewReport.previews[0].content, VUE3_PREVIEW)
+  assert.strictEqual(previewReport.previews[0].content, vue3Expected)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE3_SOURCE)
 
   const written = run(['replace', '--adapter', 'vue3', '--write', '--json'], root)
   assert.strictEqual(written.status, 0, written.stderr)
   assert.strictEqual(JSON.parse(written.stdout).written, true)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE3_PREVIEW)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), vue3Expected)
 
   const again = run(['replace', '--adapter', 'vue3', '--write', '--json'], root)
   assert.strictEqual(again.status, 0, again.stderr)
   const second = JSON.parse(again.stdout)
   assert.strictEqual(second.written, false)
   assert.deepStrictEqual(second.replacements, [])
-  assert.deepStrictEqual(second.recognized.map(item => item.call).sort(), [
-    "$t('home.welcome')",
-    "t('home.title')"
-  ])
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), VUE3_PREVIEW)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8'), vue3Expected)
 })
 
 test('Vue replacement shares collection ranges for directives, entities, CRLF, and expression fragments', () => {
@@ -392,17 +398,6 @@ test('Vue replacement shares collection ranges for directives, entities, CRLF, a
     '</template>',
     ''
   ].join('\r\n')
-  const expected = [
-    '<template>',
-    '  <!-- no-i18n-auto -->',
-    '  <p>跳过</p>',
-    '  <p :title="$t(\'home.saved\')">{{ $t(\'home.welcome\') }}</p>',
-    '  <input :placeholder="$t(\'home.placeholder\') + suffix">',
-    '  <p>{{ `${$t(\'home.prefix\')}${name}` }}</p>',
-    '</template>',
-    ''
-  ].join('\r\n')
-
   for (const [fixture, adapter] of [['vue2', 'vue2'], ['vue3', 'vue3']]) {
     const root = copyFixture(fixture)
     const file = path.join(root, 'src/Home.vue')
@@ -421,6 +416,22 @@ test('Vue replacement shares collection ranges for directives, entities, CRLF, a
       前缀: 'home.prefix'
     })
     writeCatalog(root, catalogEntries)
+    seedSourceCatalog(root, { writeLegacyArtifacts: false })
+
+    const saved = keyForSource(root, '保存\u00A0成功')
+    const welcome = keyForSource(root, '欢迎')
+    const placeholder = keyForSource(root, '请输入')
+    const prefix = keyForSource(root, '前缀')
+    const expected = [
+      '<template>',
+      '  <!-- no-i18n-auto -->',
+      '  <p>跳过</p>',
+      `  <p :title="$t('${saved}')">{{ $t('${welcome}') }}</p>`,
+      `  <input :placeholder="$t('${placeholder}') + suffix">`,
+      `  <p>{{ \`\${$t('${prefix}')}\${name}\` }}</p>`,
+      '</template>',
+      ''
+    ].join('\r\n')
 
     const preview = run(['replace', '--adapter', adapter, '--json'], root)
 
@@ -429,7 +440,8 @@ test('Vue replacement shares collection ranges for directives, entities, CRLF, a
     assert.deepStrictEqual(report.skipped, [])
     assert.strictEqual(report.previews[0].content, expected)
     for (const entry of catalogEntries) {
-      const replacement = report.replacements.find(item => item.key === entry.key)
+      const catalogKey = keyForSource(root, entry.value)
+      const replacement = report.replacements.find(item => item.key === catalogKey)
       assert.deepStrictEqual(replacement.start, entry.locations[0].start)
       assert.deepStrictEqual(replacement.end, entry.locations[0].end)
     }

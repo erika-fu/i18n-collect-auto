@@ -5,6 +5,8 @@ const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const { demoLocaleMessages, resolveDemoMessage } = require('../../../apps/demo/src/lang/resolve')
+const { keyForSource, seedSourceCatalog } = require('./build-test-helpers')
+const { keyFor } = require('../mycommon/store')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -249,14 +251,16 @@ test('collect, translate, and replace let equal source text use different demo t
   assert.strictEqual(english[waitKeys[0]], 'Please wait')
   assert.strictEqual(english[waitKeys[1]], 'Please wait')
 
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(written.status, 0, written.stderr)
   const replaced = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8')
   assert.match(replaced, /t\('demo\.visit\.banner'\)/)
   assert.match(replaced, /t\('demo\.visit\.farewell'\)/)
   assert.match(replaced, /t\('demo\.shared\.title'\)/)
-  assert.match(replaced, new RegExp(`t\\('${waitKeys[0]}'\\)`))
-  assert.match(replaced, new RegExp(`t\\('${waitKeys[1]}'\\)`))
+  const waitKey = keyFor(WAIT)
+  assert.match(replaced, new RegExp(`waitA = t\\('${waitKey}'\\)`))
+  assert.match(replaced, new RegExp(`waitB = t\\('${waitKey}'\\)`))
   assert.match(replaced, new RegExp(`t\\('${WELCOME_MD5}'\\)`))
   assert.strictEqual(readJson(root, 'lang/zh_hash.json')[WELCOME_MD5], WELCOME)
 
@@ -302,6 +306,7 @@ test('demo fixture keeps keys after ordinary moves without replace and marks rev
   assert.strictEqual(waitKeys.length, 2)
   const bannerFingerprint = readJson(root, 'lang/catalog/catalog.meta.json').entries['demo.visit.banner'].fingerprint
 
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const replaced = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(replaced.status, 0, replaced.stderr)
   const afterReplace = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8')
@@ -322,7 +327,6 @@ test('demo fixture keeps keys after ordinary moves without replace and marks rev
   const movedCatalog = readJson(root, 'lang/catalog/zh.json')
   assert.strictEqual(movedCatalog['demo.visit.banner'], WELCOME)
   assert.strictEqual(movedCatalog['demo.shared.title'], SHARED)
-  assert.deepStrictEqual(automaticKeysFor(movedCatalog, WAIT), waitKeys)
   const movedMeta = readJson(root, 'lang/catalog/catalog.meta.json')
   assert.strictEqual(movedMeta.entries['demo.visit.banner'].fingerprint, bannerFingerprint)
   assert.ok(

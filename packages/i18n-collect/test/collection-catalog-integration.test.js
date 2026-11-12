@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
+const { seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -176,6 +177,7 @@ module.exports = {
   const helloFingerprint = beforeMeta.entries['home.hello'].fingerprint
   const helloOccurrenceId = beforeMeta.entries['home.hello'].occurrences[0].id
 
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const replaced = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(replaced.status, 0, replaced.stderr)
   assert.match(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), /t\('home\.hello'\)/)

@@ -121,11 +121,55 @@ function assertSourceCatalogFresh(root, config) {
   }
 }
 
+// Source replacement shares build's current analysis and catalog keys, but does not
+// require the committed source catalog to equal buildSourceCatalog after a write:
+// already-localized calls keep catalog keys without regenerating source text rows.
+function prepareSourceReplacement(root, config) {
+  const committed = readCommittedSourceCatalog(root, config)
+  const sources = listProjectSources(config.root || root, config)
+  let analysis
+  try {
+    analysis = analyzeProject({ files: sources, config })
+  } catch (error) {
+    throw commandError(
+      'collection',
+      'analysis',
+      error && error.message ? error.message : String(error)
+    )
+  }
+  for (const finding of analysis.runtimeMessages || []) {
+    if (!finding || !finding.location || typeof finding.text !== 'string') continue
+    const key = finding.key || keyFor(finding.text)
+    const catalogText = committed[key]
+    if (catalogText == null) {
+      throw commandError(
+        'collection',
+        'analysis',
+        'source analysis no longer matches the committed source catalog; run scan before replace'
+      )
+    }
+    if (catalogText !== finding.text) {
+      throw commandError(
+        'collection',
+        'analysis',
+        `source catalog key "${key}" no longer matches source text; run scan before replace`
+      )
+    }
+  }
+  return {
+    analysis,
+    sourceCatalog: committed,
+    occurrences: occurrencesFromAnalysis(analysis),
+    sourceCatalogPath: sourceCatalogPath(config)
+  }
+}
+
 module.exports = {
   SOURCE_CATALOG_FILE,
   assertSourceCatalogFresh,
   catalogEqual,
   occurrencesFromAnalysis,
+  prepareSourceReplacement,
   readCommittedSourceCatalog,
   sourceCatalogPath
 }

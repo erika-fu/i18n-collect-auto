@@ -12,7 +12,8 @@ const {
 const { keyFor } = require('../mycommon/store')
 const {
   assertSourceCatalogFresh,
-  occurrencesFromAnalysis
+  occurrencesFromAnalysis,
+  prepareSourceReplacement
 } = require('../mycommon/source-catalog-freshness')
 const { listProjectSources } = require('../mycommon/project-sources')
 
@@ -124,4 +125,32 @@ test('assertSourceCatalogFresh fails when the committed source catalog is missin
     return true
   })
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
+})
+
+test('prepareSourceReplacement stays available after source is already localized', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-replace-prep-'))
+  const key = keyFor('你好')
+  writeJsProject(root, [
+    "const { t } = require('./i18n')",
+    `module.exports = t('${key}')`,
+    ''
+  ].join('\n'))
+  fs.writeFileSync(path.join(root, 'src/i18n.js'), 'function t(key) { return key }\nmodule.exports = { t }\n')
+  commitSourceCatalog(root, { [key]: '你好' })
+  const config = loadConfig({ root })
+  const prepared = prepareSourceReplacement(root, config)
+  assert.deepStrictEqual(prepared.occurrences, [])
+  assert.deepStrictEqual(prepared.sourceCatalog, { [key]: '你好' })
+})
+
+test('prepareSourceReplacement fails when an automatic finding is absent from the catalog', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-replace-missing-key-'))
+  writeJsProject(root, 'module.exports = "你好"\n')
+  commitSourceCatalog(root, { [keyFor('欢迎')]: '欢迎' })
+  const config = loadConfig({ root })
+  assert.throws(() => prepareSourceReplacement(root, config), error => {
+    assert.strictEqual(error.kind, 'collection')
+    assert.match(error.message, /source catalog|scan before replace/i)
+    return true
+  })
 })

@@ -1,23 +1,23 @@
 const fs = require('fs')
 const path = require('path')
-const { upgradeCatalogMetadata } = require('../mycommon/catalog')
-const { catalogFiles, identityFiles, loadConfig } = require('../mycommon/config')
-const { commitFiles, recoverCommits } = require('../mycommon/output')
+const { loadConfig } = require('../mycommon/config')
+const { commitFiles } = require('../mycommon/output')
 const { ReplacementPlanner } = require('../mycommon/replacement-planner')
 const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
+const {
+  prepareSourceReplacement
+} = require('../mycommon/source-catalog-freshness')
 const { parseTemplate } = require('../myloader/template-parser')
 
 const EXIT = {
   ok: 0,
   configuration: 1,
+  collection: 2,
   storage: 6,
   replacement: 7
 }
-const REPLACEMENTS_NAME = 'replacements.json'
-const RESERVED_CATALOG_NAMES = new Set(['catalog.meta.json', REPLACEMENTS_NAME, 'translation-state.json'])
-const AMBIGUOUS = 'occurrence identity is ambiguous'
-const ORPHANED = 'orphaned occurrence is outside the current collection'
 const ADAPTERS = ['vue2', 'vue3', 'js']
+const STALE_SOURCE = 'source changed between planning and write'
 
 function commandError(kind, message) {
   const error = new Error(message)
@@ -83,116 +83,6 @@ function parseReplaceArgs(args) {
   return parsed
 }
 
-function readMetadata(root, config) {
-  const relative = catalogFiles(config).metadata
-  const file = path.join(root, relative)
-  if (!fs.existsSync(file)) throw commandError('configuration', 'source catalog metadata is missing')
-  let metadata
-  try {
-    metadata = JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (error) {
-    throw commandError('configuration', 'source catalog metadata could not be read')
-  }
-  try {
-    const upgraded = upgradeCatalogMetadata(metadata)
-    if (!upgraded || !upgraded.entries || typeof upgraded.entries !== 'object' || Array.isArray(upgraded.entries)) {
-      throw commandError('configuration', 'source catalog metadata is not a supported catalog schema')
-    }
-    return upgraded
-  } catch (error) {
-    if (error && error.kind === 'configuration') throw error
-    throw commandError('configuration', error && error.message ? error.message : 'source catalog metadata is not a supported catalog schema')
-  }
-}
-
-function positionBefore(left, right) {
-  return left.line < right.line || (left.line === right.line && left.column < right.column)
-}
-
-function rangesOverlap(left, right) {
-  if (!left || !right || left.path !== right.path) return false
-  return positionBefore(left.start, right.end) && positionBefore(right.start, left.end)
-}
-
-function skipDetail(item, reason) {
-  return {
-    path: item.location.path,
-    key: item.key,
-    kind: item.location.kind,
-    source: item.source,
-    start: item.location.start,
-    end: item.location.end,
-    reason
-  }
-}
-
-function readAmbiguities(root, config) {
-  const file = path.join(root, identityFiles(config).ambiguities)
-  if (!fs.existsSync(file)) return []
-  let parsed
-  try {
-    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (error) {
-    throw commandError('configuration', 'occurrence identity ambiguity report could not be read')
-  }
-  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.ambiguities)) {
-    throw commandError('configuration', 'occurrence identity ambiguity report is not version 1')
-  }
-  return parsed.ambiguities.map(item => {
-    const location = item && item.location
-    if (!item || typeof item.source !== 'string' || typeof item.proposedKey !== 'string' || !location || typeof location.path !== 'string' || typeof location.kind !== 'string' || !location.start || !location.end) {
-      throw commandError('configuration', 'occurrence identity ambiguity report is not version 1')
-    }
-    return item
-  })
-}
-
-function withReportedAmbiguities(items, ambiguities) {
-  return items.map(item => ({
-    ...item,
-    reportedAmbiguity: ambiguities.some(report => rangesOverlap(item.location, report.location))
-  }))
-}
-
-function unrepresentedAmbiguities(items, ambiguities) {
-  return ambiguities
-    .filter(report => !items.some(item => rangesOverlap(item.location, report.location)))
-    .map(report => skipDetail({
-      key: report.proposedKey,
-      source: report.source,
-      location: report.location
-    }, AMBIGUOUS))
-}
-
-function catalogItems(metadata) {
-  const items = []
-  for (const key of Object.keys(metadata.entries).sort()) {
-    const entry = metadata.entries[key]
-    if (!entry || typeof entry.source !== 'string' || !Array.isArray(entry.occurrences)) continue
-    for (const occurrence of entry.occurrences) {
-      const location = occurrence && occurrence.location
-      if (!location || typeof location.path !== 'string') continue
-      items.push({
-        key,
-        source: entry.source,
-        location,
-        status: entry.status === 'orphaned' ? 'orphaned' : 'active'
-      })
-    }
-  }
-  return items
-}
-
-function withoutOrphaned(items) {
-  const held = []
-  const open = []
-  for (const item of items) {
-    if (item.status === 'orphaned') held.push(skipDetail(item, ORPHANED))
-    else open.push(item)
-  }
-  return { open, held }
-}
-
 function assertRuntime(root, adapter) {
   try {
     return assertReplacementRuntime(root, adapter)
@@ -252,14 +142,6 @@ function plannerResources(root, config, adapter, items, sources) {
   }))
 }
 
-function recordedId(item) {
-  return `${item.path}\0${item.key}\0${item.kind}\0${item.start.line}:${item.start.column}`
-}
-
-function replacementRelative(config) {
-  return path.posix.join(config.catalogDir, REPLACEMENTS_NAME)
-}
-
 function sortDetails(items) {
   return [...items].sort((left, right) => {
     if (left.path !== right.path) return left.path < right.path ? -1 : 1
@@ -269,108 +151,30 @@ function sortDetails(items) {
   })
 }
 
-function readRecorded(root, config) {
-  const file = path.join(root, replacementRelative(config))
-  if (!fs.existsSync(file)) return []
-  let parsed
-  try {
-    parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (error) {
-    throw commandError('configuration', 'replacement metadata could not be read')
-  }
-  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.replacements)) {
-    throw commandError('configuration', 'replacement metadata is not version 1')
-  }
-  return parsed.replacements
-}
-
-function reconcileRecorded(planned, sources, recorded) {
-  const byId = new Map(recorded.map(item => [recordedId(item), item]))
-  const skipped = []
-  const recognized = [...planned.recognized]
-  for (const item of planned.skipped) {
-    const prior = byId.get(recordedId(item))
-    const source = sources.get(item.path)
-    if (prior && typeof source === 'string' && source.includes(prior.call)) {
-      recognized.push({
-        path: item.path,
-        key: item.key,
-        kind: item.kind,
-        source: item.source,
-        call: prior.call,
-        start: item.start,
-        end: item.end
-      })
-    } else skipped.push(item)
-  }
-  return { ...planned, skipped, recognized: sortDetails(recognized) }
-}
-
-function replacementEntry(item) {
-  return {
-    path: item.path,
-    key: item.key,
-    kind: item.kind,
-    source: item.source,
-    call: item.call,
-    start: item.start,
-    end: item.end
-  }
-}
-
-function mergeRecorded(recorded, replacements, adapter) {
-  const next = recorded.map(replacementEntry)
-  const seen = new Set(next.map(recordedId))
-  for (const item of replacements) {
-    const entry = replacementEntry(item)
-    const id = recordedId(entry)
-    if (seen.has(id)) continue
-    next.push(entry)
-    seen.add(id)
-  }
-  next.sort((left, right) => {
-    if (left.path !== right.path) return left.path < right.path ? -1 : 1
-    if (left.start.line !== right.start.line) return left.start.line - right.start.line
-    if (left.start.column !== right.start.column) return left.start.column - right.start.column
-    return left.key < right.key ? -1 : left.key > right.key ? 1 : 0
+function planReplacement(root, config, adapter, occurrences, runtime) {
+  const sources = readSources(root, occurrences)
+  const planner = new ReplacementPlanner({
+    adapter,
+    styleExtensions: config.styleExtensions,
+    runtime
   })
-  return { version: 1, adapter, replacements: next }
+  const planned = planner.plan({
+    occurrences,
+    resources: plannerResources(root, config, adapter, occurrences, sources)
+  })
+  planned.skipped = sortDetails(planned.skipped)
+  planned.recognized = sortDetails(planned.recognized)
+  planned.replacements = sortDetails(planned.replacements)
+  return { planned, sources }
 }
 
-function readRequired(file, label) {
-  if (!fs.existsSync(file)) throw commandError('configuration', `${label} is missing`)
-  try {
-    return fs.readFileSync(file, 'utf8')
-  } catch (error) {
-    throw commandError('configuration', `${label} could not be read`)
-  }
-}
-
-function catalogCommitTargets(root, config, replacementDocument) {
-  const files = catalogFiles(config)
-  const dir = path.join(root, config.catalogDir)
-  let names
-  try {
-    names = fs.readdirSync(dir)
-  } catch (error) {
-    throw commandError('configuration', 'source catalog is missing')
-  }
-  const sourceName = path.posix.basename(files.messages)
-  const extras = names
-    .filter(name => name.endsWith('.json') && !RESERVED_CATALOG_NAMES.has(name) && name !== sourceName)
-    .sort()
-  const relatives = [
-    files.messages,
-    ...extras.map(name => path.posix.join(config.catalogDir, name)),
-    files.metadata,
-    replacementRelative(config)
-  ]
-  const replacementPath = replacementRelative(config)
-  return relatives.map(relative => ({
-    file: path.join(root, relative),
-    relative,
-    content: relative === replacementPath ? jsonText(replacementDocument) : readRequired(path.join(root, relative), relative)
-  }))
+function previewFingerprint(planned) {
+  return JSON.stringify({
+    replacements: planned.replacements,
+    skipped: planned.skipped,
+    recognized: planned.recognized,
+    previews: planned.previews
+  })
 }
 
 function sourceCommitTargets(root, previews) {
@@ -415,10 +219,10 @@ function reportOf(parsed, planned, extra = {}) {
 
 function human(report) {
   const lead = report.dryRun
-    ? `Dry run (${report.adapter}). No source or catalog file was modified.`
+    ? `Dry run (${report.adapter}). No source, catalog, audit, or metadata file was modified.`
     : report.written
-      ? `Wrote source, catalog, and replacement metadata (${report.adapter}).`
-      : `No source changes (${report.adapter}). No source or catalog file was modified.`
+      ? `Wrote source files (${report.adapter}). Catalogs and replacement metadata were not modified.`
+      : `No source changes (${report.adapter}). No source, catalog, audit, or metadata file was modified.`
   const lines = [
     lead,
     `Replacements: ${report.replacements.length}. Skipped: ${report.skipped.length}. Already localized: ${report.recognized.length}.`
@@ -464,28 +268,15 @@ function replace(args) {
   const root = path.resolve(parsed.cwd || process.cwd())
   try {
     const config = loadConfig({ root })
-    recoverCommits(path.join(config.root, config.catalogDir))
-    const metadata = readMetadata(config.root, config)
-    const items = catalogItems(metadata)
-    const active = withoutOrphaned(items)
-    const ambiguities = readAmbiguities(config.root, config)
-    const sources = readSources(config.root, items)
-    const recorded = readRecorded(config.root, config)
-    const occurrences = withReportedAmbiguities(active.open, ambiguities)
-    const planner = new ReplacementPlanner({
-      adapter: parsed.adapter,
-      styleExtensions: config.styleExtensions,
-      runtime: assertRuntime(config.root, parsed.adapter)
-    })
-    const planned = reconcileRecorded(planner.plan({
-      occurrences,
-      resources: plannerResources(config.root, config, parsed.adapter, occurrences, sources)
-    }), sources, recorded)
-    planned.skipped = sortDetails([
-      ...planned.skipped,
-      ...active.held,
-      ...unrepresentedAmbiguities(active.open, ambiguities)
-    ])
+    const prepared = prepareSourceReplacement(config.root, config)
+    const runtime = assertRuntime(config.root, parsed.adapter)
+    const { planned } = planReplacement(
+      config.root,
+      config,
+      parsed.adapter,
+      prepared.occurrences,
+      runtime
+    )
     if (parsed.strict && planned.skipped.length > 0) {
       const report = reportOf(parsed, planned, {
         ok: false,
@@ -499,12 +290,24 @@ function replace(args) {
       const report = reportOf(parsed, planned)
       return outcome(EXIT.ok, parsed.json ? jsonText(report) : human(report), '')
     }
-    const targets = [
-      ...catalogCommitTargets(config.root, config, mergeRecorded(recorded, planned.replacements, parsed.adapter)),
-      ...sourceCommitTargets(config.root, planned.previews)
-    ]
+
+    const refreshed = prepareSourceReplacement(config.root, config)
+    const rechecked = planReplacement(
+      config.root,
+      config,
+      parsed.adapter,
+      refreshed.occurrences,
+      runtime
+    )
+    if (previewFingerprint(rechecked.planned) !== previewFingerprint(planned)) {
+      throw commandError('replacement', STALE_SOURCE)
+    }
+    const targets = sourceCommitTargets(config.root, rechecked.planned.previews)
     writeReplacement(targets)
-    const report = reportOf(parsed, planned, { written: true, files: targets.map(target => target.relative) })
+    const report = reportOf(parsed, rechecked.planned, {
+      written: true,
+      files: targets.map(target => target.relative)
+    })
     return outcome(EXIT.ok, parsed.json ? jsonText(report) : human(report), '')
   } catch (error) {
     return failure(error, parsed.json)

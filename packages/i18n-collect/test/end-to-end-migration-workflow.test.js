@@ -4,13 +4,13 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
+const { keyForSource, seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
 const plugin = require.resolve('../myplugin')
 const demoLang = path.join(__dirname, '../../../apps/demo/lang')
 
-const AUTO_KEY = /^auto\.[0-9A-HJKMNP-TV-Z]{26}$/
 const FORMAL_COLLECT = [
   'lang/zh_hash.json',
   'lang/zh_hash.map.json',
@@ -67,12 +67,6 @@ function assertDemoLangUnchanged(before) {
   for (const file of Object.keys(before)) {
     assert.deepStrictEqual(after[file], before[file], `committed demo lang changed: ${file}`)
   }
-}
-
-function automaticKeyFor(catalog, source) {
-  const keys = Object.keys(catalog).filter(key => catalog[key] === source && AUTO_KEY.test(key))
-  assert.strictEqual(keys.length, 1, `one automatic key for ${JSON.stringify(source)}`)
-  return keys[0]
 }
 
 function writeProject(root, { source, files = {} } = {}) {
@@ -140,13 +134,23 @@ test('collect, translate, and source replacement with --write succeed through th
   const collected = run(['collect', '--json'], root)
   assert.strictEqual(collected.status, 0, collected.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), APP_BEFORE)
-  const sourceCatalog = readJson(root, 'lang/catalog/zh.json')
+  let sourceCatalog = readJson(root, 'lang/catalog/zh.json')
   assert.strictEqual(sourceCatalog['home.hello'], '你好')
-  const waitKey = automaticKeyFor(sourceCatalog, '请稍候')
+  let waitKey = Object.keys(sourceCatalog).find(key => sourceCatalog[key] === '请稍候')
+  assert.ok(waitKey, 'collect assigns a catalog key for 请稍候')
+  fs.writeFileSync(path.join(root, 'src/app.js'), APP_BEFORE.replace(
+    "const wait = '请稍候'",
+    `const wait = /* i18n-key: ${waitKey} */ '请稍候'`
+  ))
+  const rebound = run(['collect', '--json'], root)
+  assert.strictEqual(rebound.status, 0, rebound.stderr)
+  sourceCatalog = readJson(root, 'lang/catalog/zh.json')
+  waitKey = Object.keys(sourceCatalog).find(key => sourceCatalog[key] === '请稍候')
+  assert.ok(waitKey, 'rebound collect keeps the wait catalog key')
   const meta = readJson(root, 'lang/catalog/catalog.meta.json')
   assert.strictEqual(meta.version, 3)
   assert.strictEqual(meta.entries['home.hello'].origin, 'explicit')
-  assert.strictEqual(meta.entries[waitKey].origin, 'derived')
+  assert.strictEqual(meta.entries[waitKey].origin, 'explicit')
   assert.strictEqual(meta.entries['home.hello'].representation, 'source-text')
   assert.strictEqual(meta.entries[waitKey].representation, 'source-text')
 
@@ -160,6 +164,7 @@ test('collect, translate, and source replacement with --write succeed through th
   assert.strictEqual(review.locales.en[waitKey].review, 'current')
   const helloFingerprint = review.locales.en['home.hello'].sourceFingerprint
 
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(written.status, 0, written.stderr)
   const committed = JSON.parse(written.stdout)
@@ -167,7 +172,7 @@ test('collect, translate, and source replacement with --write succeed through th
   const replaced = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8')
   assert.match(replaced, /\/\* i18n-key: home\.hello \*\/ t\('home\.hello'\)/)
   assert.match(replaced, new RegExp(`t\\('${waitKey}'\\)`))
-  assert.ok(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 
   const afterReplace = run(['collect', '--json'], root)
   assert.strictEqual(afterReplace.status, 0, afterReplace.stderr)
@@ -180,6 +185,7 @@ test('collect, translate, and source replacement with --write succeed through th
   assert.strictEqual(afterReplaceCatalog['home.hello'], '你好')
   assert.strictEqual(afterReplaceCatalog[waitKey], '请稍候')
   const afterReplaceMeta = readJson(root, 'lang/catalog/catalog.meta.json')
+  assert.strictEqual(afterReplaceMeta.entries[waitKey].source, '请稍候')
   assert.strictEqual(afterReplaceMeta.entries['home.hello'].status, 'active')
   assert.strictEqual(afterReplaceMeta.entries[waitKey].status, 'active')
   assert.strictEqual(afterReplaceMeta.entries['home.hello'].representation, 'localized-call')
@@ -295,6 +301,7 @@ test('deletion orphans a key while replacement by a localized call keeps it acti
 
   assert.strictEqual(run(['collect', '--json'], root).status, 0)
   assert.strictEqual(run(['translate', '--json'], root).status, 0)
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const replaced = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(replaced.status, 0, replaced.stderr)
 
@@ -346,6 +353,7 @@ test('a failed collect, translate, or replace stage after migration leaves forma
 
   assert.strictEqual(run(['collect', '--json'], root).status, 0)
   assert.strictEqual(run(['translate', '--json'], root).status, 0)
+  seedSourceCatalog(root, { writeLegacyArtifacts: false })
   const beforeFirstReplace = {
     app: fs.readFileSync(path.join(root, 'src/app.js')),
     catalog: fs.readFileSync(path.join(root, 'lang/catalog/zh.json')),
@@ -360,7 +368,7 @@ let replaced = 0
 fs.renameSync = (from, to) => {
   if (String(from).includes('.tmp-')) {
     replaced += 1
-    if (replaced === 2) {
+    if (replaced === 1) {
       const error = new Error('simulated storage failure')
       error.code = 'EIO'
       throw error
@@ -385,15 +393,13 @@ fs.renameSync = (from, to) => {
   const beforeCollect = snapshotFiles(root, FORMAL_COLLECT)
   const beforeTranslate = snapshotFiles(root, FORMAL_TRANSLATE)
   const beforeSource = fs.readFileSync(path.join(root, 'src/app.js'))
-  const beforeReplacements = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
-
   fs.writeFileSync(path.join(root, 'src/app.js'), "const broken = '你好\n")
   const failedCollect = run(['collect', '--json'], root)
   assert.strictEqual(failedCollect.status, 2, failedCollect.stderr)
   assert.strictEqual(JSON.parse(failedCollect.stdout).failure, 'collection')
   assertFilesUnchanged(root, beforeCollect)
   assertFilesUnchanged(root, beforeTranslate)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), beforeReplacements)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 
   fs.writeFileSync(path.join(root, 'src/app.js'), beforeSource)
   assert.strictEqual(run(['collect', '--json'], root).status, 0)

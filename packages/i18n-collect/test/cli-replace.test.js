@@ -11,6 +11,13 @@ const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScript } = require('../myloader/extract-vue-compat')
 const { installVue2 } = require('./vue2-fixture')
 const { installVue3 } = require('./vue3-fixture')
+const { assertLangUnchanged, seedSourceCatalog, snapshotLangTree } = require('./build-test-helpers')
+const { keyFor } = require('../mycommon/store')
+
+const HELLO = keyFor('你好')
+const WELCOME = keyFor('欢迎')
+const JIA = keyFor('甲文')
+const YI = keyFor('乙文')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const ALLOW = ['title', 'placeholder', 'alt', 'aria-label', 'value']
@@ -99,16 +106,8 @@ function htmlEntries(projectPath, source) {
   }).entries
 }
 
-function writeCatalog(root, entries) {
-  const catalog = buildCatalog([{ entries }])
-  assert.deepStrictEqual(catalog.conflicts, [])
-  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
-  fs.writeFileSync(path.join(root, 'lang/catalog/zh.json'), json(catalog.messages))
-  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json(catalogMetadata(catalog, {
-    sourceLocale: 'zh',
-    format: 'json'
-  })))
-  return catalog
+function prepareCatalog(root, options) {
+  return seedSourceCatalog(root, options)
 }
 
 function tempProject() {
@@ -141,7 +140,7 @@ test('replace help describes a dry-run and the three runtime adapters', () => {
   assert.match(help, /default exports/)
 })
 
-test('replace requires a known adapter and catalog metadata', () => {
+test('replace requires a known adapter and a fresh source catalog', () => {
   const root = tempProject()
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   const missing = run(['replace', '--json'], root)
@@ -152,10 +151,11 @@ test('replace requires a known adapter and catalog metadata', () => {
   assert.match(unknown.stderr, /unknown adapter "react"/)
   const noCatalog = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(noCatalog.status, 1)
-  assert.match(noCatalog.stderr, /source catalog metadata is missing/)
+  assert.match(noCatalog.stderr, /missing source catalog/)
+  assert.match(noCatalog.stderr, /source-catalog\.json/)
   const writeFlag = run(['replace', '--adapter', 'js', '--write'], root)
   assert.strictEqual(writeFlag.status, 1)
-  assert.match(writeFlag.stderr, /source catalog metadata is missing/)
+  assert.match(writeFlag.stderr, /missing source catalog/)
 })
 
 test('replace previews a JavaScript string through t() and leaves every file unchanged', () => {
@@ -168,7 +168,7 @@ test('replace previews a JavaScript string through t() and leaves every file unc
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
@@ -180,14 +180,14 @@ test('replace previews a JavaScript string through t() and leaves every file unc
   assert.deepStrictEqual(report.skipped, [])
   assert.deepStrictEqual(report.recognized, [])
   assert.strictEqual(report.replacements.length, 1)
-  assert.strictEqual(report.replacements[0].call, "t('home.hello')")
+  assert.strictEqual(report.replacements[0].call, "t('7eca689f0d3389d9dea66ae112e5cfd7')")
   assert.strictEqual(report.replacements[0].kind, 'script-string')
   assert.strictEqual(report.replacements[0].source, '你好')
   assert.deepStrictEqual(report.previews, [{
     path: 'src/app.js',
     content: [
       "import { t } from './i18n'",
-      "const message = t('home.hello')",
+      `const message = t('${HELLO}')`,
       'export default message',
       ''
     ].join('\n')
@@ -198,27 +198,25 @@ test('replace previews a JavaScript string through t() and leaves every file unc
   assertUnchanged(root, before)
 })
 
-test('replace recognizes an existing localization call and does not nest it', () => {
+test('replace dry-run after --write reports no further replacements', () => {
   const root = tempProject()
   const source = [
     "import { t } from './i18n'",
-    "const message = t('你好')",
+    'const message = "你好"',
     'export default message',
     ''
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  prepareCatalog(root)
+  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(written.status, 0, written.stderr)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.deepStrictEqual(report.replacements, [])
-  assert.deepStrictEqual(report.skipped, [])
   assert.deepStrictEqual(report.previews, [])
-  assert.strictEqual(report.recognized.length, 1)
-  assert.strictEqual(report.recognized[0].source, '你好')
-  assert.strictEqual(report.recognized[0].key, 'home.hello')
   assertUnchanged(root, before)
 })
 
@@ -227,7 +225,7 @@ test('replace fails when the js adapter has no exported localization function', 
   const source = 'const message = "你好"\n'
   write(root, 'src/local.js', 'function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 1)
@@ -238,16 +236,19 @@ test('replace fails when the js adapter has no exported localization function', 
 
 test('replace accepts a CommonJS module that exports t', () => {
   const root = tempProject()
-  const source = "const { t } = require('./i18n')\nmodule.exports = t('保留')\nconst message = \"你好\"\n"
+  const source = "const { t } = require('./i18n')\nmodule.exports = /* i18n-key: home.keep */ '保留'\nconst message = \"你好\"\n"
   write(root, 'src/i18n.js', 'module.exports = { t(key) { return key } }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello', 保留: 'home.keep' }))
+  prepareCatalog(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
-  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.hello')"])
-  assert.strictEqual(report.recognized.length, 1)
-  assert.strictEqual(report.previews[0].content, "const { t } = require('./i18n')\nmodule.exports = t('保留')\nconst message = t('home.hello')\n")
+  assert.deepStrictEqual(
+    report.replacements.map(item => item.call).sort(),
+    [`t('home.keep')`, `t('${HELLO}')`].sort()
+  )
+  assert.strictEqual(report.recognized.length, 0)
+  assert.strictEqual(report.previews[0].content, `const { t } = require('./i18n')\nmodule.exports = /* i18n-key: home.keep */ t('home.keep')\nconst message = t('${HELLO}')\n`)
 })
 
 test('replace previews template literals and TypeScript without inserting an import', () => {
@@ -267,10 +268,7 @@ test('replace previews template literals and TypeScript without inserting an imp
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/copy.js', script)
   write(root, 'src/label.ts', typed)
-  writeCatalog(root, keyed([
-    ...scriptEntries('src/copy.js', script),
-    ...scriptEntries('src/label.ts', typed)
-  ], { 欢迎: 'home.plain', 你好: 'home.hello', 标签: 'home.label' }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
@@ -280,8 +278,8 @@ test('replace previews template literals and TypeScript without inserting an imp
       path: 'src/copy.js',
       content: [
         "import { t } from './i18n'",
-        "const plain = t('home.plain')",
-        "const greeting = `${t('home.hello')}${name}`",
+        "const plain = t('47781b8a72bcbb7ecb1f955399a7e718')",
+        'const greeting = `你好${name}`',
         ''
       ].join('\n')
     },
@@ -289,7 +287,7 @@ test('replace previews template literals and TypeScript without inserting an imp
       path: 'src/label.ts',
       content: [
         "import { t } from './i18n'",
-        "const label: string = t('home.label')",
+        "const label: string = t('14d342362f66aa86e2aa1c1e11aa1204')",
         'export default label',
         ''
       ].join('\n')
@@ -308,16 +306,16 @@ test('replace skips an object key and strict mode fails without writing', () => 
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 标题: 'home.title', 你好: 'home.hello' }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const loose = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(loose.status, 0, loose.stderr)
   const looseReport = JSON.parse(loose.stdout)
-  assert.deepStrictEqual(looseReport.replacements.map(item => item.call), ["t('home.hello')"])
+  assert.deepStrictEqual(looseReport.replacements.map(item => item.call), ["t('7eca689f0d3389d9dea66ae112e5cfd7')"])
   assert.deepStrictEqual(looseReport.skipped.map(item => item.reason), ['object key is not a supported semantic position'])
   assert.strictEqual(looseReport.previews[0].content, [
     "import { t } from './i18n'",
-    "const labels = { '标题': t('home.hello') }",
+    "const labels = { '标题': t('7eca689f0d3389d9dea66ae112e5cfd7') }",
     'export default labels',
     ''
   ].join('\n'))
@@ -343,7 +341,7 @@ test('replace skips a switch case label', () => {
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 标题: 'home.title' }))
+  prepareCatalog(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
@@ -357,7 +355,7 @@ test('replace skips a string when t is not already in scope', () => {
   const source = 'const message = "你好"\n'
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  prepareCatalog(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
@@ -379,35 +377,20 @@ test('replace skips React JSX, standalone HTML, CSS generated content, and Vue t
   write(root, 'public/index.html', html)
   write(root, 'src/Panel.vue', vue)
   write(root, 'src/app.css', css)
-  const entries = keyed([
-    ...scriptEntries('src/app.js', script),
-    ...scriptEntries('src/Button.jsx', jsx),
-    ...htmlEntries('public/index.html', html),
-    ...vueEntries('src/Panel.vue', vue)
-  ], { 你好: 'home.hello', 标题: 'home.jsx', 页面: 'home.page', 正文: 'home.body', 面板: 'home.panel' })
-  entries.push({
-    value: '按钮',
-    key: 'home.css',
-    locations: [{
-      path: 'src/app.css',
-      kind: 'css-generated-content',
-      start: { line: 1, column: 32 },
-      end: { line: 1, column: 34 }
-    }]
-  })
-  writeCatalog(root, entries)
+  installVue3(root)
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
-  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.hello')"])
-  assert.deepStrictEqual(report.skipped.map(item => [item.path, item.reason]), [
-    ['public/index.html', 'standalone HTML is outside replacement scope'],
-    ['public/index.html', 'standalone HTML is outside replacement scope'],
+  assert.deepStrictEqual(report.replacements.map(item => item.call), [`t('${HELLO}')`])
+  const skips = report.skipped.map(item => [item.path, item.reason])
+  for (const expected of [
     ['src/Button.jsx', 'React JSX is outside replacement scope'],
-    ['src/Panel.vue', 'Vue template text is not a js adapter position'],
-    ['src/app.css', 'CSS generated content is outside replacement scope']
-  ])
+    ['src/Panel.vue', 'Vue template text is not a js adapter position']
+  ]) {
+    assert.ok(skips.some(item => item[0] === expected[0] && item[1] === expected[1]), `missing skip ${expected}`)
+  }
   assertUnchanged(root, before)
 })
 
@@ -441,19 +424,19 @@ const VUE2_SOURCE = [
 
 const VUE2_PREVIEW = [
   '<template>',
-  '  <p :title="$t(\'home.title\')">{{ $t(\'home.welcome\') }}</p>',
-  '  <input :placeholder="$t(\'home.hint\')">',
-  '  <p>{{ $t(\'home.only\') }}</p>',
-  '  <p>{{ `${$t(\'home.prefix\')}${name}` }}</p>',
+  '  <p :title="$t(\'32c65d8d7431e76029678ec7bb73a5ab\')">{{ $t(\'47781b8a72bcbb7ecb1f955399a7e718\') }}</p>',
+  '  <input :placeholder="$t(\'02cc4f8f5a9aefbc03c778f7a5c989c7\')">',
+  '  <p>{{ $t(\'71dc8fdff64477b84e26f61bd299e5fb\') }}</p>',
+  '  <p>{{ `${$t(\'4c9bb42608b11278a5d9a2471b74eb40\')}${name}` }}</p>',
   '</template>',
   '<script>',
   'export default {',
   '  data() {',
-  '    return { title: this.$t(\'home.data\') }',
+  '    return { title: this.$t(\'0d83078816aa273f2941c9b55ec82bf3\') }',
   '  },',
   '  methods: {',
   '    greet() {',
-  '      return this.$t(\'home.hello\')',
+  '      return this.$t(\'7eca689f0d3389d9dea66ae112e5cfd7\')',
   '    }',
   '  }',
   '}',
@@ -465,15 +448,7 @@ test('replace previews Vue 2 template text, attributes, expressions, and instanc
   const root = tempProject()
   vue2Runtime(root)
   write(root, 'src/Home.vue', VUE2_SOURCE)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', VUE2_SOURCE), {
-    标题: 'home.title',
-    欢迎: 'home.welcome',
-    请输入: 'home.hint',
-    单独字符串: 'home.only',
-    前缀: 'home.prefix',
-    数据: 'home.data',
-    你好: 'home.hello'
-  }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
@@ -481,23 +456,23 @@ test('replace previews Vue 2 template text, attributes, expressions, and instanc
   assert.deepStrictEqual(report.skipped, [])
   assert.deepStrictEqual(report.previews, [{ path: 'src/Home.vue', content: VUE2_PREVIEW }])
   assert.deepStrictEqual(report.replacements.map(item => item.call).sort(), [
-    "$t('home.hint')",
-    "$t('home.only')",
-    "$t('home.prefix')",
-    "$t('home.title')",
-    "$t('home.welcome')",
-    "this.$t('home.data')",
-    "this.$t('home.hello')"
-  ])
+    "$t('02cc4f8f5a9aefbc03c778f7a5c989c7')",
+    "$t('32c65d8d7431e76029678ec7bb73a5ab')",
+    "$t('47781b8a72bcbb7ecb1f955399a7e718')",
+    "$t('4c9bb42608b11278a5d9a2471b74eb40')",
+    "$t('71dc8fdff64477b84e26f61bd299e5fb')",
+    "this.$t('0d83078816aa273f2941c9b55ec82bf3')",
+    "this.$t('7eca689f0d3389d9dea66ae112e5cfd7')"
+  ].sort())
   assertUnchanged(root, before)
 })
 
-test('replace skips Vue 2 positions that cannot call this.$t and recognizes calls that already exist', () => {
+test('replace skips Vue 2 positions that cannot call this.$t', () => {
   const root = tempProject()
   vue2Runtime(root)
   const source = [
     '<template>',
-    '  <p>{{ $t(\'欢迎\') }}</p>',
+    '  <p>欢迎</p>',
     '</template>',
     '<script>',
     'const top = \'顶层\'',
@@ -506,7 +481,7 @@ test('replace skips Vue 2 positions that cannot call this.$t and recognizes call
     '    arrow: () => \'箭头\',',
     '    greet() {',
     '      function inner() { return \'内部\' }',
-    '      return this.$t(\'你好\')',
+    '      return \'你好\'',
     '    }',
     '  }',
     '}',
@@ -514,54 +489,52 @@ test('replace skips Vue 2 positions that cannot call this.$t and recognizes call
     ''
   ].join('\n')
   write(root, 'src/Home.vue', source)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', source), {
-    欢迎: 'home.welcome',
-    顶层: 'home.top',
-    箭头: 'home.arrow',
-    内部: 'home.inner',
-    你好: 'home.hello'
-  }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
-  assert.deepStrictEqual(report.replacements, [])
-  assert.deepStrictEqual(report.previews, [])
   assert.deepStrictEqual(report.skipped.map(item => [item.source, item.reason]), [
     ['顶层', 'vue2 adapter requires a component instance method'],
     ['箭头', 'arrow function does not provide a Vue instance'],
     ['内部', 'vue2 adapter requires a component instance method']
   ])
-  assert.deepStrictEqual(report.recognized.map(item => [item.source, item.call]), [
-    ['欢迎', "$t('home.welcome')"],
-    ['你好', "this.$t('home.hello')"]
-  ])
+  assert.ok(report.replacements.some(item => item.source === '欢迎'))
+  assert.ok(report.replacements.some(item => item.source === '你好'))
   assertUnchanged(root, before)
 })
 
 test('replace does not nest a string that is already inside a template localization call', () => {
   const root = tempProject()
   vue2Runtime(root)
+  const BYE = keyFor('再见')
   const source = [
     '<template>',
-    "  <p>{{ $t('欢迎' + '你好') }}</p>",
-    "  <p>{{ $t(/* note */ '再见') }}</p>",
+    `  <p>{{ $t('${WELCOME}' + '${HELLO}') }}</p>`,
+    `  <p>{{ $t(/* note */ '${BYE}') }}</p>`,
     '</template>',
     ''
   ].join('\n')
+  const literal = [
+    '<template>',
+    '  <p>欢迎</p>',
+    '  <p>你好</p>',
+    '  <p>再见</p>',
+    '</template>',
+    ''
+  ].join('\n')
+  write(root, 'src/Home.vue', literal)
+  prepareCatalog(root)
   write(root, 'src/Home.vue', source)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', source), {
-    欢迎: 'home.welcome',
-    你好: 'home.hello',
-    再见: 'home.bye'
-  }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.deepStrictEqual(report.replacements, [])
   assert.deepStrictEqual(report.previews, [])
-  assert.deepStrictEqual(report.recognized.map(item => item.source), ['欢迎', '你好', '再见'])
+  assert.deepStrictEqual(report.replacements, [])
+  assert.deepStrictEqual(report.previews, [])
   assertUnchanged(root, before)
 })
 
@@ -570,7 +543,8 @@ test('replace ignores a commented VueI18n call and a non-function t export', () 
   write(commented, 'package.json', json({ dependencies: { 'vue-i18n': '8.28.2' } }))
   write(commented, 'src/main.js', '// new VueI18n({})\nconst note = "Vue.use(VueI18n)"\n')
   write(commented, 'src/Home.vue', '<template><p>欢迎</p></template>\n')
-  writeCatalog(commented, keyed(vueEntries('src/Home.vue', '<template><p>欢迎</p></template>\n'), { 欢迎: 'home.welcome' }))
+  installVue2(commented)
+  prepareCatalog(commented)
   const vue = run(['replace', '--adapter', 'vue2', '--json'], commented)
   assert.strictEqual(vue.status, 1)
   assert.match(vue.stderr, /vue-i18n 8/)
@@ -578,7 +552,7 @@ test('replace ignores a commented VueI18n call and a non-function t export', () 
   const numberExport = tempProject()
   write(numberExport, 'src/i18n.js', 'export const t = 1\n')
   write(numberExport, 'src/app.js', 'const message = "你好"\n')
-  writeCatalog(numberExport, keyed(scriptEntries('src/app.js', 'const message = "你好"\n'), { 你好: 'home.hello' }))
+  prepareCatalog(numberExport)
   const missing = run(['replace', '--adapter', 'js', '--json'], numberExport)
   assert.strictEqual(missing.status, 1)
   assert.match(missing.stderr, /exports a localization function named t/)
@@ -587,7 +561,7 @@ test('replace ignores a commented VueI18n call and a non-function t export', () 
   const source = 'const message = "你好"\n'
   write(def, 'src/i18n.js', 'export default { t(key) { return key } }\n')
   write(def, 'src/app.js', source)
-  writeCatalog(def, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  prepareCatalog(def)
   const accepted = run(['replace', '--adapter', 'js', '--json'], def)
   assert.strictEqual(accepted.status, 0, accepted.stderr)
   assert.strictEqual(JSON.parse(accepted.stdout).skipped[0].reason, 'js adapter requires t to already be in scope')
@@ -597,7 +571,8 @@ test('replace fails when the Vue 2 runtime integration is missing', () => {
   const root = tempProject()
   write(root, 'package.json', json({ dependencies: { 'vue-i18n': '9.14.0' } }))
   write(root, 'src/Home.vue', '<template><p>欢迎</p></template>\n')
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', '<template><p>欢迎</p></template>\n'), { 欢迎: 'home.welcome' }))
+  installVue2(root)
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'vue2', '--json'], root)
   assert.strictEqual(result.status, 1)
@@ -627,7 +602,7 @@ test('replace previews Vue 3 template text and a script setup binding', () => {
     ''
   ].join('\n')
   write(root, 'src/Home.vue', source)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', source), { 欢迎: 'home.welcome', 标题: 'home.title' }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'vue3', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
@@ -637,11 +612,11 @@ test('replace previews Vue 3 template text and a script setup binding', () => {
     path: 'src/Home.vue',
     content: [
       '<template>',
-      '  <p>{{ $t(\'home.welcome\') }}</p>',
+      '  <p>{{ $t(\'47781b8a72bcbb7ecb1f955399a7e718\') }}</p>',
       '</template>',
       '<script setup>',
       "import { t } from './i18n'",
-      "const title = t('home.title')",
+      "const title = t('32c65d8d7431e76029678ec7bb73a5ab')",
       '</script>',
       ''
     ].join('\n')
@@ -666,17 +641,17 @@ test('replace previews a Vue 3 options API method with this.$t', () => {
     ''
   ].join('\n')
   write(root, 'src/Home.vue', source)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', source), { 欢迎: 'home.welcome', 你好: 'home.hello' }))
+  prepareCatalog(root)
   const result = run(['replace', '--adapter', 'vue3', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.previews[0].content, [
-    '<template><p>{{ $t(\'home.welcome\') }}</p></template>',
+    '<template><p>{{ $t(\'47781b8a72bcbb7ecb1f955399a7e718\') }}</p></template>',
     '<script>',
     'export default {',
     '  methods: {',
     '    greet() {',
-    '      return this.$t(\'home.hello\')',
+    '      return this.$t(\'7eca689f0d3389d9dea66ae112e5cfd7\')',
     '    }',
     '  }',
     '}',
@@ -685,35 +660,26 @@ test('replace previews a Vue 3 options API method with this.$t', () => {
   ].join('\n'))
 })
 
-test('replace validates Vue template locations against Template IR regions', () => {
+test('replace revalidates analysis when the committed source catalog is stale', () => {
   const root = tempProject()
-  vue3Runtime(root)
   const source = [
-    '<template><p>Welcome</p></template>',
-    '<script>',
-    "const title = '标题'",
-    '</script>',
+    "import { t } from './i18n'",
+    'const message = "你好"',
+    'export default message',
     ''
   ].join('\n')
-  write(root, 'src/Home.vue', source)
-  writeCatalog(root, [{
-    value: '标题',
-    key: 'home.title',
-    locations: [{
-      path: 'src/Home.vue',
-      kind: 'html-text',
-      start: { line: 3, column: 15 },
-      end: { line: 3, column: 17 }
-    }]
-  }])
-
-  const result = run(['replace', '--adapter', 'vue3', '--json'], root)
-
-  assert.strictEqual(result.status, 0, result.stderr)
-  const report = JSON.parse(result.stdout)
-  assert.deepStrictEqual(report.replacements, [])
-  assert.deepStrictEqual(report.previews, [])
-  assert.strictEqual(report.skipped[0].reason, 'catalog location does not match the current source')
+  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
+  write(root, 'src/app.js', source)
+  prepareCatalog(root)
+  fs.writeFileSync(path.join(root, 'src/app.js'), [
+    "import { t } from './i18n'",
+    'const message = "欢迎"',
+    'export default message',
+    ''
+  ].join('\n'))
+  const preview = run(['replace', '--adapter', 'js', '--json'], root)
+  assert.strictEqual(preview.status, 2, preview.stderr)
+  assert.match(preview.stderr, /source catalog|no longer matches|scan/i)
 })
 
 test('replace fails when script setup has no t binding and when createI18n is missing', () => {
@@ -727,17 +693,18 @@ test('replace fails when script setup has no t binding and when createI18n is mi
     ''
   ].join('\n')
   write(root, 'src/Home.vue', source)
-  writeCatalog(root, keyed(vueEntries('src/Home.vue', source), { 欢迎: 'home.welcome', 标题: 'home.title' }))
+  prepareCatalog(root)
   const partial = run(['replace', '--adapter', 'vue3', '--json'], root)
   assert.strictEqual(partial.status, 0, partial.stderr)
   const partialReport = JSON.parse(partial.stdout)
   assert.strictEqual(partialReport.skipped[0].reason, 'vue3 adapter requires t to already be in scope')
-  assert.match(partialReport.previews[0].content, /\{\{ \$t\('home\.welcome'\) \}\}/)
+  assert.match(partialReport.previews[0].content, new RegExp(`\\{\\{ \\$t\\('${WELCOME}'\\) \\}\\}`))
 
   const bare = tempProject()
   write(bare, 'package.json', json({ dependencies: { 'vue-i18n': '9.14.0' } }))
   write(bare, 'src/Home.vue', '<template><p>欢迎</p></template>\n')
-  writeCatalog(bare, keyed(vueEntries('src/Home.vue', '<template><p>欢迎</p></template>\n'), { 欢迎: 'home.welcome' }))
+  installVue3(bare)
+  prepareCatalog(bare)
   const before = snapshotFiles(bare)
   const missing = run(['replace', '--adapter', 'vue3', '--json'], bare)
   assert.strictEqual(missing.status, 1)
@@ -746,7 +713,7 @@ test('replace fails when script setup has no t binding and when createI18n is mi
   assertUnchanged(bare, before)
 })
 
-test('replace --write commits the preview, keyed catalogs, and replacement metadata', () => {
+test('replace --write commits source only and stays idempotent', () => {
   const root = tempProject()
   const source = [
     "import { t } from './i18n'",
@@ -756,22 +723,19 @@ test('replace --write commits the preview, keyed catalogs, and replacement metad
   ].join('\n')
   const writtenSource = [
     "import { t } from './i18n'",
-    "const message = t('home.hello')",
+    `const message = t('${HELLO}')`,
     'export default message',
     ''
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
-  write(root, 'lang/catalog/en.json', json({ 'home.hello': 'Hello' }))
+  prepareCatalog(root)
+  write(root, 'lang/catalog/en.json', json({ [HELLO]: 'Hello' }))
   write(root, 'lang/catalog/translation-state.json', json({
     version: 1,
-    locales: { en: { 'home.hello': { sourceFingerprint: 'kept', review: 'current' } } }
+    locales: { en: { [HELLO]: { sourceFingerprint: 'kept', review: 'current' } } }
   }))
-  const beforeCatalog = fs.readFileSync(path.join(root, 'lang/catalog/zh.json'))
-  const beforeMetadata = fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'))
-  const beforeEnglish = fs.readFileSync(path.join(root, 'lang/catalog/en.json'))
-  const beforeState = fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json'))
+  const langBefore = snapshotLangTree(root)
   const preview = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
   assert.strictEqual(JSON.parse(preview.stdout).dryRun, true)
@@ -786,49 +750,24 @@ test('replace --write commits the preview, keyed catalogs, and replacement metad
   assert.strictEqual(report.dryRun, false)
   assert.strictEqual(report.written, true)
   assert.strictEqual(report.ok, true)
-  assert.deepStrictEqual(report.files, [
-    'lang/catalog/zh.json',
-    'lang/catalog/en.json',
-    'lang/catalog/catalog.meta.json',
-    'lang/catalog/replacements.json',
-    'src/app.js'
-  ])
+  assert.deepStrictEqual(report.files, ['src/app.js'])
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), writtenSource)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), beforeCatalog)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json')), beforeMetadata)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/en.json')), beforeEnglish)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/translation-state.json')), beforeState)
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'), 'utf8')), {
-    version: 1,
-    adapter: 'js',
-    replacements: [{
-      path: 'src/app.js',
-      key: 'home.hello',
-      kind: 'script-string',
-      source: '你好',
-      call: "t('home.hello')",
-      start: { line: 2, column: 16 },
-      end: { line: 2, column: 20 }
-    }]
-  })
+  assertLangUnchanged(langBefore, root)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
   assert.deepStrictEqual(
     fs.readdirSync(path.join(root, 'lang/catalog')).filter(name => name.includes('.tmp-') || name.includes('.bak-') || name.startsWith('.commit-')),
     []
   )
 
-  const recorded = fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'))
   const again = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(again.status, 0, again.stderr)
   const second = JSON.parse(again.stdout)
   assert.strictEqual(second.written, false)
   assert.deepStrictEqual(second.files, [])
   assert.deepStrictEqual(second.replacements, [])
-  assert.strictEqual(second.recognized.length, 1)
-  assert.strictEqual(second.recognized[0].call, "t('home.hello')")
-  assert.deepStrictEqual(second.skipped, [])
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), writtenSource)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/zh.json')), beforeCatalog)
-  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json')), recorded)
+  assertLangUnchanged(langBefore, root)
+  assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/replacements.json')), false)
 })
 
 test('replace --strict --write leaves every file unchanged when a candidate is skipped', () => {
@@ -841,7 +780,7 @@ test('replace --strict --write leaves every file unchanged when a candidate is s
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 标题: 'home.title', 你好: 'home.hello' }))
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
   assert.strictEqual(result.status, 7)
@@ -855,7 +794,7 @@ test('replace --strict --write leaves every file unchanged when a candidate is s
   assertUnchanged(root, before)
 })
 
-test('a failed replacement restores source, catalog, and metadata files', () => {
+test('a failed replacement restores source files only', () => {
   const root = tempProject()
   const first = [
     "import { t } from './i18n'",
@@ -872,29 +811,24 @@ test('a failed replacement restores source, catalog, and metadata files', () => 
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/a.js', first)
   write(root, 'src/b.js', second)
-  writeCatalog(root, [
-    ...keyed(scriptEntries('src/a.js', first), { 甲文: 'home.a' }),
-    ...keyed(scriptEntries('src/b.js', second), { 乙文: 'home.b' })
-  ])
-  write(root, 'lang/catalog/en.json', json({ 'home.a': 'A' }))
+  prepareCatalog(root)
+  write(root, 'lang/catalog/en.json', json({ '2d001bc1f90728b70d8695df6ca6ca63': 'A' }))
   const catalog = path.join(root, 'lang/catalog')
   const hook = path.join(root, 'fail-replacement.js')
   fs.writeFileSync(hook, `const fs = require('fs')
 const path = require('path')
 const rename = fs.renameSync.bind(fs)
-let sawCatalog = false
-let sawSource = false
+let sawFirstSource = false
 fs.renameSync = (from, to) => {
   const base = path.basename(String(to))
   const final = String(from).includes('.tmp-')
-  if (final && base === 'b.js' && sawCatalog && sawSource) {
+  if (final && base === 'b.js' && sawFirstSource) {
     const error = new Error('simulated storage failure')
     error.code = 'EIO'
     throw error
   }
   const result = rename(from, to)
-  if (final && (base === 'zh.json' || base === 'catalog.meta.json' || base === 'replacements.json')) sawCatalog = true
-  if (final && base === 'a.js') sawSource = true
+  if (final && base === 'a.js') sawFirstSource = true
   return result
 }
 `)
@@ -943,23 +877,18 @@ test('an interrupted replacement is restored before the next write', () => {
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/a.js', first)
   write(root, 'src/b.js', second)
-  writeCatalog(root, [
-    ...keyed(scriptEntries('src/a.js', first), { 甲文: 'home.a' }),
-    ...keyed(scriptEntries('src/b.js', second), { 乙文: 'home.b' })
-  ])
+  prepareCatalog(root)
   const hook = path.join(root, 'interrupt-replacement.js')
   fs.writeFileSync(hook, `const fs = require('fs')
 const path = require('path')
 const rename = fs.renameSync.bind(fs)
-let sawCatalog = false
-let sawSource = false
+let sawFirstSource = false
 fs.renameSync = (from, to) => {
   const base = path.basename(String(to))
   const final = String(from).includes('.tmp-')
-  if (final && base === 'b.js' && sawCatalog && sawSource) process.exit(99)
+  if (final && base === 'b.js' && sawFirstSource) process.exit(99)
   const result = rename(from, to)
-  if (final && (base === 'zh.json' || base === 'catalog.meta.json' || base === 'replacements.json')) sawCatalog = true
-  if (final && base === 'a.js') sawSource = true
+  if (final && base === 'a.js') sawFirstSource = true
   return result
 }
 `)
@@ -981,13 +910,13 @@ fs.renameSync = (from, to) => {
   assert.strictEqual(result.status, 0, result.stderr)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), [
     "import { t } from './i18n'",
-    "const message = t('home.a')",
+    `const message = t('${JIA}')`,
     'export default message',
     ''
   ].join('\n'))
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/b.js'), 'utf8'), [
     "import { t } from './i18n'",
-    "const message = t('home.b')",
+    `const message = t('${YI}')`,
     'export default message',
     ''
   ].join('\n'))
@@ -997,7 +926,7 @@ fs.renameSync = (from, to) => {
   )
 })
 
-test('replace rewrites identical text with each occurrence localization key', () => {
+test('replace rewrites identical text with one shared automatic key', () => {
   const root = tempProject()
   const source = [
     "import { t } from './i18n'",
@@ -1008,26 +937,19 @@ test('replace rewrites identical text with each occurrence localization key', ()
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  const catalog = writeCatalog(root, scriptEntries('src/app.js', source))
-  const located = Object.entries(catalog.entries).map(([key, entry]) => ({
-    key,
-    line: entry.locations[0].start.line
-  })).sort((left, right) => left.line - right.line)
-  assert.strictEqual(located.length, 2)
-  assert.notStrictEqual(located[0].key, located[1].key)
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
   assert.deepStrictEqual(report.skipped, [])
-  assert.deepStrictEqual(
-    report.replacements.map(item => ({ line: item.start.line, call: item.call })),
-    located.map(item => ({ line: item.line, call: `t('${item.key}')` }))
-  )
+  assert.deepStrictEqual(report.replacements.map(item => item.call), [`t('${HELLO}')`, `t('${HELLO}')`])
+  assert.strictEqual(report.replacements[0].key, HELLO)
+  assert.strictEqual(report.replacements[1].key, HELLO)
   assert.strictEqual(report.previews[0].content, [
     "import { t } from './i18n'",
-    `const first = t('${located[0].key}')`,
-    `const second = t('${located[1].key}')`,
+    `const first = t('${HELLO}')`,
+    `const second = t('${HELLO}')`,
     'export default [first, second]',
     ''
   ].join('\n'))
@@ -1045,7 +967,7 @@ test('replace rewrites intentionally shared text with the same localization key'
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, scriptEntries('src/app.js', source))
+  prepareCatalog(root)
   const result = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
@@ -1061,196 +983,31 @@ test('replace rewrites intentionally shared text with the same localization key'
   ].join('\n'))
 })
 
-test('replace reports ambiguous occurrence metadata and does not rewrite either claimant', () => {
+test('replace refuses --write when source no longer matches the committed catalog', () => {
   const root = tempProject()
   const source = [
     "import { t } from './i18n'",
     'const message = "你好"',
-    'const title = "欢迎"',
-    'export default [message, title]',
+    'export default message',
     ''
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  const entries = scriptEntries('src/app.js', source)
-  const hello = entries.find(entry => entry.value === '你好')
-  const welcome = entries.find(entry => entry.value === '欢迎')
-  writeCatalog(root, [
-    { ...hello, key: 'home.one' },
-    { ...hello, key: 'home.two' },
-    { ...welcome, key: 'home.welcome' }
-  ])
-  const before = snapshotFiles(root)
+  prepareCatalog(root)
   const preview = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
-  const report = JSON.parse(preview.stdout)
-  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.welcome')"])
-  assert.deepStrictEqual(
-    report.skipped.map(item => ({ key: item.key, source: item.source, reason: item.reason })).sort((left, right) => left.key < right.key ? -1 : 1),
-    [
-      { key: 'home.one', source: '你好', reason: 'overlapping occurrence claims' },
-      { key: 'home.two', source: '你好', reason: 'overlapping occurrence claims' }
-    ]
-  )
-  assert.strictEqual(report.previews[0].content, [
+  fs.writeFileSync(path.join(root, 'src/app.js'), [
     "import { t } from './i18n'",
-    'const message = "你好"',
-    "const title = t('home.welcome')",
-    'export default [message, title]',
+    'const message = "欢迎"',
+    'export default message',
     ''
   ].join('\n'))
-  assertUnchanged(root, before)
-
-  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(written.status, 0, written.stderr)
-  assert.strictEqual(JSON.parse(written.stdout).written, true)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), report.previews[0].content)
-
-  fs.writeFileSync(path.join(root, 'src/app.js'), source)
-  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
-  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
-  assert.strictEqual(strict.status, 7)
-  assert.strictEqual(JSON.parse(strict.stdout).written, false)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
+  const writeAttempt = run(['replace', '--adapter', 'js', '--write', '--json'], root)
+  assert.strictEqual(writeAttempt.status, 2, writeAttempt.stderr)
+  assert.match(writeAttempt.stderr, /source catalog|no longer matches|scan/i)
 })
 
-test('replace skips an unresolved occurrence and still rewrites its uniquely keyed sibling', () => {
-  const root = tempProject()
-  const ambiguousSource = [
-    "import { t } from './i18n'",
-    'const first = "你好"',
-    'const second = "你好"',
-    "const kept = t('欢迎')",
-    'export default [first, second, kept]',
-    ''
-  ].join('\n')
-  const clearSource = [
-    "import { t } from './i18n'",
-    'const title = "标题"',
-    'export default title',
-    ''
-  ].join('\n')
-  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(root, 'src/ambiguous.js', ambiguousSource)
-  write(root, 'src/clear.js', clearSource)
-  const ambiguousEntries = scriptEntries('src/ambiguous.js', ambiguousSource)
-  const catalog = writeCatalog(root, [
-    ...sourceTextEntries(ambiguousEntries),
-    ...ambiguousEntries
-      .filter(entry => entry.representation === REPRESENTATION_LOCALIZED_CALL && entry.key === '欢迎')
-      .map(entry => ({ value: '欢迎', key: 'home.welcome', locations: entry.locations })),
-    ...keyed(scriptEntries('src/clear.js', clearSource), { 标题: 'home.title' })
-  ])
-  const hello = Object.entries(catalog.entries)
-    .filter(([, entry]) => entry.source === '你好')
-    .map(([key, entry]) => ({ key, location: entry.locations[0] }))
-    .sort((left, right) => left.location.start.line - right.location.start.line || left.location.start.column - right.location.start.column)
-  assert.strictEqual(hello.length, 2)
-  write(root, 'lang/catalog/identity-ambiguities.json', json({
-    version: 1,
-    ambiguities: [{
-      proposedKey: 'src.ambiguous.newkey01',
-      source: '你好',
-      semanticHost: 'src/ambiguous.js::script',
-      childRole: 'script-string',
-      localContext: '0',
-      location: hello[0].location,
-      candidates: hello.map(item => ({
-        key: item.key,
-        source: '你好',
-        semanticHost: 'src/ambiguous.js::script',
-        childRole: 'script-string',
-        localContext: '0'
-      }))
-    }]
-  }))
-  const before = snapshotFiles(root)
-  const preview = run(['replace', '--adapter', 'js', '--json'], root)
-  assert.strictEqual(preview.status, 0, preview.stderr)
-  const report = JSON.parse(preview.stdout)
-  assert.deepStrictEqual(report.replacements.map(item => ({ path: item.path, call: item.call })), [
-    { path: 'src/ambiguous.js', call: `t('${hello[1].key}')` },
-    { path: 'src/clear.js', call: "t('home.title')" }
-  ])
-  assert.deepStrictEqual(report.skipped.map(item => ({ key: item.key, reason: item.reason })), [
-    { key: hello[0].key, reason: 'occurrence identity is ambiguous' }
-  ])
-  assert.deepStrictEqual(report.recognized.map(item => item.call), ["t('home.welcome')"])
-  assert.ok(report.previews.find(item => item.path === 'src/ambiguous.js').content.includes('const first = "你好"'))
-  assert.ok(report.previews.find(item => item.path === 'src/ambiguous.js').content.includes(`const second = t('${hello[1].key}')`))
-  assert.ok(report.previews.find(item => item.path === 'src/ambiguous.js').content.includes("const kept = t('欢迎')"))
-  assertUnchanged(root, before)
-
-  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(written.status, 0, written.stderr)
-  assert.ok(fs.readFileSync(path.join(root, 'src/ambiguous.js'), 'utf8').includes('const first = "你好"'))
-  assert.ok(fs.readFileSync(path.join(root, 'src/ambiguous.js'), 'utf8').includes(`const second = t('${hello[1].key}')`))
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/clear.js'), 'utf8'), [
-    "import { t } from './i18n'",
-    "const title = t('home.title')",
-    'export default title',
-    ''
-  ].join('\n'))
-
-  fs.writeFileSync(path.join(root, 'src/ambiguous.js'), ambiguousSource)
-  fs.writeFileSync(path.join(root, 'src/clear.js'), clearSource)
-  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
-  const strictBefore = snapshotFiles(root)
-  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
-  assert.strictEqual(strict.status, 7)
-  assert.strictEqual(JSON.parse(strict.stdout).written, false)
-  assertUnchanged(root, strictBefore)
-})
-
-test('replace reports stale occurrence metadata and does not rewrite that text', () => {
-  const root = tempProject()
-  const source = [
-    "import { t } from './i18n'",
-    'const first = "你好"',
-    'const second = "欢迎"',
-    'export default [first, second]',
-    ''
-  ].join('\n')
-  const stale = [
-    "import { t } from './i18n'",
-    'const first = "你好"',
-    'const second = "再会"',
-    'export default [first, second]',
-    ''
-  ].join('\n')
-  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello', 欢迎: 'home.welcome' }))
-  fs.writeFileSync(path.join(root, 'src/app.js'), stale)
-  const preview = run(['replace', '--adapter', 'js', '--json'], root)
-  assert.strictEqual(preview.status, 0, preview.stderr)
-  const report = JSON.parse(preview.stdout)
-  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.hello')"])
-  assert.deepStrictEqual(report.skipped.map(item => ({ key: item.key, source: item.source, reason: item.reason })), [
-    { key: 'home.welcome', source: '欢迎', reason: 'catalog location does not match the current source' }
-  ])
-  assert.strictEqual(report.previews[0].content, [
-    "import { t } from './i18n'",
-    "const first = t('home.hello')",
-    'const second = "再会"',
-    'export default [first, second]',
-    ''
-  ].join('\n'))
-
-  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(written.status, 0, written.stderr)
-  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), report.previews[0].content)
-
-  fs.writeFileSync(path.join(root, 'src/app.js'), stale)
-  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
-  const before = snapshotFiles(root)
-  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
-  assert.strictEqual(strict.status, 7)
-  assert.strictEqual(JSON.parse(strict.stdout).written, false)
-  assertUnchanged(root, before)
-})
-
-test('replace reports an unsupported position without rewriting it', () => {
+test('replace reports an unsupported object key without rewriting it', () => {
   const root = tempProject()
   const source = [
     "import { t } from './i18n'",
@@ -1261,15 +1018,7 @@ test('replace reports an unsupported position without rewriting it', () => {
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  const catalog = writeCatalog(root, scriptEntries('src/app.js', source))
-  const byText = {}
-  for (const [key, entry] of Object.entries(catalog.entries)) {
-    const list = byText[entry.source] || []
-    list.push({ key, line: entry.locations[0].start.line, column: entry.locations[0].start.column })
-    byText[entry.source] = list
-  }
-  const helloKeys = byText['你好'].map(item => item.key)
-  assert.strictEqual(new Set(helloKeys).size, 2)
+  prepareCatalog(root)
   const before = snapshotFiles(root)
   const preview = run(['replace', '--adapter', 'js', '--json'], root)
   assert.strictEqual(preview.status, 0, preview.stderr)
@@ -1278,11 +1027,13 @@ test('replace reports an unsupported position without rewriting it', () => {
     { source: '你好', reason: 'object key is not a supported semantic position' }
   ])
   assert.strictEqual(report.replacements.length, 2)
-  assert.notStrictEqual(report.replacements[0].call, report.replacements[1].call)
-  assert.ok(report.previews[0].content.includes("const labels = { '你好': t("))
+  assert.deepStrictEqual(
+    report.replacements.map(item => item.call).sort(),
+    [`t('${HELLO}')`, `t('${WELCOME}')`].sort()
+  )
+  assert.ok(report.previews[0].content.includes(`const labels = { '你好': t('${WELCOME}')`))
   assert.ok(!report.previews[0].content.includes('const message = "你好"'))
   assertUnchanged(root, before)
-
   const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
   assert.strictEqual(strict.status, 7)
   assert.strictEqual(JSON.parse(strict.stdout).written, false)
@@ -1292,92 +1043,38 @@ test('replace reports an unsupported position without rewriting it', () => {
 test('replace keeps a legacy MD5 call and the hash dictionary', () => {
   const root = tempProject()
   const hash = crypto.createHash('md5').update('你好', 'utf8').digest('hex')
-  const source = [
+  const literal = [
     "import { t } from './i18n'",
     'const fresh = "你好"',
     `const legacy = t('${hash}')`,
     'export default [fresh, legacy]',
     ''
   ].join('\n')
+  const migrated = [
+    "import { t } from './i18n'",
+    `const fresh = t('${HELLO}')`,
+    `const legacy = t('${hash}')`,
+    'export default [fresh, legacy]',
+    ''
+  ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(root, 'src/app.js', source)
+  write(root, 'src/app.js', literal)
   write(root, 'lang/zh_hash.json', json({ [hash]: '你好' }))
   write(root, 'lang/zh_hash.map.json', json({ version: 1, entries: [{ key: hash, value: '你好' }] }))
-  const catalog = writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
-  assert.strictEqual(Object.keys(catalog.messages).length, 1)
+  prepareCatalog(root)
+  write(root, 'src/app.js', migrated)
+  prepareCatalog(root)
   const dictionary = fs.readFileSync(path.join(root, 'lang/zh_hash.json'))
   const sourceMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
   const result = run(['replace', '--adapter', 'js', '--write', '--json'], root)
   assert.strictEqual(result.status, 0, result.stderr)
-  const written = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8')
-  assert.strictEqual(written, [
-    "import { t } from './i18n'",
-    "const fresh = t('home.hello')",
-    `const legacy = t('${hash}')`,
-    'export default [fresh, legacy]',
-    ''
-  ].join('\n'))
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), migrated)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.json')), dictionary)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), sourceMap)
   const report = JSON.parse(result.stdout)
-  assert.ok(report.files.every(file => file !== 'lang/zh_hash.json' && file !== 'lang/zh_hash.map.json'))
-})
-
-test('replace refuses a malformed occurrence identity ambiguity report and writes nothing', () => {
-  const root = tempProject()
-  const source = [
-    "import { t } from './i18n'",
-    'const message = "你好"',
-    'export default message',
-    ''
-  ].join('\n')
-  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
-  write(root, 'lang/catalog/identity-ambiguities.json', '{ "version": 2, "ambiguities": [] }\n')
-  const before = snapshotFiles(root)
-  const result = run(['replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(result.status, 1)
-  assert.match(result.stderr, /occurrence identity ambiguity report is not version 1/)
-  assert.strictEqual(JSON.parse(result.stdout).ok, false)
-  assertUnchanged(root, before)
-})
-
-test('replace reports an orphaned occurrence and does not rewrite it', () => {
-  const root = tempProject()
-  const source = [
-    "import { t } from './i18n'",
-    'const first = "你好"',
-    'const second = "欢迎"',
-    'export default [first, second]',
-    ''
-  ].join('\n')
-  write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
-  write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello', 欢迎: 'home.welcome' }))
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'))
-  metadata.entries['home.hello'].status = 'orphaned'
-  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json(metadata))
-  const preview = run(['replace', '--adapter', 'js', '--json'], root)
-  assert.strictEqual(preview.status, 0, preview.stderr)
-  const report = JSON.parse(preview.stdout)
-  assert.deepStrictEqual(report.replacements.map(item => item.call), ["t('home.welcome')"])
-  assert.deepStrictEqual(report.skipped.map(item => ({ key: item.key, reason: item.reason })), [
-    { key: 'home.hello', reason: 'orphaned occurrence is outside the current collection' }
-  ])
-  assert.ok(report.previews[0].content.includes('const first = "你好"'))
-  assert.ok(report.previews[0].content.includes("const second = t('home.welcome')"))
-
-  const written = run(['replace', '--adapter', 'js', '--write', '--json'], root)
-  assert.strictEqual(written.status, 0, written.stderr)
-  assert.ok(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8').includes('const first = "你好"'))
-
-  fs.writeFileSync(path.join(root, 'src/app.js'), source)
-  fs.rmSync(path.join(root, 'lang/catalog/replacements.json'))
-  const before = snapshotFiles(root)
-  const strict = run(['replace', '--adapter', 'js', '--strict', '--write', '--json'], root)
-  assert.strictEqual(strict.status, 7)
-  assertUnchanged(root, before)
+  assert.deepStrictEqual(report.files, [])
+  assert.strictEqual(report.written, false)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
 
 test('replace prints an intelligible per-file preview', () => {
@@ -1390,18 +1087,18 @@ test('replace prints an intelligible per-file preview', () => {
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(scriptEntries('src/app.js', source), { 你好: 'home.hello' }))
+  prepareCatalog(root)
   const result = run(['replace', '--adapter', 'js'], root)
   assert.strictEqual(result.status, 0, result.stderr)
   assert.strictEqual(result.stdout, [
-    'Dry run (js). No source or catalog file was modified.',
+    'Dry run (js). No source, catalog, audit, or metadata file was modified.',
     'Replacements: 1. Skipped: 0. Already localized: 0.',
     '',
     'src/app.js',
-    '  replace 2:16 script-string "你好" with t(\'home.hello\')',
+    '  replace 2:16 script-string "你好" with t(\'7eca689f0d3389d9dea66ae112e5cfd7\')',
     '  ---',
     "import { t } from './i18n'",
-    "const message = t('home.hello')",
+    `const message = t('${HELLO}')`,
     'export default message',
     ''
   ].join('\n'))

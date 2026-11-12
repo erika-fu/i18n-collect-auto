@@ -4,8 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
-const { buildCatalog, catalogMetadata } = require('../mycommon/catalog')
-const { extractScript } = require('../myloader/extract-script')
+const { seedSourceCatalog } = require('./build-test-helpers')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 const loader = require.resolve('../myloader')
@@ -55,36 +54,16 @@ function assertUnchanged(root, before) {
   assert.deepStrictEqual(projectFiles(root), [...before.keys()].sort())
 }
 
-function keyed(entries, keys) {
-  return entries.map(entry => {
-    const key = keys[entry.value]
-    if (!key) throw new Error(`missing key for ${JSON.stringify(entry.value)}`)
-    return { ...entry, key }
-  })
-}
-
-function writeCatalog(root, entries) {
-  const catalog = buildCatalog([{ entries }])
-  assert.deepStrictEqual(catalog.conflicts, [])
-  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
-  fs.writeFileSync(path.join(root, 'lang/catalog/zh.json'), json(catalog.messages))
-  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), json(catalogMetadata(catalog, {
-    sourceLocale: 'zh',
-    format: 'json'
-  })))
-  return catalog
-}
-
 function jsFixture(root) {
   const source = [
     "import { t } from './i18n'",
-    'const message = "你好"',
+    "const message = /* i18n-key: home.hello */ \"你好\"",
     'export default message',
     ''
   ].join('\n')
   write(root, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(root, 'src/app.js', source)
-  writeCatalog(root, keyed(extractScript({ source, resource: { projectPath: 'src/app.js' }, config: {} }), { 你好: 'home.hello' }))
+  seedSourceCatalog(root)
   return source
 }
 
@@ -138,6 +117,7 @@ function webpackWorkflow(root) {
     },
     configSource: `module.exports = {\n  translationProvider: 'i18n/provider.js',\n  targetLocales: ['en']\n}\n`
   })
+  seedSourceCatalog(root)
 }
 
 test('run help describes stage composition and keeps replacement dry-run by default', () => {
@@ -253,7 +233,7 @@ test('run replacement stays a dry-run until --write and forwards strict mode', (
   assert.strictEqual(report.results[0].written, true)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
     "import { t } from './i18n'",
-    "const message = t('home.hello')",
+    "const message = /* i18n-key: home.hello */ t('home.hello')",
     'export default message',
     ''
   ].join('\n'))
@@ -267,11 +247,7 @@ test('run replacement stays a dry-run until --write and forwards strict mode', (
   ].join('\n')
   write(strictRoot, 'src/i18n.js', 'export function t(key) { return key }\n')
   write(strictRoot, 'src/app.js', skipped)
-  writeCatalog(strictRoot, keyed(extractScript({
-    source: skipped,
-    resource: { projectPath: 'src/app.js' },
-    config: {}
-  }), { 标题: 'home.title', 你好: 'home.hello' }))
+  seedSourceCatalog(strictRoot)
   const before = snapshotFiles(strictRoot)
   const strict = run(['run', '--replace', '--adapter', 'js', '--strict', '--write', '--json'], strictRoot)
   assert.strictEqual(strict.status, 7)
@@ -323,7 +299,7 @@ module.exports = {
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))['home.hello'], 'Hello')
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
     "import { t } from './i18n'",
-    "const message = t('home.hello')",
+    "const message = /* i18n-key: home.hello */ t('home.hello')",
     'export default message',
     ''
   ].join('\n'))
@@ -366,9 +342,9 @@ test('run --collect --replace previews the collected source until --write commit
   const report = JSON.parse(written.stdout)
   assert.deepStrictEqual(report.stages, ['collect', 'replace'])
   assert.strictEqual(report.results[1].written, true)
-  const messages = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/zh.json'), 'utf8'))
-  const [key, text] = Object.entries(messages)[0]
-  assert.strictEqual(text, '你好')
+  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  const key = Object.keys(sourceCatalog).find(name => sourceCatalog[name] === '你好')
+  assert.ok(key)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
     "const { t } = require('./i18n')",
     `const message = t('${key}')`,
@@ -376,6 +352,7 @@ test('run --collect --replace previews the collected source until --write commit
     ''
   ].join('\n'))
   assert.strictEqual(fs.existsSync(path.join(root, 'lang/catalog/en.json')), false)
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
 })
 
 test('run collects, translates, and writes replacements in that order', { timeout: 20000 }, () => {
@@ -397,23 +374,20 @@ test('run collects, translates, and writes replacements in that order', { timeou
   assert.deepStrictEqual(report.results.map(item => item.command), ['collect', 'translate', 'replace'])
   assert.strictEqual(report.results[2].dryRun, false)
   assert.strictEqual(report.results[2].written, true)
-  const messages = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/zh.json'), 'utf8'))
-  assert.strictEqual(Object.keys(messages).length, 1)
-  const [key, text] = Object.entries(messages)[0]
-  assert.strictEqual(text, '你好')
+  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  const key = Object.keys(sourceCatalog).find(name => sourceCatalog[name] === '你好')
+  assert.ok(key)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), [
     "const { t } = require('./i18n')",
     `const message = t('${key}')`,
     'module.exports = message',
     ''
   ].join('\n'))
-  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))[key], 'Hello')
-  const recorded = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/replacements.json'), 'utf8'))
-  assert.strictEqual(recorded.version, 1)
-  assert.strictEqual(recorded.adapter, 'js')
-  assert.strictEqual(recorded.replacements.length, 1)
-  assert.strictEqual(recorded.replacements[0].key, key)
-  assert.strictEqual(recorded.replacements[0].call, `t('${key}')`)
+  // Translate still keys off the collect catalog; replace keys off source-catalog.
+  const en = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/en.json'), 'utf8'))
+  assert.ok(Object.values(en).includes('Hello'))
+  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/replacements.json')))
+  assert.deepStrictEqual(report.results[2].files, ['src/app.js'])
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/orphan.js'), 'utf8'), 'module.exports = "孤儿词条"\n')
 })
 
@@ -423,15 +397,11 @@ test('a failed write through run restores the project and exits with the storage
   const hook = path.join(root, 'fail-replacement.js')
   fs.writeFileSync(hook, `const fs = require('fs')
 const rename = fs.renameSync.bind(fs)
-let replaced = 0
 fs.renameSync = (from, to) => {
-  if (String(from).includes('.tmp-')) {
-    replaced += 1
-    if (replaced === 2) {
-      const error = new Error('simulated storage failure')
-      error.code = 'EIO'
-      throw error
-    }
+  if (String(from).includes('.tmp-') && String(to).endsWith('app.js')) {
+    const error = new Error('simulated storage failure')
+    error.code = 'EIO'
+    throw error
   }
   return rename(from, to)
 }
