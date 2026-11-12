@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "locales": {
+    "en": {
+      "1b9e51f469fc0211f53402d99a3b76cc": {
+        "sourceFingerprint": "924d8df007a36efb",
+        "review": "current"
+      },
+      "2597f120746fef0a073a8f4137f82723": {
+        "sourceFingerprint": "2091a26a01cff71e",
+        "review": "current"
+      },
+      "347336f67010dd79509d0d06e3b1e0f9": {
+        "sourceFingerprint": "f7389c0bddffc0cf",
+        "review": "current"
+      },
+      "413538666aa10a29abee04840a9d4664": {
+        "sourceFingerprint": "110405c48dc29f4e",
+        "review": "current"
+      },
+      "4cf350692a4a3bb54d13daacfe8c683b": {
+        "sourceFingerprint": "df3ea25a4369305a",
+        "review": "current"
+      },
+      "60d0458ac6ebef0fff1331af196b3c82": {
+        "sourceFingerprint": "50b5b1d2abefbca6",
+        "review": "current"
+      },
+      "63dd72433b65a4ae12763b5f2ffde0b4": {
+        "sourceFingerprint": "32359fdc59ff98b0",
+        "review": "current"
+      },
+      "65d26a04a6e0dad0f06984b805b3155e": {
+        "sourceFingerprint": "9f95abc7ef8e0b5a",
+        "review": "current"
+      },
+      "687a0c8b97215ced971388696b99fb58": {
+        "sourceFingerprint": "9f922dda0ae48be5",
+        "review": "current"
+      },
+      "689fad203a167d542c12bdc46f27e921": {
+        "sourceFingerprint": "6773310492a96fcf",
+        "review": "current"
+      },
+      "6e52b3a8a5277cda894485cfd904b5af": {
+        "sourceFingerprint": "d19af12866a1d67c",
+        "review": "current"
+      },
+      "72643387eab0e9d11899cfdc72675a8a": {
+        "sourceFingerprint": "2877cb7f5c6f646a",
+        "review": "current"
+      },
+      "72f10f0ec143941b5b8f6cae2d7e5451": {
+        "sourceFingerprint": "7d91ef4abab4434f",
+        "review": "current"
+      },
+      "77d3895a5a34ced583f0af761de5438b": {
+        "sourceFingerprint": "101f6e6d6095ef5e",
+        "review": "current"
+      },
+      "8093e3921d80b5da7947f65844cdac87": {
+        "sourceFingerprint": "c59d0536d789dc0a",
+        "review": "current"
+      },
+      "83ddead03021fbad93b8d063c6bcea54": {
+        "sourceFingerprint": "c8213dc7da9aaaab",
+        "review": "current"
+      },
+      "9e4ec92cbb4de13f5a8c8ab0c9d5ba5f": {
+        "sourceFingerprint": "3c6c07427a3d62aa",
+        "review": "current"
+      },
+      "b15d91274e9fc68608c609999e0413fa": {
+        "sourceFingerprint": "3fd47edce45b3603",
+        "review": "current"
+      },
+      "b1fbb26860291635b50a1e8a7276ea6e": {
+        "sourceFingerprint": "6df89e2c97f666d2",
+        "review": "current"
+      },
+      "be5fbbe34ce9979bfb6576d9eddc5612": {
+        "sourceFingerprint": "a3030bf8f16dc63c",
+        "review": "current"
+      },
+      "c0a93715489248bab75ea1754c419002": {
+        "sourceFingerprint": "47a5e47c550cecfb",
+        "review": "current"
+      },
+      "c67d9525c0aa8ee0021f99769b0591e3": {
+        "sourceFingerprint": "e453bb7ac8e1856a",
+        "review": "current"
+      },
+      "dba2532ae92948933cda539ef740d073": {
+        "sourceFingerprint": "e5fdd049175eaa1f",
+        "review": "current"
+      },
+      "demo.build.body": {
+        "sourceFingerprint": "8b21da8cdb201615",
+        "review": "current"
+      },
+      "demo.build.localeLabel": {
+        "sourceFingerprint": "e8d025f8a8223339",
+        "review": "current"
+      },
+      "demo.build.title": {
+        "sourceFingerprint": "24cf2bbf6634a31e",
+        "review": "current"
+      },
+      "demo.home.namePhrase": {
+        "sourceFingerprint": "a7942b05a4f97fbc",
+        "review": "current"
+      },
+      "demo.items.deleted": {
+        "sourceFingerprint": "288b44d2ffd08051",
+        "review": "current"
+      },
+      "demo.markup.currentUserAria": {
+        "sourceFingerprint": "a0ed39376a47fb33",
+        "review": "current"
+      },
+      "demo.multilingual.body": {
+        "sourceFingerprint": "7664ce829aef5fcf",
+        "review": "current"
+      },
+      "demo.multilingual.title": {
+        "sourceFingerprint": "7d6b7ba0a630647e",
+        "review": "current"
+      },
+      "demo.privacy.link": {
+        "sourceFingerprint": "e464b41fd5c45ba5",
+        "review": "current"
+      },
+      "demo.script.hint": {
+        "sourceFingerprint": "669397634338ed0c",
+        "review": "current"
+      },
+      "demo.script.result": {
+        "sourceFingerprint": "669397634338ed0c",
+        "review": "current"
+      },
+      "demo.shared.title": {
+        "sourceFingerprint": "ec2a6eec0596d4e8",
+        "review": "current"
+      },
+      "demo.terms.link": {
+        "sourceFingerprint": "9303687a9ccf1358",
+        "review": "current"
+      },
+      "demo.terms.notice": {
+        "sourceFingerprint": "0710960f7b265028",
+        "review": "current"
+      },
+      "demo.unread.count": {
+        "sourceFingerprint": "d304739da72dcad2",
+        "review": "current"
+      },
+      "demo.visit.banner": {
+        "sourceFingerprint": "960d96a6920e3c49",
+        "review": "current"
+      },
+      "demo.visit.farewell": {
+        "sourceFingerprint": "960d96a6920e3c49",
+        "review": "current"
+      },
+      "demo.wait.a": {
+        "sourceFingerprint": "20cfd1c3b4c849a9",
+        "review": "current"
+      },
+      "demo.wait.b": {
+        "sourceFingerprint": "20cfd1c3b4c849a9",
+        "review": "current"
+      },
+      "demo.welcomeBack": {
+        "sourceFingerprint": "09682cfec3751aed",
+        "review": "current"
+      },
+      "e28ea123efcbc9bf0d91f24c5f04f979": {
+        "sourceFingerprint": "73b784d6bf997d84",
+        "review": "current"
+      },
+      "e75969b53df69a045d2b46815e97e36b": {
+        "sourceFingerprint": "63a5e7b7391191b1",
+        "review": "current"
+      }
+    }
+  }
+}

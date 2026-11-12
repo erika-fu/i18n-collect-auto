@@ -10,9 +10,9 @@
       <p>{{ scriptTemplateCopy }}</p>
       <label>
         <span>{{ '插值字符串' }}</span>
-        <input :placeholder="'输入' + fieldName + '名称'" aria-label="资料名称">
+        <input :placeholder="$t('vue3.fieldPlaceholder', { field: fieldName })" aria-label="资料名称">
       </label>
-      <p>{{ `欢迎${name}回来` }}</p>
+      <p>{{ $t('vue3.welcomeBack', { name }) }}</p>
       <p v-text="'普通指令不收集'"></p>
       <p>{{ $t('vue3.htmlNotice') }}</p>
       <!-- i18n-key: vue3.build.title -->

@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "runtimeMessages": [
+    {
+      "text": "原生 Vue 三模板",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 6,
+          "column": 10
+        },
+        "end": {
+          "line": 6,
+          "column": 20
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable",
+      "key": "vue3.heading"
+    },
+    {
+      "text": "保存资料",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 9,
+          "column": 16
+        },
+        "end": {
+          "line": 9,
+          "column": 20
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "插值字符串",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 12,
+          "column": 17
+        },
+        "end": {
+          "line": 12,
+          "column": 24
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "资料名称",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 13,
+          "column": 92
+        },
+        "end": {
+          "line": 13,
+          "column": 96
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "构建替换演示",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 19,
+          "column": 33
+        },
+        "end": {
+          "line": 19,
+          "column": 39
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable",
+      "key": "vue3.build.title"
+    },
+    {
+      "text": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 21,
+          "column": 32
+        },
+        "end": {
+          "line": 21,
+          "column": 74
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable",
+      "key": "vue3.build.body"
+    },
+    {
+      "text": "脚本文案",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 49,
+          "column": 18
+        },
+        "end": {
+          "line": 49,
+          "column": 24
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "脚本模板文案",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 50,
+          "column": 27
+        },
+        "end": {
+          "line": 50,
+          "column": 33
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "template-literal",
+      "capability": "automatically-runtime-localizable"
+    }
+  ],
+  "auditFindings": [
+    {
+      "text": "独立页面中文文案",
+      "location": {
+        "path": "public/index.html",
+        "start": {
+          "line": 10,
+          "column": 24
+        },
+        "end": {
+          "line": 10,
+          "column": 32
+        }
+      },
+      "sourceSurface": "standalone-html",
+      "semanticRole": "static-html-text",
+      "capability": "chinese-source-audit",
+      "disposition": "intentionally-ignored",
+      "ignoreReason": "standalone HTML audit sample stays Chinese on disk"
+    },
+    {
+      "text": "独立样式中文",
+      "location": {
+        "path": "src/base.css",
+        "start": {
+          "line": 77,
+          "column": 12
+        },
+        "end": {
+          "line": 77,
+          "column": 18
+        }
+      },
+      "sourceSurface": "css",
+      "semanticRole": "css-generated-content",
+      "capability": "chinese-source-audit",
+      "disposition": "intentionally-ignored",
+      "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
+      "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
+    }
+  ],
+  "explicitRequiredFindings": [],
+  "localizedCallFindings": [
+    {
+      "text": "vue3.fieldPlaceholder",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 13,
+          "column": 33
+        },
+        "end": {
+          "line": 13,
+          "column": 54
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "already-localized",
+      "key": "vue3.fieldPlaceholder",
+      "paramsKind": "static",
+      "paramNames": [
+        "field"
+      ],
+      "source": "输入{field}名称"
+    },
+    {
+      "text": "vue3.welcomeBack",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 15,
+          "column": 15
+        },
+        "end": {
+          "line": 15,
+          "column": 33
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "vue3.welcomeBack",
+      "paramsKind": "static",
+      "paramNames": [
+        "name"
+      ],
+      "source": "欢迎{name}回来"
+    },
+    {
+      "text": "vue3.htmlNotice",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 17,
+          "column": 15
+        },
+        "end": {
+          "line": 17,
+          "column": 32
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "vue3.htmlNotice",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "已通过 Vue I18n 本地化"
+    },
+    {
+      "text": "vue3.build.localeLabel",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 22,
+          "column": 40
+        },
+        "end": {
+          "line": 22,
+          "column": 64
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "vue3.build.localeLabel",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "当前语言：中文"
+    }
+  ],
+  "coverage": {
+    "sourceDiscovery": {
+      "total": 14
+    },
+    "runtimeLocalization": {
+      "total": 12,
+      "automaticallyRuntimeLocalizable": 8,
+      "alreadyLocalized": 4
+    },
+    "chineseSourceAudit": {
+      "total": 2,
+      "unresolved": 0,
+      "needsReview": 0,
+      "intentionallyIgnored": 2
+    },
+    "explicitRequired": {
+      "total": 0
+    }
+  }
+}

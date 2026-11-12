@@ -7,7 +7,7 @@
       <input
         placeholder="请输入姓名"
         title="姓名提示"
-        :aria-label="`当前用户${name}`"
+        :aria-label="$t('demo.markup.currentUserAria', { name })"
       >
     </label>
     <img alt="示例图片" src="/favicon.ico">

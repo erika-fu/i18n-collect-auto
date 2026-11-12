@@ -1,0 +1,1111 @@
+{
+  "version": 1,
+  "runtimeMessages": [
+    {
+      "text": "插值",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 42,
+          "column": 29
+        },
+        "end": {
+          "line": 42,
+          "column": 33
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "脚本字符串",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 43,
+          "column": 31
+        },
+        "end": {
+          "line": 43,
+          "column": 38
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "模板字符串",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 44,
+          "column": 32
+        },
+        "end": {
+          "line": 44,
+          "column": 39
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "文本与属性",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 45,
+          "column": 31
+        },
+        "end": {
+          "line": 45,
+          "column": 38
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "样式内容",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 46,
+          "column": 30
+        },
+        "end": {
+          "line": 46,
+          "column": 36
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "构建替换",
+      "location": {
+        "path": "src/App.vue",
+        "start": {
+          "line": 47,
+          "column": 30
+        },
+        "end": {
+          "line": 47,
+          "column": 36
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "构建替换演示",
+      "location": {
+        "path": "src/pages/BuildPage.vue",
+        "start": {
+          "line": 4,
+          "column": 32
+        },
+        "end": {
+          "line": 4,
+          "column": 38
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.build.title"
+    },
+    {
+      "text": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
+      "location": {
+        "path": "src/pages/BuildPage.vue",
+        "start": {
+          "line": 6,
+          "column": 30
+        },
+        "end": {
+          "line": 6,
+          "column": 72
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.build.body"
+    },
+    {
+      "text": "插值",
+      "location": {
+        "path": "src/pages/HomePage.vue",
+        "start": {
+          "line": 17,
+          "column": 13
+        },
+        "end": {
+          "line": 17,
+          "column": 17
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "名字",
+      "location": {
+        "path": "src/pages/HomePage.vue",
+        "start": {
+          "line": 18,
+          "column": 9
+        },
+        "end": {
+          "line": 18,
+          "column": 13
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "我不好",
+      "location": {
+        "path": "src/pages/HomePage.vue",
+        "start": {
+          "line": 19,
+          "column": 9
+        },
+        "end": {
+          "line": 19,
+          "column": 14
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "纯静态插值",
+      "location": {
+        "path": "src/pages/LiteralPage.vue",
+        "start": {
+          "line": 4,
+          "column": 40
+        },
+        "end": {
+          "line": 4,
+          "column": 45
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "模板字符串",
+      "location": {
+        "path": "src/pages/LiteralPage.vue",
+        "start": {
+          "line": 20,
+          "column": 13
+        },
+        "end": {
+          "line": 20,
+          "column": 20
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "小明",
+      "location": {
+        "path": "src/pages/LiteralPage.vue",
+        "start": {
+          "line": 21,
+          "column": 12
+        },
+        "end": {
+          "line": 21,
+          "column": 16
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "静态段落里的中文",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 4,
+          "column": 7
+        },
+        "end": {
+          "line": 4,
+          "column": 15
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "姓名",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 6,
+          "column": 12
+        },
+        "end": {
+          "line": 6,
+          "column": 14
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "请输入姓名",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 8,
+          "column": 21
+        },
+        "end": {
+          "line": 8,
+          "column": 26
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "姓名提示",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 9,
+          "column": 15
+        },
+        "end": {
+          "line": 9,
+          "column": 19
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "示例图片",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 13,
+          "column": 14
+        },
+        "end": {
+          "line": 13,
+          "column": 18
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "提交按钮",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 14,
+          "column": 32
+        },
+        "end": {
+          "line": 14,
+          "column": 36
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "关闭面板",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 15,
+          "column": 24
+        },
+        "end": {
+          "line": 15,
+          "column": 28
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "关闭",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 15,
+          "column": 30
+        },
+        "end": {
+          "line": 15,
+          "column": 32
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "旁白",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 16,
+          "column": 29
+        },
+        "end": {
+          "line": 16,
+          "column": 31
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "文本与属性",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 25,
+          "column": 13
+        },
+        "end": {
+          "line": 25,
+          "column": 20
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "小红",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 26,
+          "column": 12
+        },
+        "end": {
+          "line": 26,
+          "column": 16
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "欢迎",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 34,
+          "column": 54
+        },
+        "end": {
+          "line": 34,
+          "column": 58
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.visit.banner"
+    },
+    {
+      "text": "欢迎",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 35,
+          "column": 58
+        },
+        "end": {
+          "line": 35,
+          "column": 62
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.visit.farewell"
+    },
+    {
+      "text": "共享标题",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 36,
+          "column": 53
+        },
+        "end": {
+          "line": 36,
+          "column": 59
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.shared.title"
+    },
+    {
+      "text": "请稍候",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 37,
+          "column": 41
+        },
+        "end": {
+          "line": 37,
+          "column": 46
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.wait.a"
+    },
+    {
+      "text": "请稍候",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 38,
+          "column": 41
+        },
+        "end": {
+          "line": 38,
+          "column": 46
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.wait.b"
+    },
+    {
+      "text": "脚本字符串",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 18,
+          "column": 13
+        },
+        "end": {
+          "line": 18,
+          "column": 20
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "这是一段写在脚本里的中文",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 19,
+          "column": 15
+        },
+        "end": {
+          "line": 19,
+          "column": 29
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "来自独立脚本的公共词条",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 20,
+          "column": 18
+        },
+        "end": {
+          "line": 20,
+          "column": 31
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "公共模板1片段",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 21,
+          "column": 19
+        },
+        "end": {
+          "line": 21,
+          "column": 28
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "同一句出现两次",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 22,
+          "column": 45
+        },
+        "end": {
+          "line": 22,
+          "column": 54
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.script.hint"
+    },
+    {
+      "text": "保存",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 23,
+          "column": 14
+        },
+        "end": {
+          "line": 23,
+          "column": 18
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "同一句出现两次",
+      "location": {
+        "path": "src/pages/ScriptPage.vue",
+        "start": {
+          "line": 31,
+          "column": 55
+        },
+        "end": {
+          "line": 31,
+          "column": 64
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable",
+      "key": "demo.script.result"
+    },
+    {
+      "text": "收件箱",
+      "location": {
+        "path": "src/pages/StylePage.vue",
+        "start": {
+          "line": 4,
+          "column": 7
+        },
+        "end": {
+          "line": 4,
+          "column": 10
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-text",
+      "capability": "automatically-runtime-localizable"
+    },
+    {
+      "text": "样式内容",
+      "location": {
+        "path": "src/pages/StylePage.vue",
+        "start": {
+          "line": 24,
+          "column": 13
+        },
+        "end": {
+          "line": 24,
+          "column": 19
+        }
+      },
+      "sourceSurface": "vue-script",
+      "semanticRole": "script-string",
+      "capability": "automatically-runtime-localizable"
+    }
+  ],
+  "auditFindings": [
+    {
+      "text": "独立页面中文文案",
+      "location": {
+        "path": "public/index.html",
+        "start": {
+          "line": 15,
+          "column": 24
+        },
+        "end": {
+          "line": 15,
+          "column": 32
+        }
+      },
+      "sourceSurface": "standalone-html",
+      "semanticRole": "static-html-text",
+      "capability": "chinese-source-audit",
+      "disposition": "intentionally-ignored",
+      "ignoreReason": "standalone HTML audit sample stays Chinese on disk"
+    },
+    {
+      "text": "独立样式中文",
+      "location": {
+        "path": "src/base.css",
+        "start": {
+          "line": 3,
+          "column": 12
+        },
+        "end": {
+          "line": 3,
+          "column": 18
+        }
+      },
+      "sourceSurface": "css",
+      "semanticRole": "css-generated-content",
+      "capability": "chinese-source-audit",
+      "disposition": "intentionally-ignored",
+      "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
+      "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
+    }
+  ],
+  "explicitRequiredFindings": [],
+  "localizedCallFindings": [
+    {
+      "text": "demo.build.localeLabel",
+      "location": {
+        "path": "src/pages/BuildPage.vue",
+        "start": {
+          "line": 7,
+          "column": 38
+        },
+        "end": {
+          "line": 7,
+          "column": 62
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.build.localeLabel",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "当前语言：中文"
+    },
+    {
+      "text": "demo.home.namePhrase",
+      "location": {
+        "path": "src/pages/HomePage.vue",
+        "start": {
+          "line": 7,
+          "column": 15
+        },
+        "end": {
+          "line": 7,
+          "column": 37
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.home.namePhrase",
+      "paramsKind": "static",
+      "paramNames": [
+        "name"
+      ],
+      "source": "这是{name}的名字呀"
+    },
+    {
+      "text": "demo.welcomeBack",
+      "location": {
+        "path": "src/pages/LiteralPage.vue",
+        "start": {
+          "line": 5,
+          "column": 42
+        },
+        "end": {
+          "line": 5,
+          "column": 60
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.welcomeBack",
+      "paramsKind": "static",
+      "paramNames": [
+        "name"
+      ],
+      "source": "欢迎{name}回来"
+    },
+    {
+      "text": "demo.unread.count",
+      "location": {
+        "path": "src/pages/LiteralPage.vue",
+        "start": {
+          "line": 11,
+          "column": 41
+        },
+        "end": {
+          "line": 11,
+          "column": 60
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.unread.count",
+      "paramsKind": "static",
+      "paramNames": [
+        "count"
+      ],
+      "source": "你有{count}条未读消息"
+    },
+    {
+      "text": "demo.markup.currentUserAria",
+      "location": {
+        "path": "src/pages/MarkupPage.vue",
+        "start": {
+          "line": 10,
+          "column": 25
+        },
+        "end": {
+          "line": 10,
+          "column": 52
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "html-attribute",
+      "capability": "already-localized",
+      "key": "demo.markup.currentUserAria",
+      "paramsKind": "static",
+      "paramNames": [
+        "name"
+      ],
+      "source": "当前用户{name}"
+    },
+    {
+      "text": "demo.visit.banner",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 5,
+          "column": 32
+        },
+        "end": {
+          "line": 5,
+          "column": 51
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.visit.banner",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "欢迎"
+    },
+    {
+      "text": "demo.visit.farewell",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 7,
+          "column": 34
+        },
+        "end": {
+          "line": 7,
+          "column": 55
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.visit.farewell",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "欢迎"
+    },
+    {
+      "text": "demo.shared.title",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 9,
+          "column": 37
+        },
+        "end": {
+          "line": 9,
+          "column": 56
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.shared.title",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "共享标题"
+    },
+    {
+      "text": "47781b8a72bcbb7ecb1f955399a7e718",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 14,
+          "column": 32
+        },
+        "end": {
+          "line": 14,
+          "column": 66
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "47781b8a72bcbb7ecb1f955399a7e718",
+      "paramsKind": "none",
+      "paramNames": []
+    },
+    {
+      "text": "demo.items.deleted",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 15,
+          "column": 39
+        },
+        "end": {
+          "line": 15,
+          "column": 59
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.items.deleted",
+      "paramsKind": "static",
+      "paramNames": [
+        "count"
+      ],
+      "source": "已删除 {count} 项"
+    },
+    {
+      "text": "demo.terms.link",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 21,
+          "column": 43
+        },
+        "end": {
+          "line": 21,
+          "column": 60
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.terms.link",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "服务条款"
+    },
+    {
+      "text": "demo.privacy.link",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 22,
+          "column": 47
+        },
+        "end": {
+          "line": 22,
+          "column": 66
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.privacy.link",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "隐私政策"
+    },
+    {
+      "text": "demo.terms.notice",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 24,
+          "column": 43
+        },
+        "end": {
+          "line": 24,
+          "column": 62
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.terms.notice",
+      "paramsKind": "static",
+      "paramNames": [
+        "terms",
+        "privacy"
+      ],
+      "source": "请阅读我们的{terms}与{privacy}"
+    },
+    {
+      "text": "demo.terms.link",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 24,
+          "column": 76
+        },
+        "end": {
+          "line": 24,
+          "column": 93
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.terms.link",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "服务条款"
+    },
+    {
+      "text": "demo.privacy.link",
+      "location": {
+        "path": "src/pages/MigrationPage.vue",
+        "start": {
+          "line": 24,
+          "column": 108
+        },
+        "end": {
+          "line": 24,
+          "column": 127
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.privacy.link",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "隐私政策"
+    },
+    {
+      "text": "demo.multilingual.title",
+      "location": {
+        "path": "src/pages/multilingual/MultilingualPage.vue",
+        "start": {
+          "line": 3,
+          "column": 45
+        },
+        "end": {
+          "line": 3,
+          "column": 70
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.multilingual.title",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "运行时多语言边界"
+    },
+    {
+      "text": "demo.multilingual.body",
+      "location": {
+        "path": "src/pages/multilingual/MultilingualPage.vue",
+        "start": {
+          "line": 4,
+          "column": 43
+        },
+        "end": {
+          "line": 4,
+          "column": 67
+        }
+      },
+      "sourceSurface": "vue-template",
+      "semanticRole": "template-expression",
+      "capability": "already-localized",
+      "key": "demo.multilingual.body",
+      "paramsKind": "static",
+      "paramNames": [
+        "name"
+      ],
+      "source": "你好，{name}。此页仅通过显式本地化渲染。"
+    }
+  ],
+  "coverage": {
+    "sourceDiscovery": {
+      "total": 58
+    },
+    "runtimeLocalization": {
+      "total": 56,
+      "automaticallyRuntimeLocalizable": 39,
+      "alreadyLocalized": 17
+    },
+    "chineseSourceAudit": {
+      "total": 2,
+      "unresolved": 0,
+      "needsReview": 0,
+      "intentionallyIgnored": 2
+    },
+    "explicitRequired": {
+      "total": 0
+    }
+  }
+}

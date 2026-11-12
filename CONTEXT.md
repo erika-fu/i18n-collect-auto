@@ -86,7 +86,7 @@ A feature or route that must render user-facing copy in a target locale at runti
 _Avoid_: Translated page
 
 **Runtime-multilingual boundaries**:
-The versioned document `runtime-multilingual-boundaries.json` beside the catalog metadata. Version 1 lists named boundaries with project-relative `include` and optional `exclude` scope patterns. A path is inside a boundary when it matches that boundary's include and not its exclude; overlapping boundaries use union membership. `check-policy` rejects direct user-facing source text inside those boundaries. Being collected automatically is not the same as being able to switch languages at runtime.
+The versioned document `runtime-multilingual-boundaries.json` beside the catalog metadata. Version 1 lists named boundaries with project-relative `include` and optional `exclude` scope patterns. A path is inside a boundary when it matches that boundary's include and not its exclude; overlapping boundaries use union membership. `check` rejects direct user-facing source text inside those boundaries. Being collected automatically is not the same as being able to switch languages at runtime.
 _Avoid_: Translated page, complete-static-copy baseline
 
 **HTML text**:

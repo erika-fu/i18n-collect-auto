@@ -32,6 +32,18 @@
     {
       "key": "demo.build.localeLabel",
       "source": "当前语言：中文"
+    },
+    {
+      "key": "demo.home.namePhrase",
+      "source": "这是{name}的名字呀"
+    },
+    {
+      "key": "demo.welcomeBack",
+      "source": "欢迎{name}回来"
+    },
+    {
+      "key": "demo.markup.currentUserAria",
+      "source": "当前用户{name}"
     }
   ]
 }

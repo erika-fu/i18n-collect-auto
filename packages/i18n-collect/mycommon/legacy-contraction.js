@@ -1,6 +1,9 @@
 const MIGRATE_KEYS = 'i18n-collect migrate-keys'
 const SCAN = 'i18n-collect scan'
 const CHECK = 'i18n-collect check'
+const TRANSLATE = 'i18n-collect translate'
+const REPLACE = 'i18n-collect replace'
+const BUILD = 'i18n-collect build'
 
 const COLLECT_REMOVED =
   `collect is removed. Use ${SCAN} for source analysis and ${MIGRATE_KEYS} once for per-occurrence catalogs.`
@@ -8,8 +11,14 @@ const COLLECT_REMOVED =
 const VERIFY_REMOVED =
   `verify is removed. Use ${SCAN} then ${CHECK} for freshness and project localization completeness.`
 
+const RUN_REMOVED =
+  `run is removed. Use ${SCAN}, ${TRANSLATE}, ${REPLACE}, ${BUILD}, and ${CHECK} directly.`
+
 const RUN_COLLECT_REMOVED =
   `run --collect is removed. Use ${SCAN} for source analysis and ${MIGRATE_KEYS} once for per-occurrence catalogs.`
+
+const CHECK_POLICY_REMOVED =
+  `check-policy is removed. Use ${CHECK}; it evaluates project localization completeness including complete-static-copy and runtime-multilingual policy.`
 
 const PRUNE_ORPHANED_REMOVED =
   'pruneOrphaned is removed. Orphan retirement is no longer part of the localization workflow; use scan, translate --prune for stale target keys, and migrate-keys for legacy catalogs.'
@@ -61,7 +70,9 @@ function assertNoLegacyIdentityMetadata(metadata) {
 }
 
 module.exports = {
+  BUILD,
   CHECK,
+  CHECK_POLICY_REMOVED,
   COLLECT_REMOVED,
   LEGACY_IDENTITY_ARTIFACT,
   LEGACY_IDENTITY_METADATA,
@@ -69,8 +80,11 @@ module.exports = {
   PLUGIN_COLLECTION_REMOVED,
   PREPROCESSOR_STYLE_IR_REMOVED,
   PRUNE_ORPHANED_REMOVED,
+  REPLACE,
   RUN_COLLECT_REMOVED,
+  RUN_REMOVED,
   SCAN,
+  TRANSLATE,
   VERIFY_REMOVED,
   assertNoLegacyIdentityMetadata,
   hasOccurrenceIdentity,

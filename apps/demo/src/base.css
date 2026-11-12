@@ -1,5 +1,6 @@
 .standalone::before {
-  content: "standalone";
+  /* i18n-ignore: CSS generated-content audit sample is not runtime-localizable */
+  content: "独立样式中文";
 }
 
 .standalone {

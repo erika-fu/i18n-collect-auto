@@ -8,6 +8,14 @@
     {
       "key": "vue3.build.localeLabel",
       "source": "当前语言：中文"
+    },
+    {
+      "key": "vue3.welcomeBack",
+      "source": "欢迎{name}回来"
+    },
+    {
+      "key": "vue3.fieldPlaceholder",
+      "source": "输入{field}名称"
     }
   ]
 }

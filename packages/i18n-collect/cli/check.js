@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
+const { evaluateHybridPolicy } = require('../mycommon/evaluate-hybrid-policy')
 const {
   evaluateLocalizationCompleteness
 } = require('../mycommon/evaluate-localization-completeness')
@@ -152,6 +153,36 @@ function readReviewState(root, relative) {
   return value
 }
 
+function mergePolicyIntoEvaluation(evaluation, policy) {
+  if (policy.ok) {
+    return {
+      ...evaluation,
+      policy
+    }
+  }
+  const blocking = [...evaluation.blocking]
+  if (policy.newViolations.length || policy.modifiedViolations.length) {
+    if (!blocking.includes('complete-static-copy-policy')) {
+      blocking.push('complete-static-copy-policy')
+    }
+  }
+  if (policy.runtimeMultilingualViolations.length > 0) {
+    if (!blocking.includes('runtime-multilingual-policy')) {
+      blocking.push('runtime-multilingual-policy')
+    }
+  }
+  const remediation = []
+  if (!evaluation.ok) remediation.push(evaluation.message)
+  if (policy.message) remediation.push(policy.message)
+  return {
+    ...evaluation,
+    ok: false,
+    blocking,
+    message: remediation.join('; '),
+    policy
+  }
+}
+
 function summaryReport(analysis, evaluation, scannedFiles) {
   return {
     command: 'check',
@@ -168,13 +199,29 @@ function summaryReport(analysis, evaluation, scannedFiles) {
     message: evaluation.message,
     coverage: analysis.coverage,
     auditFindings: evaluation.auditFindings,
-    explicitRequiredFindings: evaluation.explicitRequiredFindings
+    explicitRequiredFindings: evaluation.explicitRequiredFindings,
+    policy: evaluation.policy
+      ? {
+        ok: evaluation.policy.ok,
+        baseline: evaluation.policy.baseline,
+        runtimeMultilingualBoundaries: evaluation.policy.runtimeMultilingualBoundaries,
+        violations: evaluation.policy.violations,
+        grandfathered: evaluation.policy.grandfathered,
+        newViolations: evaluation.policy.newViolations,
+        modifiedViolations: evaluation.policy.modifiedViolations,
+        runtimeMultilingualViolations: evaluation.policy.runtimeMultilingualViolations
+      }
+      : undefined
   }
 }
 
 function humanSummary(evaluation, analysis) {
   const lines = []
   if (evaluation.ok) {
+    const policy = evaluation.policy
+    const policyBit = policy
+      ? `; policy ${policy.violations} violation(s), ${policy.grandfathered} grandfathered`
+      : ''
     lines.push(
       `check: complete; source discovery ${analysis.coverage.sourceDiscovery.total}; ` +
       `runtime auto ${evaluation.runtimeLocalization.automaticallyRuntimeLocalizable}, ` +
@@ -182,7 +229,8 @@ function humanSummary(evaluation, analysis) {
       `explicit-required ${evaluation.runtimeLocalization.explicitRequired}; ` +
       `unresolved audit ${evaluation.chineseSourceAudit.unresolved}; ` +
       `needs-review audit ${evaluation.chineseSourceAudit.needsReview}; ` +
-      `intentionally ignored ${evaluation.chineseSourceAudit.intentionallyIgnored}`
+      `intentionally ignored ${evaluation.chineseSourceAudit.intentionallyIgnored}` +
+      policyBit
     )
   } else {
     lines.push(`incomplete: ${evaluation.message}`)
@@ -230,13 +278,15 @@ function check(args) {
     }
     const reviewState = readReviewState(config.root, reviewFile(config))
 
-    const evaluation = evaluateLocalizationCompleteness({
+    const completeness = evaluateLocalizationCompleteness({
       analysis,
       committedSourceCatalog,
       targetLocales: config.targetLocales,
       targets,
       reviewState
     })
+    const policy = evaluateHybridPolicy({ sources, config })
+    const evaluation = mergePolicyIntoEvaluation(completeness, policy)
     const report = summaryReport(analysis, evaluation, sources.length)
 
     if (!evaluation.ok) {

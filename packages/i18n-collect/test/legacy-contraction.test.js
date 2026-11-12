@@ -53,14 +53,13 @@ test('verify fails with migration guidance pointing at scan and check', () => {
   assert.strictEqual(report.message, VERIFY_REMOVED)
 })
 
-test('run --collect fails with migration guidance', () => {
+test('run fails with migration guidance', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-run-'))
   const result = run(['run', '--collect', '--json'], root)
   assert.strictEqual(result.status, 1, result.stderr)
-  assert.match(result.stderr, /run --collect is removed|collect is removed/i)
+  assert.match(result.stderr, /run is removed/i)
   assert.match(result.stderr, /scan/i)
 })
-
 test('config rejects pruneOrphaned with migration guidance', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-contract-prune-'))
   fs.writeFileSync(

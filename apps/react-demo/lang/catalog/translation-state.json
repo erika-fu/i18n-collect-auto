@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "locales": {
+    "en": {
+      "react.app.taskSummary": {
+        "sourceFingerprint": "b74694674495f09e",
+        "review": "current"
+      },
+      "react.app.title": {
+        "sourceFingerprint": "3ce809d4645b60c6",
+        "review": "current"
+      },
+      "react.multilingual.body": {
+        "sourceFingerprint": "7664ce829aef5fcf",
+        "review": "current"
+      },
+      "react.multilingual.title": {
+        "sourceFingerprint": "7d6b7ba0a630647e",
+        "review": "current"
+      }
+    }
+  }
+}

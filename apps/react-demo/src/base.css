@@ -1,3 +1,4 @@
 .page::before {
-  content: 'React 样式文案';
+  /* i18n-ignore: CSS generated-content audit sample is not runtime-localizable */
+  content: '独立样式中文';
 }

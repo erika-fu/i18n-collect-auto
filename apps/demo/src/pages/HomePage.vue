@@ -4,7 +4,7 @@
     <div ref="a" :style="{ width: `${width}px` }">{{ a }}</div>
     <div class="content">this is a long content</div>
     <div @click="change">change</div>
-    <div>{{ `这是${a}的名字呀` }}</div>
+    <div>{{ $t('demo.home.namePhrase', { name: a }) }}</div>
     <div>{{ b }}</div>
   </section>
 </template>

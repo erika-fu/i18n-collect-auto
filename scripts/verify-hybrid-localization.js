@@ -23,11 +23,11 @@ const EXIT = {
 }
 
 const STEPS = [
-  'react-verify',
+  'react-check',
   'vue-formal-freshness',
-  'vue-check-policy',
+  'vue-check',
   'vue3-formal-freshness',
-  'vue3-check-policy',
+  'vue3-check',
   'package-tests',
   'react-demo-build'
 ]
@@ -36,10 +36,10 @@ const SKIP_PACKAGE_TESTS_FLAG = '--skip-package-tests'
 
 const CATEGORY_HINTS = {
   configuration: 'Fix i18n-collect configuration or command options, then re-run npm run verify.',
-  collection: 'Fix the collection failure (key conflict, identity ambiguity, invalid metadata, or loader integration). The policy baseline cannot suppress it.',
+  collection: 'Fix the analysis failure (key conflict, malformed directive, or stale source catalog). Run scan, then check.',
   build: 'Fix the webpack/demo build failure, then re-run npm run verify.',
-  policy: 'Migrate the new or modified hybrid-localization violation to an explicit message, or update complete-static-copy-baseline.json for an exact grandfathered entry. Runtime-multilingual boundary literals cannot be grandfathered.',
-  stale: 'Refresh and commit formal outputs (dictionary, source map, source-locale catalog, catalog metadata) via the project collection/build workflow.',
+  policy: 'Fix project localization completeness: migrate explicit-required copy, dispose audit findings with i18n-ignore reasons, update translations, or refresh the complete-static-copy baseline for exact grandfathered entries. Runtime-multilingual boundary literals cannot be grandfathered.',
+  stale: 'Refresh and commit localization artifacts via scan (source-catalog/analysis-report) and, when needed, sync the source-locale catalog for runtime. Build must not mutate catalogs.',
   tests: 'Fix the failing package tests under packages/i18n-collect, then re-run npm run verify.',
   'demo-build': 'Fix the React demo production build, then re-run npm run verify.'
 }
@@ -90,22 +90,22 @@ function mapVerifyExit(code) {
 }
 
 function verifyReactDemo(runners) {
-  // collect/verify are contracted; React demo policy stays check-policy until issue 12 migrates examples.
+  // Read-only completeness for the React demo (no catalog mutation, no build replacement).
   const cwd = path.join(ROOT, 'apps/react-demo')
-  const policy = runners.runNode([BIN, 'check-policy', '--cwd', cwd])
-  if (policy.status === 0) {
+  const result = runners.runNode([BIN, 'check', '--cwd', cwd])
+  if (result.status === 0) {
     return {
       code: EXIT.ok,
-      stdout: policy.stdout || '',
-      stderr: policy.stderr || '',
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
       category: null
     }
   }
   return {
-    code: policy.status == null ? EXIT.policy : policy.status,
-    stdout: policy.stdout || '',
-    stderr: policy.stderr || 'policy: react-demo check-policy failed\n',
-    category: policy.status === EXIT.configuration ? 'configuration' : 'policy'
+    code: result.status == null ? EXIT.policy : result.status,
+    stdout: result.stdout || '',
+    stderr: result.stderr || 'policy: react-demo check failed\n',
+    category: result.status === EXIT.configuration ? 'configuration' : 'policy'
   }
 }
 
@@ -154,7 +154,7 @@ function verifyVuePolicy(runners, {
   demoRoot = path.join(ROOT, 'apps/demo'),
   label = 'Vue'
 } = {}) {
-  const result = runners.runNode([BIN, 'check-policy', '--cwd', demoRoot])
+  const result = runners.runNode([BIN, 'check', '--cwd', demoRoot])
   if (result.status === 0) {
     return { code: EXIT.ok, stdout: result.stdout, stderr: '', category: null }
   }
@@ -162,7 +162,7 @@ function verifyVuePolicy(runners, {
     return {
       code: EXIT.configuration,
       stdout: result.stdout || '',
-      stderr: result.stderr || `configuration: ${label} demo check-policy failed\n`,
+      stderr: result.stderr || `configuration: ${label} demo check failed\n`,
       category: 'configuration'
     }
   }
@@ -225,11 +225,11 @@ function buildReactDemo(runners) {
 }
 
 const STEP_RUNNERS = {
-  'react-verify': verifyReactDemo,
+  'react-check': verifyReactDemo,
   'vue-formal-freshness': verifyVueFormalFreshness,
-  'vue-check-policy': verifyVuePolicy,
+  'vue-check': verifyVuePolicy,
   'vue3-formal-freshness': verifyVue3FormalFreshness,
-  'vue3-check-policy': verifyVue3Policy,
+  'vue3-check': verifyVue3Policy,
   'package-tests': runPackageTests,
   'react-demo-build': buildReactDemo
 }

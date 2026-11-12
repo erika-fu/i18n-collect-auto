@@ -18,7 +18,7 @@ export default {
       title: '脚本字符串',
       message: '这是一段写在脚本里的中文',
       sharedCopy: '来自独立脚本的公共词条',
-      literalNote: `公共模板${1}片段`,
+      literalNote: '公共模板1片段',
       hint: /* i18n-key: demo.script.hint */ '同一句出现两次',
       action: '保存',
       result: '',

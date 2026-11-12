@@ -72,6 +72,15 @@ input {
   list-style: none;
 }
 
+.demo-panel::before {
+  /* i18n-ignore: CSS generated-content audit sample is not runtime-localizable */
+  content: "独立样式中文";
+  display: block;
+  margin-bottom: 8px;
+  color: #52605a;
+  font-size: 12px;
+}
+
 .style-format::after {
   display: block;
   color: #52605a;

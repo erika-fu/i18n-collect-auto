@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "runtimeMessages": [],
+  "auditFindings": [
+    {
+      "text": "独立页面中文文案",
+      "location": {
+        "path": "public/index.html",
+        "start": {
+          "line": 9,
+          "column": 24
+        },
+        "end": {
+          "line": 9,
+          "column": 32
+        }
+      },
+      "sourceSurface": "standalone-html",
+      "semanticRole": "static-html-text",
+      "capability": "chinese-source-audit",
+      "disposition": "intentionally-ignored",
+      "ignoreReason": "standalone HTML audit sample stays Chinese on disk"
+    },
+    {
+      "text": "独立样式中文",
+      "location": {
+        "path": "src/base.css",
+        "start": {
+          "line": 3,
+          "column": 12
+        },
+        "end": {
+          "line": 3,
+          "column": 18
+        }
+      },
+      "sourceSurface": "css",
+      "semanticRole": "css-generated-content",
+      "capability": "chinese-source-audit",
+      "disposition": "intentionally-ignored",
+      "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
+      "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
+    }
+  ],
+  "explicitRequiredFindings": [],
+  "localizedCallFindings": [
+    {
+      "text": "react.app.title",
+      "location": {
+        "path": "src/App.jsx",
+        "start": {
+          "line": 9,
+          "column": 13
+        },
+        "end": {
+          "line": 9,
+          "column": 30
+        }
+      },
+      "sourceSurface": "javascript",
+      "semanticRole": "script-string",
+      "capability": "already-localized",
+      "key": "react.app.title",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "React 脚本文案"
+    },
+    {
+      "text": "react.app.taskSummary",
+      "location": {
+        "path": "src/App.jsx",
+        "start": {
+          "line": 10,
+          "column": 12
+        },
+        "end": {
+          "line": 10,
+          "column": 35
+        }
+      },
+      "sourceSurface": "javascript",
+      "semanticRole": "script-string",
+      "capability": "already-localized",
+      "key": "react.app.taskSummary",
+      "paramsKind": "static",
+      "paramNames": [
+        "count"
+      ],
+      "source": "你有{count}条待处理任务"
+    },
+    {
+      "text": "react.multilingual.title",
+      "location": {
+        "path": "src/multilingual/MultilingualPanel.jsx",
+        "start": {
+          "line": 8,
+          "column": 44
+        },
+        "end": {
+          "line": 8,
+          "column": 70
+        }
+      },
+      "sourceSurface": "javascript",
+      "semanticRole": "script-string",
+      "capability": "already-localized",
+      "key": "react.multilingual.title",
+      "paramsKind": "none",
+      "paramNames": [],
+      "source": "运行时多语言边界"
+    },
+    {
+      "text": "react.multilingual.body",
+      "location": {
+        "path": "src/multilingual/MultilingualPanel.jsx",
+        "start": {
+          "line": 9,
+          "column": 42
+        },
+        "end": {
+          "line": 9,
+          "column": 67
+        }
+      },
+      "sourceSurface": "javascript",
+      "semanticRole": "script-string",
+      "capability": "already-localized",
+      "key": "react.multilingual.body",
+      "paramsKind": "static",
+      "paramNames": [
+        "name"
+      ],
+      "source": "你好，{name}。此页仅通过显式本地化渲染。"
+    }
+  ],
+  "coverage": {
+    "sourceDiscovery": {
+      "total": 6
+    },
+    "runtimeLocalization": {
+      "total": 4,
+      "automaticallyRuntimeLocalizable": 0,
+      "alreadyLocalized": 4
+    },
+    "chineseSourceAudit": {
+      "total": 2,
+      "unresolved": 0,
+      "needsReview": 0,
+      "intentionallyIgnored": 2
+    },
+    "explicitRequired": {
+      "total": 0
+    }
+  }
+}

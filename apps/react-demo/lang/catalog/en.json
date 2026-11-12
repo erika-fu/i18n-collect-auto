@@ -1,4 +1,6 @@
 {
-  "react.multilingual.title": "Runtime multilingual boundary",
-  "react.multilingual.body": "Hello, {name}. This page renders only through explicit localization."
+  "react.app.taskSummary": "You have {count} tasks to handle",
+  "react.app.title": "React script copy",
+  "react.multilingual.body": "Hello, {name}. This page renders only through explicit localization.",
+  "react.multilingual.title": "Runtime multilingual boundary"
 }

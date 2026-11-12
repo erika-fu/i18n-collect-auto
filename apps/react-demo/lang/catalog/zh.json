@@ -1,10 +1,6 @@
 {
-  "auto.01M6DAKXAH4PNP7Q7RHFSXEQGB": "条待处理任务",
-  "auto.01M6DAKXAH7V1NBG6SKE1EE1RE": "React 静态属性",
-  "auto.01M6DAKXAH8CN3FPMA1YZV5P7D": "React 静态页面文案",
-  "auto.01M6DAKXAHDGX60AEZ0B9QQMDB": "React 样式文案",
-  "auto.01M6DAKXAHG85HYDNQX78CNB31": "你有",
-  "auto.01M6DAKXAHP3M291MZA9BQJD01": "React 脚本文案",
+  "react.app.taskSummary": "你有{count}条待处理任务",
+  "react.app.title": "React 脚本文案",
   "react.multilingual.body": "你好，{name}。此页仅通过显式本地化渲染。",
   "react.multilingual.title": "运行时多语言边界"
 }

@@ -84,14 +84,15 @@ test('react demo multilingual panel resolves English through explicit localizati
   )
 })
 
-test('committed demos pass check-policy with runtime-multilingual boundaries', () => {
+test('committed demos pass check with runtime-multilingual boundaries', () => {
   for (const demo of ['demo', 'react-demo']) {
     const demoRoot = path.join(__dirname, `../../../apps/${demo}`)
-    const result = run(['check-policy', '--json', '--cwd', demoRoot])
+    const result = run(['check', '--json', '--cwd', demoRoot])
     assert.strictEqual(result.status, 0, `${demo}: ${result.stderr}`)
     const report = JSON.parse(result.stdout)
     assert.strictEqual(report.ok, true)
-    assert.deepStrictEqual(report.runtimeMultilingualViolations, [])
+    assert.ok(report.policy)
+    assert.deepStrictEqual(report.policy.runtimeMultilingualViolations, [])
   }
 })
 
@@ -111,9 +112,15 @@ test('a direct literal inside a declared demo boundary fails validation', () => 
       boundaries: [{ id: 'demo-multilingual', include: ['src/pages/multilingual'] }]
     }, null, 2)}\n`
   )
+  fs.writeFileSync(path.join(root, 'lang/catalog/source-catalog.json'), '{}\n')
   installVue2(root)
-  const result = run(['check-policy'], root)
-  assert.strictEqual(result.status, 2, result.stderr)
-  assert.match(result.stderr, /runtime-multilingual-literal/)
-  assert.match(result.stderr, /非法直接中文/)
+  const { evaluateHybridPolicy } = require('../mycommon/evaluate-hybrid-policy')
+  const { loadConfig } = require('../mycommon/config')
+  const { listProjectSources } = require('../mycommon/project-sources')
+  const config = loadConfig({ root })
+  const sources = listProjectSources(config.root, config)
+  const policy = evaluateHybridPolicy({ sources, config })
+  assert.strictEqual(policy.ok, false)
+  assert.match(policy.message, /runtime-multilingual-literal/)
+  assert.match(policy.message, /非法直接中文/)
 })

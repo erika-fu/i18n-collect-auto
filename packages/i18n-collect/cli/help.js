@@ -130,109 +130,47 @@ Exit codes:
 
 const CHECK_POLICY_HELP = `i18n-collect check-policy
 
-Scan project sources for complete-static-copy policy violations and runtime-multilingual
-boundary violations.
-A whole static Chinese literal may stay eligible for automatic collection outside a
-declared runtime-multilingual boundary. Interpolation, concatenation, conditional
-construction, and formatting must use an explicit localization call instead of
-independently translated fragments. Structured messages that mix Chinese copy with
-links, emphasis, controls, or component slots must also use explicit localization so
-translators control ordering and placeholders.
-Existing complete-static-copy violations may be listed in
-lang/catalog/complete-static-copy-baseline.json. The baseline grandfathers exact matches
-only; new or modified violations fail. The baseline never hides collection failures,
-identity ambiguities, stale formal outputs, or direct source text inside a declared
-runtime-multilingual boundary.
-Declare runtime-multilingual feature or route boundaries in
-lang/catalog/runtime-multilingual-boundaries.json. Direct user-facing source text inside
-those boundaries always fails and cannot be grandfathered by the complete-static-copy
-baseline: collected automatic copy is not the same as being able to switch languages at
-runtime.
+Removed. Use i18n-collect check. Completeness evaluation includes complete-static-copy
+baseline policy and runtime-multilingual boundary policy without writing files.
 
 Usage:
   i18n-collect check-policy [options]
 
-Options:
-  --cwd <dir>          Project root. Defaults to the current directory.
-  --include <pattern>  Replace the configured include scope. Repeat to set several patterns.
-  --exclude <pattern>  Replace the configured exclude scope. Repeat to set several patterns.
-  --json               Print the policy report as JSON on stdout.
-  -h, --help           Show this help.
-
 Exit codes:
-  0  no new or modified policy violations and no runtime-multilingual boundary violations
-  1  configuration failure
-  2  new or modified complete-static-copy policy violations, or runtime-multilingual boundary violations
+  1  configuration failure with migration guidance
 `
 
 const ROOT_HELP = `i18n-collect
 
-Automation-friendly commands for this workspace.
+Primary workflow: scan, translate, build, replace, and check.
 
 Usage:
   i18n-collect <command> [options]
 
 Commands:
-  scan          Analyze project sources and write the source catalog plus analysis report.
-  migrate-keys  Migrate per-occurrence automatic keys to deterministic exact-text hash keys.
-  translate     Fill target-locale catalogs through a project translation provider.
-  replace       Preview safe source replacements, or commit them with --write.
+  scan          Analyze sources; writes source-catalog.json and analysis-report.json only.
+  translate     Fill target-locale catalogs and translation-state.json only.
   build         Read-only build replacement into the formal webpack bundle.
-  check         Evaluate project localization completeness without writing files.
-  check-policy  Report complete-static-copy and runtime-multilingual boundary policy violations.
+  replace       Preview source replacements, or write application source with --write.
+  check         Read-only project localization completeness (including hybrid policy).
+  migrate-keys  One-shot migration of per-occurrence automatic keys to text-hash keys.
   collect       Removed; use scan (and migrate-keys for legacy catalogs).
   verify        Removed; use scan then check.
-  run           Removed collect stage; prefer scan, translate, and replace directly.
+  run           Removed; use scan, translate, replace, build, and check directly.
+  check-policy  Removed; use check.
 
-Run i18n-collect <command> --help for command options.
+Run i18n-collect <command> --help for command options and write ownership.
 `
 
 const RUN_HELP = `i18n-collect run
 
-Compose translation and replacement into one non-interactive workflow.
-The collect stage is removed; use i18n-collect scan (and migrate-keys for legacy catalogs).
-Selected stages run in this order: translate, then replace.
-A failing stage stops the workflow and keeps that stage's exit code and diagnostic.
-Replacement stays a dry-run unless --write is set. --allow-network and --strict mean the same thing here as they do on translate and replace.
-
-Workflows:
-  --translate                       Translate only.
-  --replace --adapter js            Preview replacements.
-  --translate --replace --adapter js --write
-                                    Translate, then commit replacements.
+Removed. Use i18n-collect scan, translate, replace, build, and check directly.
 
 Usage:
-  i18n-collect run (--collect | --translate | --replace)... [options]
+  i18n-collect run [options]
 
-Options:
-  --collect                 Run collection.
-  --translate               Run translation.
-  --replace                 Run replacement. Requires --adapter.
-  --cwd <dir>               Project root. Defaults to the current directory.
-  --webpack-config <path>   Collect: webpack configuration. Defaults to webpack.config.js.
-  --include <pattern>       Collect: replace the configured include scope. Repeatable.
-  --exclude <pattern>       Collect: replace the configured exclude scope. Repeatable.
-  --context-filter <name>   Collect: replace configured context filters. Repeatable.
-  --provider <path>         Translate: project-relative provider module.
-  --locale <tag>            Translate: target locale. Repeatable.
-  --retranslate             Translate: replace existing target text.
-  --failure <policy>        Translate: partial or strict.
-  --allow-network           Translate: allow a network provider to send source text.
-  --adapter <name>          Replace: vue2, vue3, or js.
-  --strict                  Replace: fail when any candidate is skipped. Nothing is written.
-  --write                   Replace: commit application source files only.
-  --json                    Print the workflow report as JSON on stdout.
-  -h, --help                Show this help.
-
-Exit codes are the exit code of the stage that finished the workflow:
-  0  every selected stage finished
-  1  configuration failure
-  2  collection failure
-  3  build failure
-  4  translation failure
-  5  network translation was not authorized
-  6  catalogs or replacement files could not be saved
-  7  strict mode found a skipped candidate
+Exit codes:
+  1  configuration failure with migration guidance
 `
 
 const MIGRATE_KEYS_HELP = `i18n-collect migrate-keys
@@ -267,11 +205,12 @@ Analyze JavaScript, TypeScript, Vue, standalone HTML, and style sources without 
 Classify complete static copy as automatically runtime-localizable, existing static
 t/$t/this.$t calls as already localized, and Chinese on audit surfaces (standalone HTML,
 proven CSS generated content, and conservative SCSS/Sass/Less/Stylus review items) as
-Chinese source audit findings that never receive keys or enter catalogs. Write a
-deterministic source catalog and a machine-readable analysis report. Adjacent comments of
-the form i18n-ignore: <reason> mark an associated audit finding as intentionally ignored.
-This command does not rewrite application source and does not make network requests.
-Existing collect integrations remain available.
+Chinese source audit findings that never receive keys or enter catalogs.
+Writes only the source catalog (source-catalog.json) and the analysis report
+(analysis-report.json). Adjacent comments of the form i18n-ignore: <reason> mark an
+associated audit finding as intentionally ignored. This command does not rewrite application source,
+target catalogs, translation state, or the source-locale runtime catalog, and it does not make
+network requests.
 
 Usage:
   i18n-collect scan [options]
@@ -295,12 +234,15 @@ const CHECK_HELP = `i18n-collect check
 
 Evaluate project localization completeness without writing files.
 Check analyzes sources in memory, compares them with the committed source catalog from
-scan, and reports runtime localization coverage, Chinese source audit disposition, and
-target-locale coverage. Completeness fails for a stale or missing source catalog,
+scan, and reports runtime localization coverage, Chinese source audit disposition,
+target-locale coverage, complete-static-copy baseline policy, and runtime-multilingual
+boundary policy. Completeness fails for a stale or missing source catalog,
 explicit-required messages, unresolved or needs-review audit findings, missing
-translations, or needs-review translations. Stale target keys are reported but do not
-fail completeness. Intentionally ignored audit findings stay visible with their reason
-and count as disposed. This command never rewrites project files.
+translations, needs-review translations, new or modified complete-static-copy violations,
+or runtime-multilingual boundary violations. Stale target keys and grandfathered baseline
+entries are reported but do not fail completeness. Intentionally ignored audit findings
+stay visible with their reason and count as disposed. This command never rewrites project
+files.
 
 Usage:
   i18n-collect check [options]

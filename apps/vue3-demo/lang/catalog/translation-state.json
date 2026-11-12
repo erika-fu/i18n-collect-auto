@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "locales": {
+    "en": {
+      "2cb4acf6bd44f31e528b5dca612827ba": {
+        "sourceFingerprint": "8caab579ca2d5820",
+        "review": "current"
+      },
+      "32e1fdeb2ca4ea8f7899f78791affb63": {
+        "sourceFingerprint": "c0a70fcb56f02b96",
+        "review": "current"
+      },
+      "46ebde63da5dfb7e80c64df012510762": {
+        "sourceFingerprint": "5e91097d3c7105cc",
+        "review": "current"
+      },
+      "5b9f19ea4d6225f0e6e9be10987c7140": {
+        "sourceFingerprint": "aedffb5c4984cc4f",
+        "review": "current"
+      },
+      "f6c02612482f1e3cc40a6febcfd34ad3": {
+        "sourceFingerprint": "4f99a5ffe6758d4e",
+        "review": "current"
+      },
+      "vue3.build.body": {
+        "sourceFingerprint": "8b21da8cdb201615",
+        "review": "current"
+      },
+      "vue3.build.localeLabel": {
+        "sourceFingerprint": "e8d025f8a8223339",
+        "review": "current"
+      },
+      "vue3.build.title": {
+        "sourceFingerprint": "24cf2bbf6634a31e",
+        "review": "current"
+      },
+      "vue3.fieldPlaceholder": {
+        "sourceFingerprint": "75a3148ee708ad70",
+        "review": "current"
+      },
+      "vue3.heading": {
+        "sourceFingerprint": "81667774ba695990",
+        "review": "current"
+      },
+      "vue3.htmlNotice": {
+        "sourceFingerprint": "d6fa02304cb9962f",
+        "review": "current"
+      },
+      "vue3.welcomeBack": {
+        "sourceFingerprint": "09682cfec3751aed",
+        "review": "current"
+      }
+    }
+  }
+}
