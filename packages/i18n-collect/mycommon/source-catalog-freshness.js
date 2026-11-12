@@ -90,36 +90,6 @@ function occurrencesFromAnalysis(analysis) {
   return items
 }
 
-function assertSourceCatalogFresh(root, config) {
-  const committed = readCommittedSourceCatalog(root, config)
-  const sources = listProjectSources(config.root || root, config)
-  const analysis = analyzeProject({ files: sources, config })
-  let expected
-  try {
-    expected = buildSourceCatalog(analysis)
-  } catch (error) {
-    const failure = commandError(
-      'collection',
-      'analysis',
-      error && error.message ? error.message : String(error)
-    )
-    throw failure
-  }
-  if (!catalogEqual(expected, committed)) {
-    throw commandError(
-      'collection',
-      'analysis',
-      'source analysis no longer matches the committed source catalog; run collect before build'
-    )
-  }
-  return {
-    analysis,
-    sourceCatalog: committed,
-    occurrences: occurrencesFromAnalysis(analysis),
-    sourceCatalogPath: sourceCatalogPath(config)
-  }
-}
-
 /**
  * Verify the committed source catalog against a compilation analysis result.
  * Does not walk the project filesystem or reanalyze application sources.
@@ -209,7 +179,6 @@ function prepareSourceReplacement(root, config) {
 
 module.exports = {
   SOURCE_CATALOG_FILE,
-  assertSourceCatalogFresh,
   catalogEqual,
   occurrencesFromAnalysis,
   prepareSourceReplacement,

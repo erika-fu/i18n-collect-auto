@@ -15,12 +15,12 @@
 - [Webpack plugin API documentation](https://webpack.js.org/api/plugins/)
   Primary framework reference for compiler and compilation lifecycle hooks used by Build replacement.
 - [Webpack loader API documentation](https://webpack.js.org/api/loaders/)
-  Primary framework reference for loader context, pitch execution, dependency tracking, and transparent callbacks.
+  Primary framework reference for loader context, normal-phase transforms, dependency tracking, and transparent callbacks. Collection uses the active Webpack source flow rather than pitch-phase disk rereads.
 
 ## Wisdom (Communities)
 
 - [Webpack Discussions](https://github.com/webpack/webpack/discussions)
-  Use for framework-level questions involving loader pitch order, compilation caches, and plugin lifecycle behavior after reducing the issue to a minimal reproduction.
+  Use for framework-level questions involving loader order, compilation caches, and plugin lifecycle behavior after reducing the issue to a minimal reproduction.
 - [Vue Land Discord](https://vue-land.js.org/)
   Use for current Vue integration questions, particularly vue-loader and Vue I18n runtime conventions.
 

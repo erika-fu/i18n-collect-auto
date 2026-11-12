@@ -21,9 +21,6 @@ const PRUNE_ORPHANED_REMOVED =
 const LEGACY_IDENTITY_METADATA =
   `catalog metadata still uses per-occurrence identity state. Run ${MIGRATE_KEYS}, then ${COLLECT} (or ${SCAN}), before continuing.`
 
-const LEGACY_IDENTITY_ARTIFACT =
-  `legacy identity artifact is no longer read. Remove identity-confirmations.json, identity-ambiguities.json, and retirement-confirmations.json after ${MIGRATE_KEYS}.`
-
 const PREPROCESSOR_STYLE_IR_REMOVED =
   'full Style IR collection for SCSS, Sass, Less, and Stylus is removed; those surfaces are Chinese source audit candidates via collect/check only.'
 
@@ -66,7 +63,6 @@ module.exports = {
   CHECK,
   CHECK_POLICY_REMOVED,
   COLLECT,
-  LEGACY_IDENTITY_ARTIFACT,
   LEGACY_IDENTITY_METADATA,
   MIGRATE_KEYS,
   PREPROCESSOR_STYLE_IR_REMOVED,

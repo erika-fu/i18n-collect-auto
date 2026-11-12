@@ -1,7 +1,5 @@
 const fs = require('fs')
 const path = require('path')
-const { upgradeCatalogMetadata } = require('./catalog')
-const { catalogFiles } = require('./config')
 const {
   buildReplacementError,
   sortOccurrences
@@ -129,41 +127,6 @@ function extractBuildReplacementOccurrences(error, stats) {
     }
   }
   return sortOccurrences(occurrences)
-}
-
-function loadPublishedCatalog(root, config) {
-  const metadataPath = path.join(root, catalogFiles(config).metadata)
-  if (!fs.existsSync(metadataPath)) {
-    throw contractError('collection', 'collection', 'collection finished without a catalog')
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(fs.readFileSync(metadataPath, 'utf8'))
-  } catch (error) {
-    throw contractError(
-      'configuration',
-      'configuration',
-      'catalog metadata could not be read; restore a valid version 1, 2, or 3 catalog.meta.json'
-    )
-  }
-  try {
-    const metadata = upgradeCatalogMetadata(parsed)
-    if (!metadata || !metadata.entries || typeof metadata.entries !== 'object' || Array.isArray(metadata.entries)) {
-      throw contractError(
-        'configuration',
-        'configuration',
-        'catalog metadata is not a supported catalog schema'
-      )
-    }
-    return metadata
-  } catch (error) {
-    if (error && error.kind === 'configuration') throw error
-    throw contractError(
-      'configuration',
-      'configuration',
-      error && error.message ? error.message : 'catalog metadata is not a supported catalog schema'
-    )
-  }
 }
 
 function normalizeLoaderPath(loader) {
@@ -343,7 +306,6 @@ module.exports = {
   extractBuildReplacementOccurrences,
   formatHumanFailure,
   formatJsonFailure,
-  loadPublishedCatalog,
   preflightBuildReplacement,
   publishFormalBundle,
   sortOccurrences,

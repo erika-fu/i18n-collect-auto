@@ -6,7 +6,6 @@ const test = require('node:test')
 const { LEGACY_IDENTITY_METADATA } = require('../mycommon/legacy-contraction')
 const { loadConfig } = require('../mycommon/config')
 const {
-  loadPublishedCatalog,
   preflightBuildReplacement,
   publishFormalBundle
 } = require('../mycommon/build-replacement-contract')
@@ -94,35 +93,6 @@ test('preflight without analysis occurrences rejects legacy catalog metadata fal
   assert.throws(() => preflightBuildReplacement(root, config), error => {
     assert.strictEqual(error.kind, 'configuration')
     assert.strictEqual(error.message, LEGACY_IDENTITY_METADATA)
-    return true
-  })
-})
-
-test('preflight rejects unsupported catalog schema before replacement starts', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-preflight-schema-'))
-  writeProject(root)
-  fs.writeFileSync(
-    path.join(root, 'lang/catalog/catalog.meta.json'),
-    `${JSON.stringify({ version: 99, entries: {} }, null, 2)}\n`
-  )
-  const config = loadConfig({ root })
-  assert.throws(() => loadPublishedCatalog(root, config), error => {
-    assert.strictEqual(error.kind, 'configuration')
-    assert.strictEqual(error.stage, 'configuration')
-    assert.match(error.message, /catalog metadata|unsupported|version|migrate-keys|scan/i)
-    return true
-  })
-})
-
-test('preflight rejects unreadable catalog metadata as configuration failure', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-preflight-badjson-'))
-  writeProject(root)
-  fs.writeFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), '{ not-json')
-  const config = loadConfig({ root })
-  assert.throws(() => loadPublishedCatalog(root, config), error => {
-    assert.strictEqual(error.kind, 'configuration')
-    assert.strictEqual(error.stage, 'configuration')
-    assert.match(error.message, /could not be read/i)
     return true
   })
 })

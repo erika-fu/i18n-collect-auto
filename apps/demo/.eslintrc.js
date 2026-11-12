@@ -9,9 +9,6 @@ module.exports = {
     'plugin:vue/essential',
     'eslint:recommended'
   ],
-  ignorePatterns: [
-    'output.js'
-  ],
   parserOptions: {
     parser: '@babel/eslint-parser',
     babelOptions: {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed design. This document records the intended direction and deliberately supersedes conflicting workflow assumptions in the current implementation. It is not a description of the current product surface.
+Implemented for Webpack runtime collection and build replacement. Filesystem `scan` remains an intentional non-Webpack / legacy analysis path beside `collect` (see CONTEXT.md and docs/migration.md); it is not a second runtime-collection authority.
 
 ## Decision Summary
 
@@ -354,24 +354,19 @@ Webpack module graph → runtime collection and build replacement
 staticAudit.include  → read-only HTML/CSS audit findings
 ```
 
-## Conflicts With the Current Repository
+## Conflicts Closed By The Implementation
 
-The following current behavior conflicts with this proposed design and must be replaced, revised, or explicitly retained only as legacy compatibility behavior.
+These pre-migration conflicts no longer describe the repository:
 
-| Current behavior | Required direction |
+| Former behavior | Closed by |
 | --- | --- |
-| `scan` recursively walks the filesystem and analyzes files directly | Replace with a Webpack collection compilation, or retire it in favor of `collect` |
-| `.vue` files are manually split and analyzed by the CLI | Collect template messages from Vue compiler render-function JavaScript |
-| collection occurs primarily in a loader `pitch` hook that rereads source from disk | Use normal loader transforms that consume the active compilation source |
-| the former Webpack collection plugin fails as removed | Restore or replace it with a compilation-lifecycle collection integration |
-| build strips collection loader and plugin integration | Build must use the formal collection integration when verifying or collecting |
-| build obtains replacement occurrences through a separate filesystem reanalysis | Consume the current compilation's transient collection result |
-| `scan` is the only writer of source catalog and analysis report | Webpack collection owns publication in explicit collection modes |
-| build is always forbidden from updating collection artifacts | Default production build verifies; an explicit development write mode may publish |
-| source replacement is a first-class workflow in the architecture | Exclude it from this design's implementation scope |
-| non-Webpack projects can use filesystem `scan` | Require a Webpack configuration for runtime collection until another bundler adapter exists |
+| loader `pitch` disk rereads | Normal-phase loader transforms; pitch probe helpers removed |
+| Webpack collection plugin removed | Restored `MyI18nPlugin` lifecycle integration |
+| build replacement via filesystem reanalysis | Compilation analysis findings drive replacement |
+| `scan` as the only formal publisher | `collect` publishes; `scan` stays legacy analysis-only |
+| build never publishes collection artifacts | Default verifies; `--write-collection` is explicit |
 
-In particular, the current command write-ownership decision that prohibits build from ever mutating collection artifacts must be revised. The proposed replacement is not that every production build writes artifacts; it is that a successful Webpack collection compilation is the only authority that may publish them, while production build mode normally verifies rather than publishes.
+A successful Webpack collection compilation is the authority that may publish formal runtime-collection outputs; production build mode normally verifies rather than publishes.
 
 ## Implementation Boundaries
 
