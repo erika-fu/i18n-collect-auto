@@ -6,10 +6,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] The project-supported Vue versions have separate, explicit recognition policies.
-- [ ] Safe VNode text children are collected.
-- [ ] Allowlisted user-facing properties such as `title`, `placeholder`, `alt`, `aria-label`, and `value` are collected.
-- [ ] Structural, event, directive, slot, component, test, and other non-user-facing properties are ignored.
-- [ ] Spreads, dynamic props, dynamic children, conditional merges, and unknown helper shapes are never silently rewritten or collected as safe findings.
-- [ ] Unsupported SSR, optimization, and custom-transform shapes receive an explicit diagnostic or are conservatively skipped.
-- [ ] Vue 2 and Vue 3 coverage is verified by integration tests where supported.
+- [x] The project-supported Vue versions have separate, explicit recognition policies.
+- [x] Safe VNode text children are collected.
+- [x] Allowlisted user-facing properties such as `title`, `placeholder`, `alt`, `aria-label`, and `value` are collected.
+- [x] Structural, event, directive, slot, component, test, and other non-user-facing properties are ignored.
+- [x] Spreads, dynamic props, dynamic children, conditional merges, and unknown helper shapes are never silently rewritten or collected as safe findings.
+- [x] Unsupported SSR, optimization, and custom-transform shapes receive an explicit diagnostic or are conservatively skipped.
+- [x] Vue 2 and Vue 3 coverage is verified by integration tests where supported.

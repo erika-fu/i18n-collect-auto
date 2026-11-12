@@ -10,6 +10,7 @@ const { extractScript } = require('./extract-script')
 const { extractHtml } = require('./extract-html')
 const { extractCss } = require('./extract-css')
 const { extractVueScript } = require('./extract-vue-compat')
+const { extractVueRender, looksLikeVueRenderSource } = require('./extract-vue-render')
 const { describeResource, isResourceIncluded } = require('./resource')
 
 function text(source) {
@@ -119,6 +120,16 @@ function collectedFor(resource, sourceText, config) {
       }
     }
     return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
+  }
+  if (resource.block === 'template' && looksLikeVueRenderSource(sourceText)) {
+    const collected = extractVueRender({ source: sourceText, resource, config })
+    return {
+      entries: collected.entries,
+      warnings: collected.diagnostics.map(item => ({
+        message: item.message,
+        path: item.path || resource.projectPath
+      }))
+    }
   }
   if (resource.block === 'template' || resource.block === 'html') {
     return {

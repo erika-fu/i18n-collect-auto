@@ -112,3 +112,64 @@ test('loader keeps Vue script setup identity distinct and leaves application sou
   assert.strictEqual(snapshot.owner.setup, true)
   assert.deepStrictEqual(snapshot.entries.map(entry => entry.value), ['设置管线'])
 })
+
+test('loader collects Vue render-function template JavaScript through the render policy', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-render-'))
+  const resourcePath = path.join(root, 'src', 'App.vue')
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { vueVersion: 3, attributeAllowlist: ["title", "placeholder", "alt", "aria-label", "value"] }\n'
+  )
+  const source = [
+    'import { createElementVNode as _createElementVNode, createTextVNode as _createTextVNode } from "vue"',
+    'export function render(_ctx) {',
+    '  return _createElementVNode("div", { title: "标题", "data-test": "内部" }, [',
+    '    _createTextVNode("你好"),',
+    '    _createElementVNode("input", { placeholder: "请输入", onClick: _ctx.go }, null)',
+    '  ])',
+    '}',
+    ''
+  ].join('\n')
+  const { mod, callbackSource } = invokeLoader({
+    root,
+    resourcePath,
+    resourceQuery: '?vue&type=template&lang=js',
+    source
+  })
+  assert.strictEqual(callbackSource, source)
+  const snapshot = mod.buildInfo[COLLECT_METADATA].snapshot
+  assert.strictEqual(snapshot.identity, 'src/App.vue::template[lang=js]')
+  assert.deepStrictEqual(
+    snapshot.entries.map(entry => entry.value).sort(),
+    ['你好', '标题', '请输入'].sort()
+  )
+})
+
+test('loader collects Vue 2 render-function template JavaScript through the Vue 2 policy', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-render-v2-'))
+  const resourcePath = path.join(root, 'src', 'App.vue')
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { vueVersion: 2, attributeAllowlist: ["title", "placeholder", "alt", "aria-label", "value"] }\n'
+  )
+  const source = [
+    'var render = function () {',
+    '  with(this){return _c(\'div\',{attrs:{"title":"标题","data-test":"内部"}},[_v("你好"),_c(\'input\',{attrs:{"placeholder":"请输入"},on:{"click":go}})])}',
+    '}',
+    ''
+  ].join('\n')
+  const { mod, callbackSource } = invokeLoader({
+    root,
+    resourcePath,
+    resourceQuery: '?vue&type=template&lang=js',
+    source
+  })
+  assert.strictEqual(callbackSource, source)
+  const snapshot = mod.buildInfo[COLLECT_METADATA].snapshot
+  assert.deepStrictEqual(
+    snapshot.entries.map(entry => entry.value).sort(),
+    ['你好', '标题', '请输入'].sort()
+  )
+})
