@@ -1,5 +1,6 @@
 const { canonicalRoot, loadConfig } = require('../mycommon/config')
-const { writeOutputs } = require('../mycommon/output')
+const { analysisReport, analyzeSnapshots, buildSourceCatalog } = require('../mycommon/project-analysis')
+const { publishCollectionOutputs } = require('../mycommon/formal-outputs')
 const { assembleLiveSet, getSession } = require('../mycommon/session')
 
 const PLUGIN = 'MyI18nPlugin'
@@ -83,13 +84,25 @@ class MyI18nPlugin {
         throw new Error(round.diagnostics.join('\n'))
       }
       const config = loadConfig({ root: compiler.context, pluginOptions: this.options })
+      let catalog
+      let report
+      try {
+        const analysis = analyzeSnapshots(round.snapshots, config)
+        catalog = buildSourceCatalog(analysis)
+        report = analysisReport(analysis)
+      } catch (error) {
+        session.abandon(compilation)
+        throw error
+      }
       await session.release(compilation, round.snapshots, config.configHash, () =>
-        writeOutputs(
-          config.root,
+        publishCollectionOutputs({
+          root: config.root,
           config,
-          session.committed.runtimeDictionary(),
-          session.committed.sourceMap(config.configHash)
-        )
+          catalog,
+          report,
+          dictionary: session.committed.runtimeDictionary(),
+          sourceMap: session.committed.sourceMap(config.configHash)
+        })
       )
     })
   }

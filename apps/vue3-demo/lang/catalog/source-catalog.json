@@ -1,14 +1,17 @@
 {
-  "2cb4acf6bd44f31e528b5dca612827ba": "脚本模板文案",
-  "32e1fdeb2ca4ea8f7899f78791affb63": "保存资料",
-  "46ebde63da5dfb7e80c64df012510762": "资料名称",
-  "5b9f19ea4d6225f0e6e9be10987c7140": "插值字符串",
-  "f6c02612482f1e3cc40a6febcfd34ad3": "脚本文案",
-  "vue3.build.body": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
-  "vue3.build.localeLabel": "当前语言：中文",
-  "vue3.build.title": "构建替换演示",
-  "vue3.fieldPlaceholder": "输入{field}名称",
-  "vue3.heading": "原生 Vue 三模板",
-  "vue3.htmlNotice": "已通过 Vue I18n 本地化",
-  "vue3.welcomeBack": "欢迎{name}回来"
+  "version": 1,
+  "messages": {
+    "2cb4acf6bd44f31e528b5dca612827ba": "脚本模板文案",
+    "32e1fdeb2ca4ea8f7899f78791affb63": "保存资料",
+    "46ebde63da5dfb7e80c64df012510762": "资料名称",
+    "5b9f19ea4d6225f0e6e9be10987c7140": "插值字符串",
+    "f6c02612482f1e3cc40a6febcfd34ad3": "脚本文案",
+    "vue3.build.body": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
+    "vue3.build.localeLabel": "当前语言：中文",
+    "vue3.build.title": "构建替换演示",
+    "vue3.fieldPlaceholder": "输入{field}名称",
+    "vue3.heading": "原生 Vue 三模板",
+    "vue3.htmlNotice": "已通过 Vue I18n 本地化",
+    "vue3.welcomeBack": "欢迎{name}回来"
+  }
 }

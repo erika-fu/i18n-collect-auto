@@ -37,7 +37,7 @@ test('JavaScript and TypeScript findings share the same automatic key and findin
   }
   assert.strictEqual(analysis.runtimeMessages[0].resourceIdentity, 'src/app.js::script')
   assert.strictEqual(analysis.runtimeMessages[1].resourceIdentity, 'src/app.ts::script')
-  assert.deepStrictEqual(buildSourceCatalog(analysis), { [keyFor('统一文案')]: '统一文案' })
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: { [keyFor('统一文案')]: '统一文案' } })
 })
 
 test('Vue script setup findings use the shared pipeline fields including resource identity', () => {

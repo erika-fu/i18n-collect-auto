@@ -98,7 +98,10 @@ test('e2e one-to-one migration writes deterministic catalogs without occurrence 
   assert.strictEqual(result.stderr, '')
 
   const hash = keyFor('姓名')
-  assert.deepStrictEqual(readJson(path.join(root, 'lang/catalog/source-catalog.json')), { [hash]: '姓名' })
+  assert.deepStrictEqual(readJson(path.join(root, 'lang/catalog/source-catalog.json')), {
+    version: 1,
+    messages: { [hash]: '姓名' }
+  })
   assert.deepStrictEqual(readJson(path.join(root, 'lang/catalog/zh.json')), { [hash]: '姓名' })
   assert.deepStrictEqual(readJson(path.join(root, 'lang/catalog/en.json')), { [hash]: 'Name' })
   assert.strictEqual(fs.readFileSync(path.join(root, 'lang/catalog/catalog.meta.json'), 'utf8'), beforeMeta)
@@ -279,8 +282,11 @@ test('e2e migration retries safely after conflicts are resolved with explicit ke
   const resolved = run(['migrate-keys', '--json'], root)
   assert.strictEqual(resolved.status, 0, resolved.stderr)
   assert.deepStrictEqual(readJson(path.join(root, 'lang/catalog/source-catalog.json')), {
-    'demo.visit.banner': '欢迎',
-    'demo.visit.farewell': '欢迎'
+    version: 1,
+    messages: {
+      'demo.visit.banner': '欢迎',
+      'demo.visit.farewell': '欢迎'
+    }
   })
   assert.deepStrictEqual(readJson(path.join(root, 'lang/catalog/en.json')), {
     'demo.visit.banner': 'Welcome aboard',

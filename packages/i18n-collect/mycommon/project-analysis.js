@@ -12,6 +12,7 @@ const { auditStyle } = require('../myloader/audit-style')
 const HASH_DICTIONARY_KEY = /^[a-f0-9]{32}$/
 
 const ANALYSIS_REPORT_VERSION = 1
+const SOURCE_CATALOG_VERSION = 1
 
 const SCRIPT_EXTENSIONS = new Set([
   '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'
@@ -47,6 +48,7 @@ function emptyAnalysis() {
     auditFindings: [],
     explicitRequiredFindings: [],
     localizedCallFindings: [],
+    diagnostics: [],
     coverage: {
       sourceDiscovery: { total: 0 },
       runtimeLocalization: {
@@ -466,10 +468,67 @@ function compareFindings(left, right) {
     || left.semanticRole.localeCompare(right.semanticRole)
     || left.text.localeCompare(right.text)
     || String(left.key || '').localeCompare(String(right.key || ''))
+    || String(left.resourceIdentity || '').localeCompare(String(right.resourceIdentity || ''))
 }
 
 function sortFindings(findings) {
   return [...findings].sort(compareFindings)
+}
+
+function compareDiagnostics(left, right) {
+  return String(left.path || '').localeCompare(String(right.path || ''))
+    || String(left.message || '').localeCompare(String(right.message || ''))
+    || String(left.code || '').localeCompare(String(right.code || ''))
+    || String(left.identity || '').localeCompare(String(right.identity || ''))
+}
+
+function sortDiagnostics(diagnostics) {
+  return [...(diagnostics || [])].sort(compareDiagnostics)
+}
+
+function finalizeAnalysis(analysis, input, config) {
+  analysis.runtimeMessages = sortFindings(analysis.runtimeMessages)
+  analysis.auditFindings = sortFindings(analysis.auditFindings)
+  analysis.explicitRequiredFindings = sortFindings(analysis.explicitRequiredFindings)
+  analysis.localizedCallFindings = sortFindings(analysis.localizedCallFindings)
+  analysis.diagnostics = sortDiagnostics(analysis.diagnostics)
+  const explicitMessages = loadExplicitMessages(input, config)
+  const externalKeys = loadExternalKeys(input, config)
+  validateAndBindExplicitMessages(analysis, explicitMessages, externalKeys)
+  return analysis
+}
+
+function collectedFromSnapshots(snapshots) {
+  const collected = []
+  for (const snapshot of snapshots || []) {
+    if (!snapshot || !Array.isArray(snapshot.entries)) continue
+    const projectPath = typeof snapshot.projectPath === 'string' && snapshot.projectPath
+      ? snapshot.projectPath.split('\\').join('/')
+      : (typeof snapshot.identity === 'string' ? snapshot.identity.split('::')[0] : '')
+    const identity = snapshot.identity || null
+    let block = 'script'
+    if (typeof identity === 'string') {
+      if (identity.includes('::template')) block = 'template'
+      else if (identity.includes('::style')) block = 'style'
+      else if (identity.includes('::html')) block = 'html'
+      else if (identity.includes('::script')) block = 'script'
+    }
+    const sourceSurface = sourceSurfaceFor(projectPath, block)
+    for (const entry of snapshot.entries) {
+      if (!entry) continue
+      collected.push(collectedItem(entry, sourceSurface, identity || undefined))
+    }
+  }
+  return collected
+}
+
+function analyzeSnapshots(snapshots, config = {}, input = {}) {
+  const collected = collectedFromSnapshots(snapshots)
+  const analysis = classifyCollected(collected, { findings: [], matchKeys: new Set() })
+  if (Array.isArray(input.diagnostics)) {
+    analysis.diagnostics.push(...input.diagnostics)
+  }
+  return finalizeAnalysis(analysis, input, config)
 }
 
 function analyzeProject(input = {}) {
@@ -486,14 +545,10 @@ function analyzeProject(input = {}) {
   }
   const explicitRequired = explicitRequiredFromPolicy(input.files, config)
   const analysis = classifyCollected(collected, explicitRequired)
-  analysis.runtimeMessages = sortFindings(analysis.runtimeMessages)
-  analysis.auditFindings = sortFindings(analysis.auditFindings)
-  analysis.explicitRequiredFindings = sortFindings(analysis.explicitRequiredFindings)
-  analysis.localizedCallFindings = sortFindings(analysis.localizedCallFindings)
-  const explicitMessages = loadExplicitMessages(input, config)
-  const externalKeys = loadExternalKeys(input, config)
-  validateAndBindExplicitMessages(analysis, explicitMessages, externalKeys)
-  return analysis
+  if (Array.isArray(input.diagnostics)) {
+    analysis.diagnostics.push(...input.diagnostics)
+  }
+  return finalizeAnalysis(analysis, input, config)
 }
 
 function buildSourceCatalog(analysis) {
@@ -518,7 +573,10 @@ function buildSourceCatalog(analysis) {
     }
     messages.set(finding.key, finding.source)
   }
-  return Object.fromEntries([...messages.entries()].sort((left, right) => left[0].localeCompare(right[0])))
+  return {
+    version: SOURCE_CATALOG_VERSION,
+    messages: Object.fromEntries([...messages.entries()].sort((left, right) => left[0].localeCompare(right[0])))
+  }
 }
 
 function analysisReport(analysis) {
@@ -528,13 +586,16 @@ function analysisReport(analysis) {
     auditFindings: analysis.auditFindings,
     explicitRequiredFindings: analysis.explicitRequiredFindings,
     localizedCallFindings: analysis.localizedCallFindings,
+    diagnostics: sortDiagnostics(analysis.diagnostics),
     coverage: analysis.coverage
   }
 }
 
 module.exports = {
   ANALYSIS_REPORT_VERSION,
+  SOURCE_CATALOG_VERSION,
   analyzeProject,
+  analyzeSnapshots,
   analysisReport,
   buildSourceCatalog,
   CAPABILITY_AUTOMATIC,

@@ -57,6 +57,19 @@ test('collect runs a Webpack compilation and publishes reachable runtime message
   const dictionary = JSON.parse(fs.readFileSync(path.join(root, 'lang/zh_hash.json'), 'utf8'))
   assert.deepStrictEqual(dictionary, { [keyFor('你好')]: '你好' })
   assert.ok(!Object.values(dictionary).includes('不可达文案'))
+  const catalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  assert.deepStrictEqual(catalog, {
+    version: 1,
+    messages: { [keyFor('你好')]: '你好' }
+  })
+  assert.ok(!Object.values(catalog.messages).includes('不可达文案'))
+  const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
+  assert.strictEqual(analysis.version, 1)
+  assert.ok(Array.isArray(analysis.runtimeMessages))
+  assert.ok(Array.isArray(analysis.auditFindings))
+  assert.ok(Array.isArray(analysis.diagnostics))
+  assert.ok(analysis.coverage)
+  assert.ok(analysis.runtimeMessages.some(item => item.text === '你好'))
 })
 
 test('collection failures leave previous dictionary outputs unchanged', { timeout: 60000 }, () => {
@@ -65,9 +78,15 @@ test('collection failures leave previous dictionary outputs unchanged', { timeou
   const ok = run(['collect', '--json'], root)
   assert.strictEqual(ok.status, 0, ok.stderr)
   const dictionaryPath = path.join(root, 'lang/zh_hash.json')
+  const catalogPath = path.join(root, 'lang/catalog/source-catalog.json')
+  const analysisPath = path.join(root, 'lang/catalog/analysis-report.json')
   const before = fs.readFileSync(dictionaryPath)
+  const beforeCatalog = fs.readFileSync(catalogPath)
+  const beforeAnalysis = fs.readFileSync(analysisPath)
   fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = "你好"\n%%%\n')
   const failed = run(['collect', '--json'], root)
   assert.notStrictEqual(failed.status, 0, failed.stdout)
   assert.deepStrictEqual(fs.readFileSync(dictionaryPath), before)
+  assert.deepStrictEqual(fs.readFileSync(catalogPath), beforeCatalog)
+  assert.deepStrictEqual(fs.readFileSync(analysisPath), beforeAnalysis)
 })

@@ -3,9 +3,9 @@ const path = require('path')
 const { catalogFormat } = require('../mycommon/catalog-format')
 const { catalogFiles, loadConfig } = require('../mycommon/config')
 const { migrateToTextHashKeys } = require('../mycommon/migrate-text-hash-keys')
+const { SOURCE_CATALOG_VERSION } = require('../mycommon/project-analysis')
+const { SOURCE_CATALOG_FILE } = require('../mycommon/formal-outputs')
 const { commitFiles, json, recoverCommits } = require('../mycommon/output')
-
-const SOURCE_CATALOG_FILE = 'source-catalog.json'
 
 const EXIT = {
   ok: 0,
@@ -154,7 +154,10 @@ function migrateKeys(args) {
     const writeTargets = [
       {
         file: path.resolve(root, sourceCatalogRelative),
-        content: json(result.sourceCatalog)
+        content: json({
+          version: SOURCE_CATALOG_VERSION,
+          messages: result.sourceCatalog
+        })
       },
       {
         file: sourcePath,

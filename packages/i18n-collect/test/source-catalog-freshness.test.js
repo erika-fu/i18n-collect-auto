@@ -93,7 +93,7 @@ test('assertSourceCatalogFresh accepts a committed catalog that matches current 
   const before = snapshotCatalogDir(root)
 
   const prepared = assertSourceCatalogFresh(root, config)
-  assert.deepStrictEqual(prepared.sourceCatalog, catalog)
+  assert.deepStrictEqual(prepared.sourceCatalog, catalog.messages)
   assert.ok(prepared.occurrences.some(item => item.source === '你好'))
   assert.deepStrictEqual(snapshotCatalogDir(root), before)
 })

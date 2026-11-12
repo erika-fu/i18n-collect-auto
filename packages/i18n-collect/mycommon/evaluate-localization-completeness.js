@@ -1,6 +1,6 @@
 const { fingerprintOf } = require('./catalog')
 const { buildSourceCatalog } = require('./project-analysis')
-const { catalogEqual } = require('./source-catalog-freshness')
+const { catalogEqual, sourceCatalogMessages } = require('./source-catalog-freshness')
 const { needsReview, planTranslation } = require('./translate')
 
 function runtimeLocalizationSummary(analysis) {
@@ -25,9 +25,10 @@ function chineseSourceAuditSummary(analysis) {
 }
 
 function sourceEntriesFromCatalog(catalog) {
+  const messages = sourceCatalogMessages(catalog)
   const entries = {}
-  for (const key of Object.keys(catalog).sort()) {
-    const source = catalog[key]
+  for (const key of Object.keys(messages).sort()) {
+    const source = messages[key]
     entries[key] = { source, fingerprint: fingerprintOf(source) }
   }
   return entries

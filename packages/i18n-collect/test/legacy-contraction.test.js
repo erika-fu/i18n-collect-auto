@@ -119,7 +119,7 @@ test('buildSourceCatalog never admits HTML or style audit findings', () => {
     }
   })
   const catalog = buildSourceCatalog(analysis)
-  assert.deepStrictEqual(catalog, { [keyFor('你好')]: '你好' })
+  assert.deepStrictEqual(catalog, { version: 1, messages: { [keyFor('你好')]: '你好' } })
   assert.ok(analysis.auditFindings.some(item => item.semanticRole === 'static-html-text'))
   assert.ok(analysis.auditFindings.some(item => item.semanticRole === 'css-generated-content'))
   assert.ok(analysis.auditFindings.some(item => item.semanticRole === 'css-preprocessor-candidate'))

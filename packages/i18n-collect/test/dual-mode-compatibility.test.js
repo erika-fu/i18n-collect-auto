@@ -359,7 +359,7 @@ test('legacy MD5 localization calls stay outside keyed Build replacement', { tim
     ''
   ].join('\n')
   writeJsProject(root, { source })
-  const catalog = seedSourceCatalog(root)
+  const catalog = seedSourceCatalog(root).messages
   assert.ok(!catalog[hash], 'MD5 call must not become a keyed catalog entry')
 
   const build = run(['build', '--json'], root)
@@ -386,7 +386,7 @@ test('identical Chinese text shares one automatic key while an explicit shared k
     ''
   ].join('\n')
   writeJsProject(root, { source })
-  const catalog = seedSourceCatalog(root)
+  const catalog = seedSourceCatalog(root).messages
   const duplicateKeys = Object.keys(catalog).filter(name => catalog[name] === '重复文案')
   assert.strictEqual(duplicateKeys.length, 1)
   assert.strictEqual(catalog['home.shared'], '共享文案')

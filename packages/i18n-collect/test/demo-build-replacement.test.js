@@ -122,7 +122,10 @@ test('Vue 2 demo Build replacement keeps disk Chinese and localizes the formal b
   const titleKey = keyForSource(vue2Root, '插值')
   const bundle = fs.readFileSync(findBundle(vue2Root), 'utf8')
   assert.match(bundle, new RegExp(titleKey.replace(/\./g, '\\.')))
-  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(vue2Root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  const { sourceCatalogMessages } = require('../mycommon/source-catalog-freshness')
+  const sourceCatalog = sourceCatalogMessages(
+    JSON.parse(fs.readFileSync(path.join(vue2Root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  )
   assert.strictEqual(sourceCatalog['demo.build.title'], '构建替换演示')
   assert.match(bundle, /demo\.build\.title/)
 })
@@ -145,7 +148,10 @@ test('Vue 3 demo Build replacement keeps disk Chinese and localizes the formal b
   assertLangUnchanged(langBefore, vue3Root)
   assert.deepStrictEqual(leftoverArtifacts(vue3Root), [])
   assert.ok(!fs.existsSync(path.join(vue3Root, 'lang/catalog/replacements.json')))
-  const sourceCatalog = JSON.parse(fs.readFileSync(path.join(vue3Root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  const { sourceCatalogMessages } = require('../mycommon/source-catalog-freshness')
+  const sourceCatalog = sourceCatalogMessages(
+    JSON.parse(fs.readFileSync(path.join(vue3Root, 'lang/catalog/source-catalog.json'), 'utf8'))
+  )
   assert.strictEqual(sourceCatalog['vue3.heading'], '原生 Vue 三模板')
   const bundle = fs.readFileSync(findBundle(vue3Root), 'utf8')
   assert.match(bundle, /vue3\.heading/)

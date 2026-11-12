@@ -6,6 +6,12 @@ const {
   buildSourceCatalog
 } = require('../mycommon/project-analysis')
 const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
+const {
+  ANALYSIS_REPORT_FILE,
+  SOURCE_CATALOG_FILE,
+  analysisReportPath,
+  sourceCatalogPath
+} = require('../mycommon/formal-outputs')
 const { commitFiles, json } = require('../mycommon/output')
 const { isResourceIncluded } = require('../myloader/resource')
 
@@ -33,9 +39,6 @@ const SKIP_DIRECTORIES = new Set([
   '.output',
   '.cache'
 ])
-
-const ANALYSIS_REPORT_FILE = 'analysis-report.json'
-const SOURCE_CATALOG_FILE = 'source-catalog.json'
 
 function commandError(kind, message) {
   const error = new Error(message)
@@ -136,10 +139,6 @@ function listSourceFiles(root, config) {
   return files.sort((left, right) => left.projectPath.localeCompare(right.projectPath))
 }
 
-function catalogArtifactPath(config, name) {
-  return path.posix.join(config.catalogDir, name)
-}
-
 function scan(args) {
   let parsed
   try {
@@ -180,13 +179,14 @@ function scan(args) {
     }
     const catalog = buildSourceCatalog(analysis)
     const report = analysisReport(analysis)
-    const sourceCatalog = catalogArtifactPath(config, SOURCE_CATALOG_FILE)
-    const analysisReportFile = catalogArtifactPath(config, ANALYSIS_REPORT_FILE)
-    const targets = [
+    const sourceCatalog = sourceCatalogPath(config)
+    const analysisReportFile = analysisReportPath(config)
+    // Scan owns only the formal pair; dictionary dual-write stays on Webpack collect.
+    // Same atomic journal path as collect via commitFiles.
+    commitFiles([
       { file: path.resolve(config.root, sourceCatalog), content: json(catalog) },
       { file: path.resolve(config.root, analysisReportFile), content: json(report) }
-    ]
-    commitFiles(targets)
+    ])
 
     const summary = {
       command: 'scan',

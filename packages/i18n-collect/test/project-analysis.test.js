@@ -47,7 +47,7 @@ test('analyzeProject classifies dynamic script interpolation as explicit-require
     assert.strictEqual(finding.key, undefined)
   }
 
-  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
   assert.deepStrictEqual(analysis.coverage, {
     sourceDiscovery: { total: 2 },
     runtimeLocalization: {
@@ -154,9 +154,9 @@ test('analyzeProject classifies structured Vue content as explicit-required', ()
   assert.ok(structured.every(item => item.capability === 'explicit-required'))
   assert.ok(structured.every(item => item.key === undefined))
   const catalog = buildSourceCatalog(analysis)
-  assert.ok(Object.values(catalog).includes('完整静态段落'))
-  assert.ok(!Object.values(catalog).includes('请阅读我们的'))
-  assert.ok(!Object.values(catalog).includes('服务条款'))
+  assert.ok(Object.values(catalog.messages).includes('完整静态段落'))
+  assert.ok(!Object.values(catalog.messages).includes('请阅读我们的'))
+  assert.ok(!Object.values(catalog.messages).includes('服务条款'))
 })
 
 test('analyzeProject classifies formatting and concatenation as explicit-required', () => {
@@ -193,7 +193,8 @@ test('analyzeProject keeps the explicit message manifest as the canonical source
   assert.strictEqual(analysis.localizedCallFindings[0].key, 'items.deleted')
   assert.strictEqual(analysis.localizedCallFindings[0].source, '已删除 {count} 项')
   assert.deepStrictEqual(buildSourceCatalog(analysis), {
-    'items.deleted': '已删除 {count} 项'
+    version: 1,
+    messages: { 'items.deleted': '已删除 {count} 项' }
   })
 })
 
@@ -212,7 +213,8 @@ test('analyzeProject shares one explicit key across compatible calls and rejects
   })
   assert.strictEqual(shared.localizedCallFindings.length, 2)
   assert.deepStrictEqual(buildSourceCatalog(shared), {
-    'terms.notice': '请阅读我们的{terms}与{privacy}'
+    version: 1,
+    messages: { 'terms.notice': '请阅读我们的{terms}与{privacy}' }
   })
 
   assert.throws(
@@ -293,8 +295,8 @@ test('analyzeProject allows external keys without creating project catalog entri
   assert.strictEqual(analysis.localizedCallFindings.length, 1)
   assert.strictEqual(analysis.localizedCallFindings[0].key, 'vendor.external')
   const catalog = buildSourceCatalog(analysis)
-  assert.ok(!Object.prototype.hasOwnProperty.call(catalog, 'vendor.external'))
-  assert.ok(Object.values(catalog).includes('你好'))
+  assert.ok(!Object.prototype.hasOwnProperty.call(catalog.messages, 'vendor.external'))
+  assert.ok(Object.values(catalog.messages).includes('你好'))
 })
 
 test('analyzeProject accepts a key directive on complete static copy and fails when it conflicts with a localized call', () => {
@@ -307,7 +309,7 @@ test('analyzeProject accepts a key directive on complete static copy and fails w
   assert.strictEqual(selected.runtimeMessages.length, 1)
   assert.strictEqual(selected.runtimeMessages[0].key, 'home.title')
   assert.strictEqual(selected.runtimeMessages[0].text, '你好')
-  assert.deepStrictEqual(buildSourceCatalog(selected), { 'home.title': '你好' })
+  assert.deepStrictEqual(buildSourceCatalog(selected), { version: 1, messages: { 'home.title': '你好' } })
 
   assert.throws(
     () => analyzeProject({
@@ -355,7 +357,7 @@ test('buildSourceCatalog assigns deterministic text-hash keys for automatic mess
     files: [{ path: 'src/app.js', source: 'const a = "你好"\nconst b = "你好"\nconst c = t("nav.home")\n' }],
     externalKeys: ['nav.home']
   })
-  assert.deepStrictEqual(buildSourceCatalog(analysis), { [keyFor('你好')]: '你好' })
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: { [keyFor('你好')]: '你好' } })
   const report = analysisReport(analysis)
   assert.strictEqual(report.version, 1)
   assert.strictEqual(report.runtimeMessages.length, 2)
@@ -412,7 +414,7 @@ test('analyzeProject classifies standalone HTML text and allowlisted attributes 
     },
     explicitRequired: { total: 0 }
   })
-  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
 })
 
 test('analyzeProject never attaches localization keys to standalone HTML audit findings', () => {
@@ -425,7 +427,7 @@ test('analyzeProject never attaches localization keys to standalone HTML audit f
   })
   assert.strictEqual(analysis.auditFindings.length, 2)
   assert.ok(analysis.auditFindings.every(item => item.key === undefined))
-  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
 })
 
 test('analyzeProject keeps reasoned i18n-ignore HTML findings as intentionally ignored', () => {
@@ -459,7 +461,7 @@ test('analyzeProject keeps reasoned i18n-ignore HTML findings as intentionally i
     needsReview: 0,
     intentionallyIgnored: 1
   })
-  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
 })
 
 test('analyzeProject fails on malformed, reasonless, unused, or ambiguous i18n-ignore directives', () => {
@@ -525,7 +527,7 @@ test('analyzeProject reports Chinese CSS content strings as unresolved audit fin
 
   assert.strictEqual(analysis.runtimeMessages.length, 0)
   assert.strictEqual(analysis.localizedCallFindings.length, 0)
-  assert.deepStrictEqual(buildSourceCatalog(analysis), {})
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
   assert.strictEqual(analysis.auditFindings.length, 3)
 
   const texts = analysis.auditFindings.map(item => item.text).sort()
@@ -585,7 +587,7 @@ test('analyzeProject decodes CSS escapes and audits Vue style blocks', () => {
   assert.ok(styleFindings.some(item => item.disposition === 'unresolved' && item.text === '角标'))
   assert.ok(styleFindings.some(item => item.disposition === 'needs-review' && item.text === '待审'))
   assert.ok(vue.runtimeMessages.some(item => item.text === '页面'))
-  assert.deepStrictEqual(buildSourceCatalog(vue), { [keyFor('页面')]: '页面' })
+  assert.deepStrictEqual(buildSourceCatalog(vue), { version: 1, messages: { [keyFor('页面')]: '页面' } })
 })
 
 test('analyzeProject surfaces preprocessor content candidates as needs-review without semantic proof', () => {
@@ -645,7 +647,7 @@ test('analyzeProject surfaces preprocessor content candidates as needs-review wi
       files: [{ path: item.path, source: item.source }]
     })
     assert.strictEqual(analysis.runtimeMessages.length, 0, item.path)
-    assert.deepStrictEqual(buildSourceCatalog(analysis), {}, item.path)
+    assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} }, item.path)
     assert.deepStrictEqual(
       analysis.auditFindings.map(finding => finding.text).sort(),
       item.expected.slice().sort(),
@@ -691,7 +693,7 @@ test('analyzeProject applies reasoned style i18n-ignore and fails closed on bad 
     needsReview: 0,
     intentionallyIgnored: 1
   })
-  assert.deepStrictEqual(buildSourceCatalog(ignored), {})
+  assert.deepStrictEqual(buildSourceCatalog(ignored), { version: 1, messages: {} })
 
   const preprocessorIgnored = analyzeProject({
     files: [{

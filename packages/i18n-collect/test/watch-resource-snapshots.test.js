@@ -242,12 +242,16 @@ test('failed watch rounds preserve the previous complete snapshot and formal out
     await watch.waitForOkRound(0)
     const beforeDict = fs.readFileSync(dictionaryPath(root))
     const beforeMap = fs.readFileSync(path.join(root, 'lang/zh_hash.map.json'))
+    const beforeCatalog = fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'))
+    const beforeAnalysis = fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'))
     const beforeFailed = watch.state.failedRounds
 
     fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = "你好"\n%%%\n')
     await watch.waitForFailedRound(beforeFailed)
     assert.deepStrictEqual(fs.readFileSync(dictionaryPath(root)), beforeDict)
     assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/zh_hash.map.json')), beforeMap)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json')), beforeCatalog)
+    assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json')), beforeAnalysis)
     assert.deepStrictEqual(readDictionary(root), { [keyFor('你好')]: '你好' })
 
     const beforeOk = watch.state.okRounds
@@ -264,7 +268,12 @@ test('failed watch rounds preserve the previous complete snapshot and formal out
 
 test('failed formal output publication rolls back the committed resource snapshots', async () => {
   const { CollectionSession } = require('../mycommon/session')
-  const { writeOutputs } = require('../mycommon/output')
+  const {
+    analysisReport,
+    analyzeSnapshots,
+    buildSourceCatalog
+  } = require('../mycommon/project-analysis')
+  const { publishCollectionOutputs } = require('../mycommon/formal-outputs')
   const { loadConfig } = require('../mycommon/config')
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-atomic-publish-'))
@@ -272,10 +281,9 @@ test('failed formal output publication rolls back the committed resource snapsho
   fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = {}\n')
   const config = loadConfig({ root })
   const session = new CollectionSession()
-  const first = { compiler: {} }
-  session.begin(first)
-  await session.release(first, [{
+  const helloSnapshots = [{
     identity: 'src/a.js::script',
+    projectPath: 'src/a.js',
     entries: [{
       value: '你好',
       locations: [{
@@ -285,45 +293,58 @@ test('failed formal output publication rolls back the committed resource snapsho
         end: { line: 1, column: 4 }
       }]
     }]
-  }], config.configHash, store => writeOutputs(
-    config.root,
+  }]
+  const first = { compiler: {} }
+  session.begin(first)
+  const firstAnalysis = analyzeSnapshots(helloSnapshots, config)
+  await session.release(first, helloSnapshots, config.configHash, store => publishCollectionOutputs({
+    root: config.root,
     config,
-    store.runtimeDictionary(),
-    store.sourceMap(config.configHash)
-  ))
+    catalog: buildSourceCatalog(firstAnalysis),
+    report: analysisReport(firstAnalysis),
+    dictionary: store.runtimeDictionary(),
+    sourceMap: store.sourceMap(config.configHash)
+  }))
   const beforeDict = fs.readFileSync(path.join(root, config.outputPath))
   const beforeMap = fs.readFileSync(path.join(root, config.sourceMapFilename))
+  const beforeCatalog = fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'))
+  const beforeAnalysis = fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'))
 
   const failed = { compiler: {} }
   session.begin(failed)
   const realRename = fs.renameSync.bind(fs)
   let forced = false
   fs.renameSync = (from, to) => {
-    if (!forced && String(to).endsWith(path.basename(config.outputPath))) {
+    if (!forced && String(to).replace(/\\/g, '/').endsWith('source-catalog.json')) {
       forced = true
       throw new Error('forced formal publish failure')
     }
     return realRename(from, to)
   }
+  const worldSnapshots = [{
+    identity: 'src/a.js::script',
+    projectPath: 'src/a.js',
+    entries: [{
+      value: '世界',
+      locations: [{
+        path: 'src/a.js',
+        kind: 'script-string',
+        start: { line: 1, column: 0 },
+        end: { line: 1, column: 4 }
+      }]
+    }]
+  }]
+  const nextAnalysis = analyzeSnapshots(worldSnapshots, config)
   try {
     await assert.rejects(
-      () => session.release(failed, [{
-        identity: 'src/a.js::script',
-        entries: [{
-          value: '世界',
-          locations: [{
-            path: 'src/a.js',
-            kind: 'script-string',
-            start: { line: 1, column: 0 },
-            end: { line: 1, column: 4 }
-          }]
-        }]
-      }], 'next-hash', store => writeOutputs(
-        config.root,
+      () => session.release(failed, worldSnapshots, 'next-hash', store => publishCollectionOutputs({
+        root: config.root,
         config,
-        store.runtimeDictionary(),
-        store.sourceMap('next-hash')
-      )),
+        catalog: buildSourceCatalog(nextAnalysis),
+        report: analysisReport(nextAnalysis),
+        dictionary: store.runtimeDictionary(),
+        sourceMap: store.sourceMap('next-hash')
+      })),
       /forced formal publish failure/
     )
   } finally {
@@ -332,6 +353,8 @@ test('failed formal output publication rolls back the committed resource snapsho
 
   assert.deepStrictEqual(fs.readFileSync(path.join(root, config.outputPath)), beforeDict)
   assert.deepStrictEqual(fs.readFileSync(path.join(root, config.sourceMapFilename)), beforeMap)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json')), beforeCatalog)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json')), beforeAnalysis)
   assert.deepStrictEqual(Object.values(session.committed.runtimeDictionary()), ['你好'])
   assert.strictEqual(session.committedConfigHash, config.configHash)
 })

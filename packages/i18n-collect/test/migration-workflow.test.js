@@ -98,12 +98,15 @@ test('the migration fixture scans, protects an existing translation, and replace
   const scanned = run(['scan', '--json'], root)
   assert.strictEqual(scanned.status, 0, scanned.stderr)
   assert.deepStrictEqual(readJson(root, 'lang/catalog/source-catalog.json'), {
-    'home.hello': '你好',
-    'home.note': '备注'
+    version: 1,
+    messages: {
+      'home.hello': '你好',
+      'home.note': '备注'
+    }
   })
   fs.writeFileSync(
     path.join(root, 'lang/catalog/zh.json'),
-    json(readJson(root, 'lang/catalog/source-catalog.json'))
+    json(readJson(root, 'lang/catalog/source-catalog.json').messages)
   )
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/legacy/old.js'), 'utf8').includes('旧文案'), true)
   assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), APP_BEFORE)
@@ -131,7 +134,7 @@ test('the migration fixture scans, protects an existing translation, and replace
   assert.strictEqual(rescanned.status, 0, rescanned.stderr)
   fs.writeFileSync(
     path.join(root, 'lang/catalog/zh.json'),
-    json(readJson(root, 'lang/catalog/source-catalog.json'))
+    json(readJson(root, 'lang/catalog/source-catalog.json').messages)
   )
   assert.deepStrictEqual(readJson(root, 'lang/catalog/zh.json'), {
     'home.hello': '您好',

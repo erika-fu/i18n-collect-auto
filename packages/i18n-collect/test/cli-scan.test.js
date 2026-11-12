@@ -79,10 +79,11 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
   assert.strictEqual(report.analysisReport, 'lang/catalog/analysis-report.json')
 
   const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'))
-  assert.deepStrictEqual(catalog, { [HELLO]: '你好' })
+  assert.deepStrictEqual(catalog, { version: 1, messages: { [HELLO]: '你好' } })
 
   const analysis = JSON.parse(fs.readFileSync(analysisPath, 'utf8'))
   assert.strictEqual(analysis.version, 1)
+  assert.ok(Array.isArray(analysis.diagnostics))
   assert.strictEqual(analysis.runtimeMessages.length, 1)
   assert.strictEqual(analysis.localizedCallFindings.length, 1)
   assert.strictEqual(analysis.localizedCallFindings[0].key, 'nav.home')
@@ -122,8 +123,8 @@ test('scan validates explicit messages, unknown keys, and external keys', () => 
   const ok = run(['scan', '--json'], okRoot)
   assert.strictEqual(ok.status, 0, ok.stderr)
   const catalog = JSON.parse(fs.readFileSync(path.join(okRoot, 'lang/catalog/source-catalog.json'), 'utf8'))
-  assert.deepStrictEqual(catalog, { 'items.deleted': '已删除 {count} 项' })
-  assert.ok(!Object.prototype.hasOwnProperty.call(catalog, 'vendor.pack'))
+  assert.deepStrictEqual(catalog, { version: 1, messages: { 'items.deleted': '已删除 {count} 项' } })
+  assert.ok(!Object.prototype.hasOwnProperty.call(catalog.messages, 'vendor.pack'))
 
   const unknownRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-unknown-'))
   writeScanProject(unknownRoot, {
@@ -217,10 +218,10 @@ test('scan reports standalone HTML as audit findings without catalog keys', () =
   assert.strictEqual(report.coverage.runtimeLocalization.automaticallyRuntimeLocalizable, 1)
 
   const catalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
-  assert.deepStrictEqual(catalog, { [HELLO]: '你好' })
-  assert.ok(!Object.values(catalog).includes('品牌'))
-  assert.ok(!Object.values(catalog).includes('欢迎'))
-  assert.ok(!Object.values(catalog).includes('未忽略'))
+  assert.deepStrictEqual(catalog, { version: 1, messages: { [HELLO]: '你好' } })
+  assert.ok(!Object.values(catalog.messages).includes('品牌'))
+  assert.ok(!Object.values(catalog.messages).includes('欢迎'))
+  assert.ok(!Object.values(catalog.messages).includes('未忽略'))
 
   const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
   assert.strictEqual(analysis.auditFindings.length, 3)
@@ -257,9 +258,9 @@ test('scan reports CSS and preprocessor style audit findings without catalog key
   })
 
   const catalog = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8'))
-  assert.deepStrictEqual(catalog, { [HELLO]: '你好' })
-  assert.ok(!Object.values(catalog).includes('必填'))
-  assert.ok(!Object.values(catalog).includes('待审'))
+  assert.deepStrictEqual(catalog, { version: 1, messages: { [HELLO]: '你好' } })
+  assert.ok(!Object.values(catalog.messages).includes('必填'))
+  assert.ok(!Object.values(catalog.messages).includes('待审'))
 
   const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
   assert.strictEqual(analysis.auditFindings.length, 2)

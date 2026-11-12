@@ -26,7 +26,7 @@ test('text-hash keys stay stable across path, line movement, and collection orde
     ]
   })
   assert.deepStrictEqual(buildSourceCatalog(first), buildSourceCatalog(second))
-  assert.deepStrictEqual(buildSourceCatalog(first), { [keyFor('稳定')]: '稳定' })
+  assert.deepStrictEqual(buildSourceCatalog(first), { version: 1, messages: { [keyFor('稳定')]: '稳定' } })
 })
 
 test('equal exact source text across JavaScript, TypeScript, and Vue shares one automatic key', () => {
@@ -45,7 +45,7 @@ test('equal exact source text across JavaScript, TypeScript, and Vue shares one 
     ],
     config: { vueVersion: 3 }
   })
-  assert.deepStrictEqual(buildSourceCatalog(analysis), { [keyFor('共享')]: '共享' })
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: { [keyFor('共享')]: '共享' } })
   assert.strictEqual(analysis.runtimeMessages.length, 3)
 })
 
@@ -81,10 +81,10 @@ test('explicit keys remain unchanged beside automatic text-hash keys', () => {
       ].join('\n')
     }]
   })
-  assert.deepStrictEqual(buildSourceCatalog(analysis), {
+  assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {
     'home.title': '首页',
     [keyFor('你好')]: '你好'
-  })
+  } })
 })
 
 test('migration one-to-one maps an automatic key onto its exact-text hash', () => {

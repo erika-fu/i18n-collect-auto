@@ -11,7 +11,7 @@ const { loadConfig } = require('../mycommon/config')
 const { json } = require('../mycommon/output')
 const { analyzeProject, buildSourceCatalog } = require('../mycommon/project-analysis')
 const { listProjectSources } = require('../mycommon/project-sources')
-const { SOURCE_CATALOG_FILE } = require('../mycommon/source-catalog-freshness')
+const { SOURCE_CATALOG_FILE, sourceCatalogMessages } = require('../mycommon/source-catalog-freshness')
 const { keyFor } = require('../mycommon/store')
 
 function occurrenceId(location) {
@@ -49,6 +49,7 @@ function appendOccurrence(entries, key, source, location, representation, origin
 }
 
 function metadataFromAnalysis(analysis, catalog) {
+  const messages = sourceCatalogMessages(catalog || {})
   const entries = {}
   for (const finding of analysis.runtimeMessages || []) {
     const key = finding.key || keyFor(finding.text)
@@ -63,7 +64,7 @@ function metadataFromAnalysis(analysis, catalog) {
   }
   for (const finding of analysis.localizedCallFindings || []) {
     if (!finding.key) continue
-    const source = finding.source != null ? finding.source : catalog[finding.key]
+    const source = finding.source != null ? finding.source : messages[finding.key]
     if (source == null) continue
     const location = {
       path: finding.location.path,
@@ -99,7 +100,7 @@ function seedSourceCatalog(root, options = {}) {
   fs.mkdirSync(catalogDir, { recursive: true })
   fs.writeFileSync(sourceCatalogFile, json(catalog))
   if (writeLocaleCatalog) {
-    fs.writeFileSync(path.join(catalogDir, `${config.sourceLocale}.json`), json(catalog))
+    fs.writeFileSync(path.join(catalogDir, `${config.sourceLocale}.json`), json(catalog.messages))
   }
   return catalog
 }
@@ -124,7 +125,7 @@ function sourceCatalogBuffer(root) {
 }
 
 function keyForSource(root, sourceText) {
-  const catalog = readSourceCatalog(root)
+  const catalog = sourceCatalogMessages(readSourceCatalog(root))
   const key = Object.keys(catalog).find(name => catalog[name] === sourceText)
   assert.ok(key, `missing source catalog key for ${sourceText}`)
   return key

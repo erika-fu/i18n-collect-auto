@@ -28,7 +28,8 @@ test('the Vue 3 demo scan, check, and build replacement stay coherent', { timeou
   const scanReport = JSON.parse(scanned.stdout)
   assert.strictEqual(scanReport.ok, true)
 
-  const sourceCatalog = readJson('lang/catalog/source-catalog.json')
+  const { sourceCatalogMessages } = require('../mycommon/source-catalog-freshness')
+  const sourceCatalog = sourceCatalogMessages(readJson('lang/catalog/source-catalog.json'))
   assert.strictEqual(sourceCatalog['vue3.heading'], '原生 Vue 三模板')
   assert.strictEqual(sourceCatalog['vue3.build.title'], '构建替换演示')
   assert.strictEqual(sourceCatalog['vue3.welcomeBack'], '欢迎{name}回来')

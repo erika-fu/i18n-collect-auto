@@ -4,10 +4,14 @@ const {
   analyzeProject,
   buildSourceCatalog
 } = require('./project-analysis')
+const {
+  SOURCE_CATALOG_FILE,
+  parseSourceCatalogDocument,
+  sourceCatalogMessages,
+  sourceCatalogPath
+} = require('./formal-outputs')
 const { listProjectSources } = require('./project-sources')
 const { keyFor } = require('./store')
-
-const SOURCE_CATALOG_FILE = 'source-catalog.json'
 
 function commandError(kind, stage, message) {
   const error = new Error(message)
@@ -16,11 +20,7 @@ function commandError(kind, stage, message) {
   return error
 }
 
-function sourceCatalogPath(config) {
-  return path.posix.join(config.catalogDir, SOURCE_CATALOG_FILE)
-}
-
-function readCommittedSourceCatalog(root, config) {
+function readCommittedSourceCatalogDocument(root, config) {
   const relative = sourceCatalogPath(config)
   const file = path.join(root, relative)
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
@@ -40,33 +40,31 @@ function readCommittedSourceCatalog(root, config) {
       `source catalog could not be read: ${relative}`
     )
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  try {
+    return parseSourceCatalogDocument(parsed)
+  } catch (error) {
     throw commandError(
       'configuration',
       'configuration',
-      `source catalog must be a JSON object: ${relative}`
+      error && error.message ? error.message : String(error)
     )
   }
-  for (const key of Object.keys(parsed)) {
-    if (typeof parsed[key] !== 'string') {
-      throw commandError(
-        'configuration',
-        'configuration',
-        `source catalog key "${key}" must be a string`
-      )
-    }
-  }
-  return parsed
+}
+
+function readCommittedSourceCatalog(root, config) {
+  return readCommittedSourceCatalogDocument(root, config).messages
 }
 
 function catalogEqual(left, right) {
-  const leftKeys = Object.keys(left).sort()
-  const rightKeys = Object.keys(right).sort()
+  const leftMessages = sourceCatalogMessages(left)
+  const rightMessages = sourceCatalogMessages(right)
+  const leftKeys = Object.keys(leftMessages).sort()
+  const rightKeys = Object.keys(rightMessages).sort()
   if (leftKeys.length !== rightKeys.length) return false
   for (let index = 0; index < leftKeys.length; index += 1) {
     const key = leftKeys[index]
     if (key !== rightKeys[index]) return false
-    if (left[key] !== right[key]) return false
+    if (leftMessages[key] !== rightMessages[key]) return false
   }
   return true
 }
@@ -171,5 +169,7 @@ module.exports = {
   occurrencesFromAnalysis,
   prepareSourceReplacement,
   readCommittedSourceCatalog,
+  readCommittedSourceCatalogDocument,
+  sourceCatalogMessages,
   sourceCatalogPath
 }
