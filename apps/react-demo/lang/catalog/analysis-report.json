@@ -18,6 +18,7 @@
       "sourceSurface": "standalone-html",
       "semanticRole": "static-html-text",
       "capability": "chinese-source-audit",
+      "resourceIdentity": "public/index.html::html",
       "disposition": "intentionally-ignored",
       "ignoreReason": "standalone HTML audit sample stays Chinese on disk"
     },
@@ -37,6 +38,27 @@
       "sourceSurface": "css",
       "semanticRole": "css-generated-content",
       "capability": "chinese-source-audit",
+      "resourceIdentity": "src/base.css::style[index=0;lang=css]",
+      "disposition": "unresolved",
+      "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
+    },
+    {
+      "text": "独立样式中文",
+      "location": {
+        "path": "src/base.css",
+        "start": {
+          "line": 3,
+          "column": 12
+        },
+        "end": {
+          "line": 3,
+          "column": 18
+        }
+      },
+      "sourceSurface": "css",
+      "semanticRole": "css-generated-content",
+      "capability": "chinese-source-audit",
+      "resourceIdentity": "src/base.css::style[index=0;lang=css]",
       "disposition": "intentionally-ignored",
       "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
@@ -61,6 +83,7 @@
       "semanticRole": "script-string",
       "capability": "already-localized",
       "key": "react.app.title",
+      "resourceIdentity": "src/App.jsx::script",
       "paramsKind": "none",
       "paramNames": [],
       "source": "React 脚本文案"
@@ -82,6 +105,7 @@
       "semanticRole": "script-string",
       "capability": "already-localized",
       "key": "react.app.taskSummary",
+      "resourceIdentity": "src/App.jsx::script",
       "paramsKind": "static",
       "paramNames": [
         "count"
@@ -105,6 +129,7 @@
       "semanticRole": "script-string",
       "capability": "already-localized",
       "key": "react.multilingual.title",
+      "resourceIdentity": "src/multilingual/MultilingualPanel.jsx::script",
       "paramsKind": "none",
       "paramNames": [],
       "source": "运行时多语言边界"
@@ -126,6 +151,7 @@
       "semanticRole": "script-string",
       "capability": "already-localized",
       "key": "react.multilingual.body",
+      "resourceIdentity": "src/multilingual/MultilingualPanel.jsx::script",
       "paramsKind": "static",
       "paramNames": [
         "name"
@@ -133,9 +159,10 @@
       "source": "你好，{name}。此页仅通过显式本地化渲染。"
     }
   ],
+  "diagnostics": [],
   "coverage": {
     "sourceDiscovery": {
-      "total": 6
+      "total": 7
     },
     "runtimeLocalization": {
       "total": 4,
@@ -143,8 +170,8 @@
       "alreadyLocalized": 4
     },
     "chineseSourceAudit": {
-      "total": 2,
-      "unresolved": 0,
+      "total": 3,
+      "unresolved": 1,
       "needsReview": 0,
       "intentionallyIgnored": 2
     },

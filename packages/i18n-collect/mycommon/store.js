@@ -68,9 +68,16 @@ class CollectionStore {
     const snapshot = new Map()
     for (const entry of entries) {
       if (!entry || !containsHan(entry.value)) continue
+      // Audit-only kinds (CSS generated content, preprocessor candidates, static
+      // HTML) stay in analysis snapshots; the runtime dictionary store only keeps
+      // runtime-localizable semantic kinds.
+      const runtimeLocations = (entry.locations || []).filter(
+        location => location && SEMANTIC_KINDS.has(location.kind)
+      )
+      if (runtimeLocations.length === 0) continue
       const key = keyFor(entry.value)
       const current = snapshot.get(key) || { value: entry.value, locations: [] }
-      current.locations = uniqueLocations(current.locations.concat((entry.locations || []).map(normalizeLocation)))
+      current.locations = uniqueLocations(current.locations.concat(runtimeLocations.map(normalizeLocation)))
       snapshot.set(key, current)
     }
     this.resources.set(resource, snapshot)

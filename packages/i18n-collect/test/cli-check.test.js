@@ -243,7 +243,7 @@ test('check fails when committed source catalog is missing or stale', () => {
   const missingReport = JSON.parse(missingResult.stdout)
   assert.strictEqual(missingReport.ok, false)
   assert.ok(missingReport.blocking.includes('missing-source-catalog'))
-  assert.match(missingReport.message, /run scan/i)
+  assert.match(missingReport.message, /run collect/i)
   assertReadOnly(missingRoot, missingBefore, missingResult)
 
   const staleRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-stale-catalog-'))

@@ -92,7 +92,7 @@ test('evaluateLocalizationCompleteness fails when committed source catalog is st
   assert.strictEqual(report.ok, false)
   assert.ok(report.blocking.includes('stale-source-analysis'))
   assert.strictEqual(report.sourceFreshness.ok, false)
-  assert.match(report.message, /run scan/i)
+  assert.match(report.message, /run collect/i)
 })
 
 test('evaluateLocalizationCompleteness fails for missing committed source catalog', () => {
@@ -105,7 +105,7 @@ test('evaluateLocalizationCompleteness fails for missing committed source catalo
   })
   assert.strictEqual(report.ok, false)
   assert.ok(report.blocking.includes('missing-source-catalog'))
-  assert.match(report.message, /run scan/i)
+  assert.match(report.message, /run collect/i)
 })
 
 test('evaluateLocalizationCompleteness fails for explicit-required messages', () => {

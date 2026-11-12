@@ -1,39 +1,40 @@
 const MIGRATE_KEYS = 'i18n-collect migrate-keys'
 const SCAN = 'i18n-collect scan'
+const COLLECT = 'i18n-collect collect'
 const CHECK = 'i18n-collect check'
 const TRANSLATE = 'i18n-collect translate'
 const REPLACE = 'i18n-collect replace'
 const BUILD = 'i18n-collect build'
 
 const COLLECT_REMOVED =
-  `collect is removed. Use ${SCAN} for source analysis and ${MIGRATE_KEYS} once for per-occurrence catalogs.`
+  `collect is restored as the Webpack collection publisher. Use ${COLLECT} (or ${SCAN} for the filesystem path) and ${MIGRATE_KEYS} once for per-occurrence catalogs.`
 
 const VERIFY_REMOVED =
-  `verify is removed. Use ${SCAN} then ${CHECK} for freshness and project localization completeness.`
+  `verify is removed. Use ${COLLECT} then ${CHECK} for freshness and project localization completeness.`
 
 const RUN_REMOVED =
-  `run is removed. Use ${SCAN}, ${TRANSLATE}, ${REPLACE}, ${BUILD}, and ${CHECK} directly.`
+  `run is removed. Use ${COLLECT}, ${TRANSLATE}, ${REPLACE}, ${BUILD}, and ${CHECK} directly.`
 
 const RUN_COLLECT_REMOVED =
-  `run --collect is removed. Use ${SCAN} for source analysis and ${MIGRATE_KEYS} once for per-occurrence catalogs.`
+  `run --collect is removed. Use ${COLLECT} for Webpack collection and ${MIGRATE_KEYS} once for per-occurrence catalogs.`
 
 const CHECK_POLICY_REMOVED =
   `check-policy is removed. Use ${CHECK}; it evaluates project localization completeness including complete-static-copy and runtime-multilingual policy.`
 
 const PRUNE_ORPHANED_REMOVED =
-  'pruneOrphaned is removed. Orphan retirement is no longer part of the localization workflow; use scan, translate --prune for stale target keys, and migrate-keys for legacy catalogs.'
+  'pruneOrphaned is removed. Orphan retirement is no longer part of the localization workflow; use collect, translate --prune for stale target keys, and migrate-keys for legacy catalogs.'
 
 const PLUGIN_COLLECTION_REMOVED =
-  `MyI18nPlugin catalog collection is removed. Use ${SCAN} for source analysis; keep webpack integration only for i18n-collect build replacement.`
+  `MyI18nPlugin catalog collection is restored for ${COLLECT} and optional build --write-collection; keep webpack integration for collection publish and build replacement.`
 
 const LEGACY_IDENTITY_METADATA =
-  `catalog metadata still uses per-occurrence identity state. Run ${MIGRATE_KEYS}, then ${SCAN}, before continuing.`
+  `catalog metadata still uses per-occurrence identity state. Run ${MIGRATE_KEYS}, then ${COLLECT} (or ${SCAN}), before continuing.`
 
 const LEGACY_IDENTITY_ARTIFACT =
   `legacy identity artifact is no longer read. Remove identity-confirmations.json, identity-ambiguities.json, and retirement-confirmations.json after ${MIGRATE_KEYS}.`
 
 const PREPROCESSOR_STYLE_IR_REMOVED =
-  'full Style IR collection for SCSS, Sass, Less, and Stylus is removed; those surfaces are Chinese source audit candidates via scan/check only.'
+  'full Style IR collection for SCSS, Sass, Less, and Stylus is removed; those surfaces are Chinese source audit candidates via collect/check only.'
 
 function migrationError(message, kind = 'configuration') {
   const error = new Error(message)

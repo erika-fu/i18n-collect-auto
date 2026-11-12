@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "collect": "node ../../packages/i18n-collect/bin/i18n-collect.js collect",
+    "collect:watch": "node ../../packages/i18n-collect/bin/i18n-collect.js collect --watch",
     "build": "node ../../packages/i18n-collect/bin/i18n-collect.js build",
     "watch": "node ../../packages/i18n-collect/bin/i18n-collect.js build --watch",
+    "translate": "node ../../packages/i18n-collect/bin/i18n-collect.js translate",
+    "replace": "node ../../packages/i18n-collect/bin/i18n-collect.js replace --adapter vue3",
     "scan": "node ../../packages/i18n-collect/bin/i18n-collect.js scan",
     "check": "node ../../packages/i18n-collect/bin/i18n-collect.js check"
   },

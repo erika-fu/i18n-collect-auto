@@ -11,14 +11,12 @@ const {
   stripCollectionIntegration
 } = require('../mycommon/build-replacement-contract')
 const {
-  clearBuildReplacementContext,
-  prepareBuildReplacementContext
+  clearBuildReplacementContext
 } = require('../mycommon/build-replacement-context')
 const { prepareCompilationBuildReplacement } = require('../mycommon/build-replacement-findings')
 const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
 const {
-  assertSourceCatalogFresh,
   readCommittedSourceCatalog,
   sourceCatalogPath
 } = require('../mycommon/source-catalog-freshness')
@@ -133,10 +131,10 @@ function isMyI18nPlugin(plugin) {
   return Boolean(plugin && plugin.constructor && plugin.constructor.name === 'MyI18nPlugin')
 }
 
-function ensureVerifyCollectionPlugin(webpackConfig, { onAnalysis }) {
+function ensureVerifyCollectionPlugin(webpackConfig, { onAnalysis, publishOutputs = false }) {
   webpackConfig.plugins = (webpackConfig.plugins || []).filter(plugin => !isMyI18nPlugin(plugin))
   webpackConfig.plugins.push(new MyI18nPlugin({
-    publishOutputs: false,
+    publishOutputs: Boolean(publishOutputs),
     onAnalysis
   }))
 }
@@ -214,6 +212,7 @@ async function runCollectionAnalysisCompilation(root, parsed, config, hooks = {}
   const webpackConfig = cloneWebpackConfig(loaded)
   let compilationResult = null
   ensureVerifyCollectionPlugin(webpackConfig, {
+    publishOutputs: Boolean(parsed && parsed.writeCollection),
     onAnalysis(result) {
       compilationResult = result
     }
@@ -263,28 +262,11 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
     const prepared = hooks.prepared || prepareReadOnlyBuild(root, config)
     let compilationResult = hooks.compilationResult || null
     if (!compilationResult) {
-      try {
-        compilationResult = await runCollectionAnalysisCompilation(root, parsed, config, {
-          loaded,
-          onCompiler: hooks.onCompiler,
-          onCompilerClosed: hooks.onCompilerClosed
-        })
-      } catch (error) {
-        // Transitional fallback until demos gain Webpack collect loaders (issue 08).
-        if (!/loader is not integrated/i.test(String(error && error.message || error))) {
-          throw error
-        }
-        const fresh = assertSourceCatalogFresh(root, config)
-        prepared.analysis = fresh.analysis
-        prepared.occurrences = fresh.occurrences
-        prepared.sourceCatalog = fresh.sourceCatalog
-        prepareBuildReplacementContext(root, {
-          occurrences: prepared.occurrences,
-          sourceCatalog: prepared.sourceCatalog,
-          analysis: prepared.analysis
-        })
-        compilationResult = null
-      }
+      compilationResult = await runCollectionAnalysisCompilation(root, parsed, config, {
+        loaded,
+        onCompiler: hooks.onCompiler,
+        onCompilerClosed: hooks.onCompilerClosed
+      })
     }
     if (compilationResult) {
       const verified = prepareCompilationBuildReplacement(root, config, compilationResult)
@@ -355,13 +337,15 @@ async function runReplacementCompilation(root, parsed, config, hooks = {}) {
 
 function parseBuildArgs(args) {
   const watch = args.includes('--watch')
+  const writeCollection = args.includes('--write-collection')
   const rest = []
   for (const arg of args) {
-    if (arg === '--watch') continue
+    if (arg === '--watch' || arg === '--write-collection') continue
     rest.push(arg)
   }
   const parsed = parseCollectArgs(rest)
   parsed.watch = watch
+  parsed.writeCollection = writeCollection
   return parsed
 }
 

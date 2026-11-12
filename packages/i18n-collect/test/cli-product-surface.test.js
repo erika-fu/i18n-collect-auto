@@ -19,24 +19,31 @@ function run(args, cwd) {
   })
 }
 
-test('root help presents the five primary commands and migration stubs', () => {
+test('root help presents the primary workflow and migration stubs', () => {
   const result = run(['--help'])
   assert.strictEqual(result.status, 0, result.stderr)
-  assert.match(result.stdout, /\bscan\b/)
+  assert.match(result.stdout, /Primary workflow:\s*collect, translate, build, replace, and check/i)
+  assert.match(result.stdout, /collect\s+Webpack collection/i)
   assert.match(result.stdout, /\btranslate\b/)
   assert.match(result.stdout, /\bbuild\b/)
   assert.match(result.stdout, /\breplace\b/)
   assert.match(result.stdout, /\bcheck\b/)
   assert.match(result.stdout, /migrate-keys/)
-  assert.match(result.stdout, /collect\s+Webpack module-graph collection/i)
-  assert.match(result.stdout, /verify\s+Removed|Removed; use scan then check/i)
-  assert.match(result.stdout, /run\s+Removed|Removed; use scan, translate, and replace/i)
+  assert.match(result.stdout, /\bscan\b/)
+  assert.match(result.stdout, /verify\s+Removed|Removed; use collect then check/i)
+  assert.match(result.stdout, /run\s+Removed|Removed; use collect, translate/i)
   assert.match(result.stdout, /check-policy\s+Removed|Removed; use check/i)
   assert.doesNotMatch(result.stdout, /check-policy\s+Report complete-static-copy/)
 })
 
 test('command help states write ownership for each primary command', () => {
   const collapse = text => text.replace(/\s+/g, ' ')
+
+  const collectHelp = run(['collect', '--help'])
+  assert.strictEqual(collectHelp.status, 0)
+  assert.match(collapse(collectHelp.stdout), /atomically publish|publish collection outputs/i)
+  assert.match(collapse(collectHelp.stdout), /source-catalog|analysis-report/i)
+  assert.match(collapse(collectHelp.stdout), /--watch/)
 
   const scan = run(['scan', '--help'])
   assert.strictEqual(scan.status, 0)
@@ -51,8 +58,10 @@ test('command help states write ownership for each primary command', () => {
 
   const build = run(['build', '--help'])
   assert.strictEqual(build.status, 0)
-  assert.match(collapse(build.stdout), /read-only/i)
-  assert.match(collapse(build.stdout), /does not create, update|never.*catalog|not.*source catalog/i)
+  assert.match(collapse(build.stdout), /verifies|verify/)
+  assert.match(collapse(build.stdout), /By default build does not create, update|does not create, update/i)
+  assert.match(collapse(build.stdout), /--write-collection/)
+  assert.match(collapse(build.stdout), /development build-write|publish collection outputs/i)
 
   const replace = run(['replace', '--help'])
   assert.strictEqual(replace.status, 0)
@@ -63,6 +72,7 @@ test('command help states write ownership for each primary command', () => {
   assert.strictEqual(check.status, 0)
   assert.match(collapse(check.stdout), /without writing|never rewrites|writes no/i)
   assert.match(collapse(check.stdout), /complete-static-copy|runtime-multilingual|policy/i)
+  assert.match(collapse(check.stdout), /unresolved or needs-review/i)
 })
 
 test('run fails with a bounded migration error for any invocation', () => {
@@ -70,7 +80,7 @@ test('run fails with a bounded migration error for any invocation', () => {
   const result = run(['run', '--translate', '--json'], root)
   assert.strictEqual(result.status, 1, result.stderr)
   assert.match(result.stderr, /run is removed/i)
-  assert.match(result.stderr, /scan/i)
+  assert.match(result.stderr, /collect/i)
   assert.match(result.stderr, /translate/i)
   assert.match(result.stderr, /replace/i)
   const report = JSON.parse(result.stdout)

@@ -1,5 +1,7 @@
 const path = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+const MyI18nPlugin = require('../../packages/i18n-collect/myplugin')
+const collector = require.resolve('../../packages/i18n-collect/myloader')
 
 // vue-loader is hoisted beside the Vue 2 demo in this workspace, so bind it
 // to this project's Vue 3 compiler before vue-loader captures the parse API.
@@ -30,52 +32,125 @@ module.exports = {
       {
         test: /\.m?js$/,
         exclude: /node_modules/,
-        use: []
+        use: [collector]
       },
+      { test: /\.vue$/, resourceQuery: /type=template/, enforce: 'pre', use: [collector] },
+      { test: /\.vue$/, resourceQuery: /type=script/, enforce: 'pre', use: [collector] },
       {
         test: /\.css$/,
-        use: [
-          require.resolve('style-loader'),
-          require.resolve('css-loader')
+        oneOf: [
+          {
+            resourceQuery: /\?vue/,
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader')
+            ]
+          },
+          {
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              collector
+            ]
+          }
         ]
       },
       {
         test: /\.scss$/,
-        use: [
-          require.resolve('style-loader'),
-          require.resolve('css-loader'),
-          require.resolve('sass-loader')
+        oneOf: [
+          {
+            resourceQuery: /\?vue/,
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              require.resolve('sass-loader')
+            ]
+          },
+          {
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              require.resolve('sass-loader'),
+              collector
+            ]
+          }
         ]
       },
       {
         test: /\.sass$/,
-        use: [
-          require.resolve('style-loader'),
-          require.resolve('css-loader'),
+        oneOf: [
           {
-            loader: require.resolve('sass-loader'),
-            options: {
-              sassOptions: {
-                indentedSyntax: true
+            resourceQuery: /\?vue/,
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              {
+                loader: require.resolve('sass-loader'),
+                options: {
+                  sassOptions: {
+                    indentedSyntax: true
+                  }
+                }
               }
-            }
+            ]
+          },
+          {
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              {
+                loader: require.resolve('sass-loader'),
+                options: {
+                  sassOptions: {
+                    indentedSyntax: true
+                  }
+                }
+              },
+              collector
+            ]
           }
         ]
       },
       {
         test: /\.less$/,
-        use: [
-          require.resolve('style-loader'),
-          require.resolve('css-loader'),
-          require.resolve('less-loader')
+        oneOf: [
+          {
+            resourceQuery: /\?vue/,
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              require.resolve('less-loader')
+            ]
+          },
+          {
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              require.resolve('less-loader'),
+              collector
+            ]
+          }
         ]
       },
       {
         test: /\.styl(?:us)?$/,
-        use: [
-          require.resolve('style-loader'),
-          require.resolve('css-loader'),
-          require.resolve('stylus-loader')
+        oneOf: [
+          {
+            resourceQuery: /\?vue/,
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              require.resolve('stylus-loader')
+            ]
+          },
+          {
+            use: [
+              require.resolve('style-loader'),
+              require.resolve('css-loader'),
+              require.resolve('stylus-loader'),
+              collector
+            ]
+          }
         ]
       }
     ]
@@ -84,6 +159,7 @@ module.exports = {
     new VueLoaderPlugin(),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html')
-    })
+    }),
+    new MyI18nPlugin({ publishOutputs: false })
   ]
 }

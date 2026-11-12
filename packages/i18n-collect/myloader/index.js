@@ -122,6 +122,26 @@ function collectedFor(resource, sourceText, config) {
     return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
   }
   if (resource.block === 'template' && looksLikeVueRenderSource(sourceText)) {
+    // Vue-loader may only hand the collector the compiled render function. Prefer
+    // the same SFC file's template HTML so i18n-key / no-i18n-auto / $t calls keep
+    // their template semantics; fall back to render-function collection.
+    if (resource.absolutePath && fs.existsSync(resource.absolutePath)) {
+      try {
+        const fileSource = fs.readFileSync(resource.absolutePath, 'utf8')
+        if (/<template[\s>]/i.test(fileSource)) {
+          return {
+            entries: extractHtml({
+              source: fileSource,
+              resource,
+              config
+            }).entries,
+            warnings: []
+          }
+        }
+      } catch (_error) {
+        // Fall through to render-function collection.
+      }
+    }
     const collected = extractVueRender({ source: sourceText, resource, config })
     return {
       entries: collected.entries,

@@ -116,18 +116,20 @@ module.exports = {
 `)
 }
 
-test('build help describes the read-only Build replacement command', () => {
+test('build help describes verify-by-default Build replacement and write-collection mode', () => {
   const result = run(['build', '--help'])
   assert.strictEqual(result.status, 0)
   assert.match(result.stdout, /i18n-collect build/)
   assert.match(result.stdout, /Phase 1/)
   assert.match(result.stdout, /Phase 2/)
   assert.match(result.stdout, /buildReplacement/)
-  assert.match(result.stdout, /does not create, update, restore, or delete|read-only/i)
+  assert.match(result.stdout, /By default build does not create, update, restore, or delete|does not create, update, restore, or delete/i)
+  assert.match(result.stdout, /--write-collection/)
+  assert.match(result.stdout, /development build-write|publish collection outputs/i)
   assert.match(result.stdout, /fail-closed|unsafe/i)
   assert.match(result.stdout, /--watch/)
   assert.match(result.stdout, /serial analyze-then-replace|coalesced/i)
-  assert.match(result.stdout, /does not start an implicit scan|catalog write/i)
+  assert.match(result.stdout, /without --write-collection|does not start an implicit collect/i)
 })
 
 test('build requires buildReplacement to be enabled', { timeout: 20000 }, () => {
@@ -183,6 +185,33 @@ test('build fails when source analysis no longer matches the committed source ca
   assert.match(result.stderr, /source catalog|differs from the committed|collect before build|no longer matches/i)
   assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
   assertLangUnchanged(langBefore, root)
+})
+
+test('build --write-collection publishes updated collection outputs then emits the formal bundle', {
+  timeout: 60000
+}, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-build-write-collection-'))
+  writeBuildProject(root)
+  seedSourceCatalog(root)
+  fs.writeFileSync(
+    path.join(root, 'src/app.js'),
+    'const { t } = require("./i18n.js")\nmodule.exports = function label() {\n  return "世界"\n}\n'
+  )
+  const beforeSource = fs.readFileSync(path.join(root, 'src/app.js'))
+  const result = run(['build', '--write-collection', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.strictEqual(report.command, 'build')
+  const catalog = JSON.parse(
+    fs.readFileSync(path.join(root, 'lang/catalog/source-catalog.json'), 'utf8')
+  )
+  const key = keyForSource(root, '世界')
+  assert.deepStrictEqual(catalog.messages, { [key]: '世界' })
+  const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
+  assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
+  assert.doesNotMatch(bundle, /世界/)
+  assert.deepStrictEqual(fs.readFileSync(path.join(root, 'src/app.js')), beforeSource)
 })
 
 test('build fails analysis on a key conflict and does not emit a formal bundle', { timeout: 60000 }, () => {

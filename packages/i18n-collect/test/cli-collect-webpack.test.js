@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
+const { collect } = require('../cli/collect')
 const { keyFor } = require('../mycommon/store')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
@@ -172,4 +173,73 @@ test('collect fails closed when a staticAudit input is missing and keeps prior o
   assert.match(`${failed.stderr}\n${failed.stdout}`, /static audit|missing/i)
   assert.deepStrictEqual(fs.readFileSync(catalogPath), beforeCatalog)
   assert.deepStrictEqual(fs.readFileSync(analysisPath), beforeAnalysis)
+})
+
+test('collect help documents watch publish ownership', () => {
+  const result = run(['collect', '--help'])
+  assert.strictEqual(result.status, 0)
+  assert.match(result.stdout, /--watch/)
+  assert.match(result.stdout, /publishes after each|successful collection round/i)
+  assert.match(result.stdout, /preserves previous|failed round/i)
+})
+
+test('collect --watch publishes after successful rounds and preserves outputs after failed rounds', {
+  timeout: 120000
+}, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-collect-watch-'))
+  writeCollectProject(root, {
+    files: {
+      'src/app.js': 'module.exports = function label() {\n  return "你好"\n}\n'
+    }
+  })
+  fs.writeFileSync(path.join(root, 'webpack.config.js'), `const path = require('path')
+const MyI18nPlugin = require(${JSON.stringify(plugin)})
+module.exports = {
+  context: __dirname,
+  mode: 'development',
+  devtool: false,
+  entry: './src/app.js',
+  output: { filename: 'bundle.js', path: path.join(__dirname, 'dist') },
+  module: { rules: [{ test: /\\.[cm]?[jt]sx?$/, loader: ${JSON.stringify(loader)} }] },
+  plugins: [new MyI18nPlugin()],
+  watchOptions: { aggregateTimeout: 50, poll: 100 }
+}
+`)
+  const outcome = await collect(['--watch', '--json', '--cwd', root])
+  assert.ok(outcome.watch, 'collect --watch should return a watch handle')
+  try {
+    await outcome.watch.waitForOkRound(0)
+    const catalogPath = path.join(root, 'lang/catalog/source-catalog.json')
+    const analysisPath = path.join(root, 'lang/catalog/analysis-report.json')
+    const dictionaryPath = path.join(root, 'lang/zh_hash.json')
+    assert.ok(fs.existsSync(catalogPath))
+    assert.deepStrictEqual(
+      JSON.parse(fs.readFileSync(catalogPath, 'utf8')).messages,
+      { [keyFor('你好')]: '你好' }
+    )
+    const beforeCatalog = fs.readFileSync(catalogPath)
+    const beforeAnalysis = fs.readFileSync(analysisPath)
+    const beforeDictionary = fs.readFileSync(dictionaryPath)
+
+    const failedBefore = outcome.watch.state.failedRounds
+    fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = "你好"\n%%%\n')
+    await outcome.watch.waitForFailedRound(failedBefore)
+    assert.deepStrictEqual(fs.readFileSync(catalogPath), beforeCatalog)
+    assert.deepStrictEqual(fs.readFileSync(analysisPath), beforeAnalysis)
+    assert.deepStrictEqual(fs.readFileSync(dictionaryPath), beforeDictionary)
+
+    const okBefore = outcome.watch.state.okRounds
+    fs.writeFileSync(
+      path.join(root, 'src/app.js'),
+      'module.exports = function label() {\n  return "世界"\n}\n'
+    )
+    await outcome.watch.waitForOkRound(okBefore)
+    assert.deepStrictEqual(
+      JSON.parse(fs.readFileSync(catalogPath, 'utf8')).messages,
+      { [keyFor('世界')]: '世界' }
+    )
+    assert.ok(outcome.watch.publishes.length >= 2)
+  } finally {
+    await outcome.watch.close()
+  }
 })

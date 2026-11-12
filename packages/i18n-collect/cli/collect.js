@@ -47,6 +47,7 @@ function parseCollectArgs(args) {
     exclude: undefined,
     include: undefined,
     json: false,
+    watch: false,
     webpackConfig: null
   }
   for (let index = 0; index < args.length; index++) {
@@ -66,6 +67,9 @@ function parseCollectArgs(args) {
     if (flag === '--json') {
       if (inline !== null) throw commandError('configuration', 'unknown option "--json"')
       parsed.json = true
+    } else if (flag === '--watch') {
+      if (inline !== null) throw commandError('configuration', 'unknown option "--watch"')
+      parsed.watch = true
     } else if (flag === '--cwd') parsed.cwd = value('--cwd')
     else if (flag === '--webpack-config') parsed.webpackConfig = value('--webpack-config')
     else if (flag === '--include') {
@@ -223,6 +227,20 @@ function pluginOptionsFrom(webpackConfig) {
   return undefined
 }
 
+function isMyI18nPlugin(plugin) {
+  return Boolean(plugin && plugin.constructor && plugin.constructor.name === 'MyI18nPlugin')
+}
+
+function ensureCollectPublishPlugin(webpackConfig) {
+  const MyI18nPlugin = require('../myplugin')
+  const previous = pluginOptionsFrom(webpackConfig) || {}
+  webpackConfig.plugins = (webpackConfig.plugins || []).filter(plugin => !isMyI18nPlugin(plugin))
+  webpackConfig.plugins.push(new MyI18nPlugin({
+    ...previous,
+    publishOutputs: true
+  }))
+}
+
 function humanReport(report) {
   const noun = report.entries === 1 ? 'entry' : 'entries'
   const include = report.include.length ? report.include.join(', ') : '(all resources that enter the loader)'
@@ -283,6 +301,7 @@ async function execute(parsed, hooks = {}) {
     if (!webpackConfig || typeof webpackConfig !== 'object' || Array.isArray(webpackConfig)) {
       throw commandError('configuration', 'collect accepts one webpack configuration object')
     }
+    ensureCollectPublishPlugin(webpackConfig)
     const pluginOptions = pluginOptionsFrom(webpackConfig)
     emitDir = redirectEmit(webpackConfig)
     const { error, stats } = await runCompiler(webpackConfig, hooks)
@@ -309,6 +328,22 @@ async function collect(args, hooks = {}) {
   } catch (error) {
     return failure(error, json)
   }
+  if (parsed.watch) {
+    const root = path.resolve(parsed.cwd || process.cwd())
+    if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+      return failure(commandError('configuration', `project root is not a directory: ${root}`), json)
+    }
+    const { createWatchCollectSession } = require('./collect-watch')
+    const session = createWatchCollectSession({
+      root,
+      parsed,
+      failure,
+      jsonText,
+      humanReport,
+      reportFrom
+    })
+    return session.start()
+  }
   try {
     const report = await execute(parsed, hooks)
     const stdout = parsed.json ? jsonText(report) : humanReport(report)
@@ -322,11 +357,14 @@ module.exports = {
   EXIT,
   classifyBuild,
   collect,
+  ensureCollectPublishPlugin,
   forbidNetwork,
+  humanReport,
   parseCollectArgs,
   pluginOptionsFrom,
   projectRelative,
   readWebpackConfig,
   redirectEmit,
+  reportFrom,
   runCompiler
 }

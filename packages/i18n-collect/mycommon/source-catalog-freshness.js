@@ -109,7 +109,7 @@ function assertSourceCatalogFresh(root, config) {
     throw commandError(
       'collection',
       'analysis',
-      'source analysis no longer matches the committed source catalog; run scan before build'
+      'source analysis no longer matches the committed source catalog; run collect before build'
     )
   }
   return {
@@ -188,14 +188,14 @@ function prepareSourceReplacement(root, config) {
       throw commandError(
         'collection',
         'analysis',
-        'source analysis no longer matches the committed source catalog; run scan before replace'
+        'source analysis no longer matches the committed source catalog; run collect before replace'
       )
     }
     if (catalogText !== finding.text) {
       throw commandError(
         'collection',
         'analysis',
-        `source catalog key "${key}" no longer matches source text; run scan before replace`
+        `source catalog key "${key}" no longer matches source text; run collect before replace`
       )
     }
   }

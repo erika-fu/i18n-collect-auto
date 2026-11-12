@@ -1,7 +1,7 @@
 {
   "version": 1,
   "parserVersion": "babel-7",
-  "configHash": "1ad780351682eba611d6c42f74dedb56",
+  "configHash": "374016ae6fa391b89815d58247335645",
   "entries": [
     {
       "key": "2cb4acf6bd44f31e528b5dca612827ba",
@@ -11,11 +11,11 @@
           "path": "src/App.vue",
           "kind": "template-literal",
           "start": {
-            "line": 50,
+            "line": 9,
             "column": 27
           },
           "end": {
-            "line": 50,
+            "line": 9,
             "column": 33
           }
         }
@@ -48,29 +48,11 @@
           "kind": "html-attribute",
           "start": {
             "line": 13,
-            "column": 66
+            "column": 92
           },
           "end": {
             "line": 13,
-            "column": 70
-          }
-        }
-      ]
-    },
-    {
-      "key": "47781b8a72bcbb7ecb1f955399a7e718",
-      "value": "欢迎",
-      "locations": [
-        {
-          "path": "src/App.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 15,
-            "column": 13
-          },
-          "end": {
-            "line": 15,
-            "column": 15
+            "column": 96
           }
         }
       ]
@@ -130,24 +112,6 @@
       ]
     },
     {
-      "key": "95c9f3130483490aad68d1cc58e812d9",
-      "value": "回来",
-      "locations": [
-        {
-          "path": "src/App.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 15,
-            "column": 22
-          },
-          "end": {
-            "line": 15,
-            "column": 24
-          }
-        }
-      ]
-    },
-    {
       "key": "ab5dc6ca3e8ef0d0100555f37ed5f00d",
       "value": "构建替换演示",
       "locations": [
@@ -166,42 +130,6 @@
       ]
     },
     {
-      "key": "d7ec2d3fea4756bc1642e0f10c180cf5",
-      "value": "名称",
-      "locations": [
-        {
-          "path": "src/App.vue",
-          "kind": "html-attribute",
-          "start": {
-            "line": 13,
-            "column": 49
-          },
-          "end": {
-            "line": 13,
-            "column": 51
-          }
-        }
-      ]
-    },
-    {
-      "key": "e47d59b1bd2ea60194a4a9dc37ae1399",
-      "value": "输入",
-      "locations": [
-        {
-          "path": "src/App.vue",
-          "kind": "html-attribute",
-          "start": {
-            "line": 13,
-            "column": 30
-          },
-          "end": {
-            "line": 13,
-            "column": 32
-          }
-        }
-      ]
-    },
-    {
       "key": "f6c02612482f1e3cc40a6febcfd34ad3",
       "value": "脚本文案",
       "locations": [
@@ -209,11 +137,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 49,
+            "line": 8,
             "column": 18
           },
           "end": {
-            "line": 49,
+            "line": 8,
             "column": 24
           }
         }

@@ -39,7 +39,7 @@ function evaluateSourceFreshness(analysis, committedSourceCatalog) {
     return {
       ok: false,
       reason: 'missing-source-catalog',
-      message: 'committed source catalog is missing; run scan before check'
+      message: 'committed source catalog is missing; run collect before check'
     }
   }
   let expected
@@ -56,7 +56,7 @@ function evaluateSourceFreshness(analysis, committedSourceCatalog) {
     return {
       ok: false,
       reason: 'stale-source-analysis',
-      message: 'source analysis no longer matches the committed source catalog; run scan before check'
+      message: 'source analysis no longer matches the committed source catalog; run collect before check'
     }
   }
   return { ok: true, expected }

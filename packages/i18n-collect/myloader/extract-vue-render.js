@@ -1,6 +1,10 @@
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
 const { DEFAULTS } = require('../mycommon/config')
+const {
+  REPRESENTATION_LOCALIZED_CALL,
+  staticLocalizationCall
+} = require('../mycommon/localized-call')
 const { containsHan, offsetToPosition } = require('./resource')
 
 const VUE3_TEXT_HELPERS = new Set([
@@ -46,6 +50,19 @@ function location(source, projectPath, node, kind) {
 
 function entry(value, loc) {
   return { value, locations: [loc] }
+}
+
+function localizedCallFrom(node, source, projectPath) {
+  const call = staticLocalizationCall(node)
+  if (!call) return null
+  return {
+    value: '',
+    key: call.key,
+    representation: REPRESENTATION_LOCALIZED_CALL,
+    paramsKind: call.paramsKind,
+    paramNames: call.paramNames,
+    locations: [location(source, projectPath, call.argument, 'template-expression')]
+  }
 }
 
 function calleeName(node) {
@@ -109,6 +126,11 @@ function isChildrenArg(node) {
 function collectVue3(ast, source, projectPath, allowlist, entries, diagnostics) {
   traverse(ast, {
     CallExpression(nodePath) {
+      const localized = localizedCallFrom(nodePath.node, source, projectPath)
+      if (localized) {
+        entries.push(localized)
+        return
+      }
       const name = calleeName(nodePath.node.callee)
       if (!name) return
       if (VUE3_UNSUPPORTED_HELPERS.has(name)) {

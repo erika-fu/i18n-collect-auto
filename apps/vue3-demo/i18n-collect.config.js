@@ -3,6 +3,10 @@ module.exports = {
   include: ['public', 'src'],
   exclude: ['fixtures/**'],
   targetLocales: ['en'],
+  vueVersion: 3,
+  staticAudit: {
+    include: ['public/**/*.html', 'src/base.css']
+  },
   buildReplacement: {
     enabled: true,
     adapter: 'vue3',

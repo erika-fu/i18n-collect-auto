@@ -16,7 +16,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "脚本字符串",
@@ -33,7 +34,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "模板字符串",
@@ -50,7 +52,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "文本与属性",
@@ -67,7 +70,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "样式内容",
@@ -84,7 +88,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "构建替换",
@@ -101,7 +106,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/App.vue::script[lang=js]"
     },
     {
       "text": "构建替换演示",
@@ -119,7 +125,8 @@
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.build.title"
+      "key": "demo.build.title",
+      "resourceIdentity": "src/pages/BuildPage.vue::template[lang=html]"
     },
     {
       "text": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
@@ -137,7 +144,8 @@
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.build.body"
+      "key": "demo.build.body",
+      "resourceIdentity": "src/pages/BuildPage.vue::template[lang=html]"
     },
     {
       "text": "插值",
@@ -154,7 +162,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/HomePage.vue::script[lang=js]"
     },
     {
       "text": "名字",
@@ -171,7 +180,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/HomePage.vue::script[lang=js]"
     },
     {
       "text": "我不好",
@@ -188,7 +198,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/HomePage.vue::script[lang=js]"
     },
     {
       "text": "纯静态插值",
@@ -205,7 +216,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "template-expression",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/LiteralPage.vue::template[lang=html]"
     },
     {
       "text": "模板字符串",
@@ -222,7 +234,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/LiteralPage.vue::script[lang=js]"
     },
     {
       "text": "小明",
@@ -239,7 +252,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/LiteralPage.vue::script[lang=js]"
     },
     {
       "text": "静态段落里的中文",
@@ -256,7 +270,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "姓名",
@@ -273,7 +288,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "请输入姓名",
@@ -290,7 +306,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "姓名提示",
@@ -307,7 +324,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "示例图片",
@@ -324,7 +342,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "提交按钮",
@@ -341,7 +360,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "关闭面板",
@@ -358,7 +378,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-attribute",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "关闭",
@@ -375,7 +396,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "旁白",
@@ -392,7 +414,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]"
     },
     {
       "text": "文本与属性",
@@ -409,7 +432,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::script[lang=js]"
     },
     {
       "text": "小红",
@@ -426,7 +450,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/MarkupPage.vue::script[lang=js]"
     },
     {
       "text": "欢迎",
@@ -444,7 +469,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.visit.banner"
+      "key": "demo.visit.banner",
+      "resourceIdentity": "src/pages/MigrationPage.vue::script[lang=js]"
     },
     {
       "text": "欢迎",
@@ -462,7 +488,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.visit.farewell"
+      "key": "demo.visit.farewell",
+      "resourceIdentity": "src/pages/MigrationPage.vue::script[lang=js]"
     },
     {
       "text": "共享标题",
@@ -480,7 +507,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.shared.title"
+      "key": "demo.shared.title",
+      "resourceIdentity": "src/pages/MigrationPage.vue::script[lang=js]"
     },
     {
       "text": "请稍候",
@@ -498,7 +526,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.wait.a"
+      "key": "demo.wait.a",
+      "resourceIdentity": "src/pages/MigrationPage.vue::script[lang=js]"
     },
     {
       "text": "请稍候",
@@ -516,7 +545,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.wait.b"
+      "key": "demo.wait.b",
+      "resourceIdentity": "src/pages/MigrationPage.vue::script[lang=js]"
     },
     {
       "text": "脚本字符串",
@@ -533,7 +563,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "这是一段写在脚本里的中文",
@@ -550,7 +581,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "来自独立脚本的公共词条",
@@ -567,7 +599,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "公共模板1片段",
@@ -584,7 +617,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "同一句出现两次",
@@ -602,7 +636,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.script.hint"
+      "key": "demo.script.hint",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "保存",
@@ -619,7 +654,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "同一句出现两次",
@@ -637,7 +673,8 @@
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
       "capability": "automatically-runtime-localizable",
-      "key": "demo.script.result"
+      "key": "demo.script.result",
+      "resourceIdentity": "src/pages/ScriptPage.vue::script[lang=js]"
     },
     {
       "text": "收件箱",
@@ -654,7 +691,8 @@
       },
       "sourceSurface": "vue-template",
       "semanticRole": "html-text",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/StylePage.vue::template[lang=html]"
     },
     {
       "text": "样式内容",
@@ -671,7 +709,8 @@
       },
       "sourceSurface": "vue-script",
       "semanticRole": "script-string",
-      "capability": "automatically-runtime-localizable"
+      "capability": "automatically-runtime-localizable",
+      "resourceIdentity": "src/pages/StylePage.vue::script[lang=js]"
     }
   ],
   "auditFindings": [
@@ -691,6 +730,7 @@
       "sourceSurface": "standalone-html",
       "semanticRole": "static-html-text",
       "capability": "chinese-source-audit",
+      "resourceIdentity": "public/index.html::html",
       "disposition": "intentionally-ignored",
       "ignoreReason": "standalone HTML audit sample stays Chinese on disk"
     },
@@ -710,6 +750,27 @@
       "sourceSurface": "css",
       "semanticRole": "css-generated-content",
       "capability": "chinese-source-audit",
+      "resourceIdentity": "src/base.css::style[index=0;lang=css]",
+      "disposition": "unresolved",
+      "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
+    },
+    {
+      "text": "独立样式中文",
+      "location": {
+        "path": "src/base.css",
+        "start": {
+          "line": 3,
+          "column": 12
+        },
+        "end": {
+          "line": 3,
+          "column": 18
+        }
+      },
+      "sourceSurface": "css",
+      "semanticRole": "css-generated-content",
+      "capability": "chinese-source-audit",
+      "resourceIdentity": "src/base.css::style[index=0;lang=css]",
       "disposition": "intentionally-ignored",
       "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
@@ -734,6 +795,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.build.localeLabel",
+      "resourceIdentity": "src/pages/BuildPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "当前语言：中文"
@@ -755,6 +817,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.home.namePhrase",
+      "resourceIdentity": "src/pages/HomePage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "name"
@@ -778,6 +841,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.welcomeBack",
+      "resourceIdentity": "src/pages/LiteralPage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "name"
@@ -801,6 +865,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.unread.count",
+      "resourceIdentity": "src/pages/LiteralPage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "count"
@@ -824,6 +889,7 @@
       "semanticRole": "html-attribute",
       "capability": "already-localized",
       "key": "demo.markup.currentUserAria",
+      "resourceIdentity": "src/pages/MarkupPage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "name"
@@ -847,6 +913,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.visit.banner",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "欢迎"
@@ -868,6 +935,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.visit.farewell",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "欢迎"
@@ -889,6 +957,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.shared.title",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "共享标题"
@@ -910,6 +979,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "47781b8a72bcbb7ecb1f955399a7e718",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": []
     },
@@ -930,6 +1000,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.items.deleted",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "count"
@@ -953,6 +1024,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.terms.link",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "服务条款"
@@ -974,6 +1046,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.privacy.link",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "隐私政策"
@@ -995,6 +1068,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.terms.notice",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "terms",
@@ -1019,6 +1093,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.terms.link",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "服务条款"
@@ -1040,6 +1115,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.privacy.link",
+      "resourceIdentity": "src/pages/MigrationPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "隐私政策"
@@ -1061,6 +1137,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.multilingual.title",
+      "resourceIdentity": "src/pages/multilingual/MultilingualPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
       "source": "运行时多语言边界"
@@ -1082,6 +1159,7 @@
       "semanticRole": "template-expression",
       "capability": "already-localized",
       "key": "demo.multilingual.body",
+      "resourceIdentity": "src/pages/multilingual/MultilingualPage.vue::template[lang=html]",
       "paramsKind": "static",
       "paramNames": [
         "name"
@@ -1089,9 +1167,10 @@
       "source": "你好，{name}。此页仅通过显式本地化渲染。"
     }
   ],
+  "diagnostics": [],
   "coverage": {
     "sourceDiscovery": {
-      "total": 58
+      "total": 59
     },
     "runtimeLocalization": {
       "total": 56,
@@ -1099,8 +1178,8 @@
       "alreadyLocalized": 17
     },
     "chineseSourceAudit": {
-      "total": 2,
-      "unresolved": 0,
+      "total": 3,
+      "unresolved": 1,
       "needsReview": 0,
       "intentionallyIgnored": 2
     },

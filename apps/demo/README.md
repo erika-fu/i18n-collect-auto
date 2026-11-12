@@ -1,8 +1,8 @@
 # Vue 2 demo
 
-Webpack / Vue CLI demo for **scan → translate → build** (read-only Build replacement), locale switching, optional Source replacement, explicit messages, and audited HTML/CSS samples.
+Webpack / Vue CLI demo for **collect → translate → build** (verify-by-default Build replacement), locale switching, optional Source replacement (`vue2` adapter), explicit messages, and audited HTML/CSS samples.
 
-Forbidden interpolation and concatenation patterns live under `fixtures/` (excluded from scan). Live pages use `$t(...)` plus `lang/catalog/explicit-messages.json` where variables are required.
+Forbidden interpolation and concatenation patterns live under `fixtures/` (excluded from collection). Live pages use `$t(...)` plus `lang/catalog/explicit-messages.json` where variables are required.
 
 ## Audit dispositions
 
@@ -11,20 +11,21 @@ Included Chinese on standalone HTML (`public/index.html`) and CSS (`src/base.css
 ## Commands
 
 ```
-npm run scan
+npm run collect
 npm run check
 npm run build
+npm run replace
 ```
 
 From the repository root:
 
 ```
-npx i18n-collect scan --cwd apps/demo
+npx i18n-collect collect --cwd apps/demo
 npx i18n-collect check --cwd apps/demo
 npx i18n-collect replace --cwd apps/demo --adapter vue2
 npx i18n-collect replace --cwd apps/demo --adapter vue2 --write
 ```
 
-`replace` is preview-only unless `--write` is set. It rewrites supported application source only; catalogs stay untouched.
+`replace` is preview-only unless `--write` is set. It rewrites supported application source only; catalogs stay untouched. `build` verifies committed collection outputs by default; use `build --write-collection` only for an explicit development publish.
 
-After `scan`, sync `lang/catalog/zh.json` from `lang/catalog/source-catalog.json`, keep `lang/catalog/en.json` and `lang/catalog/translation-state.json` in sync, then run `check`.
+After `collect`, sync `lang/catalog/zh.json` from `lang/catalog/source-catalog.json`, keep `lang/catalog/en.json` and `lang/catalog/translation-state.json` in sync, then run `check`.

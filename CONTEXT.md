@@ -32,22 +32,26 @@ _Avoid_: Runtime localization coverage alone, Chinese source audit alone
 
 ### Commands
 
+**Collect**:
+The Webpack workflow command whose write ownership is formal collection outputs from the live module graph (source catalog, analysis report, and runtime dictionary / source-map). Watch mode publishes after successful rounds and preserves previous outputs after failed rounds.
+_Avoid_: Scan (as a synonym for Webpack collection)
+
 **Scan**:
-The workflow command whose write ownership is source analysis outputs (source catalog and analysis report).
+The filesystem analysis command whose write ownership is source analysis outputs only (source catalog and analysis report). It is the non-Webpack / legacy path beside Collect.
 _Avoid_: Collect
 
 **Migrate-keys**:
-The one-shot migration command that rewrites per-occurrence automatic keys into deterministic exact-text hash keys across the source-locale catalog, target catalogs, and `source-catalog.json`. It is the only command allowed to cross the usual Scan/Translate write split, and only for that migration. Conflicts write nothing.
-_Avoid_: Scan, Translate
+The one-shot migration command that rewrites per-occurrence automatic keys into deterministic exact-text hash keys across the source-locale catalog, target catalogs, and `source-catalog.json`. It is the only command allowed to cross the usual Collect/Scan/Translate write split, and only for that migration. Conflicts write nothing.
+_Avoid_: Collect, Scan, Translate
 
 **Translate**:
-The workflow command whose write ownership is target translation outputs.
+The workflow command whose write ownership is target translation outputs. Independent of Webpack; does not issue network requests during compilation.
 
 **Build**:
-The localization-aware build path that is read-only for localization artifacts while still allowed to rewrite in-memory modules and emitted build output.
+The localization-aware build path that verifies committed collection outputs by default and may rewrite in-memory modules and emitted build output. Publishing collection outputs during build requires an explicitly enabled development build-write mode.
 
 **Check**:
-The read-only workflow command that evaluates project localization completeness.
+The read-only workflow command that evaluates project localization completeness. Unresolved and needs-review findings block completeness.
 
 **Replace**:
 The optional source-replacement command that owns application-source writes only when explicitly requested, otherwise preview-only.

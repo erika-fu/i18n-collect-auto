@@ -1,7 +1,7 @@
 {
   "version": 1,
   "parserVersion": "babel-7",
-  "configHash": "1ad780351682eba611d6c42f74dedb56",
+  "configHash": "73631ccf5d15c9f2d0d9ceb3c62e37ca",
   "entries": [
     {
       "key": "09a7f8275557fb48e742487a54791b75",
@@ -140,18 +140,6 @@
       "value": "欢迎",
       "locations": [
         {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 4,
-            "column": 47
-          },
-          "end": {
-            "line": 4,
-            "column": 49
-          }
-        },
-        {
           "path": "src/pages/MigrationPage.vue",
           "kind": "script-string",
           "start": {
@@ -185,48 +173,12 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 17,
+            "line": 21,
             "column": 12
           },
           "end": {
-            "line": 17,
+            "line": 21,
             "column": 16
-          }
-        }
-      ]
-    },
-    {
-      "key": "4f401e68c89bb21aa1626dcea88c17ad",
-      "value": "这是",
-      "locations": [
-        {
-          "path": "src/pages/HomePage.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 7,
-            "column": 13
-          },
-          "end": {
-            "line": 7,
-            "column": 15
-          }
-        }
-      ]
-    },
-    {
-      "key": "50922f2239443fd233f01681f2e2a6f1",
-      "value": "的名字呀",
-      "locations": [
-        {
-          "path": "src/pages/HomePage.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 7,
-            "column": 19
-          },
-          "end": {
-            "line": 7,
-            "column": 23
           }
         }
       ]
@@ -364,6 +316,24 @@
       ]
     },
     {
+      "key": "72643387eab0e9d11899cfdc72675a8a",
+      "value": "公共模板1片段",
+      "locations": [
+        {
+          "path": "src/pages/ScriptPage.vue",
+          "kind": "script-string",
+          "start": {
+            "line": 21,
+            "column": 19
+          },
+          "end": {
+            "line": 21,
+            "column": 28
+          }
+        }
+      ]
+    },
+    {
       "key": "72f10f0ec143941b5b8f6cae2d7e5451",
       "value": "这是一段写在脚本里的中文",
       "locations": [
@@ -478,24 +448,6 @@
       ]
     },
     {
-      "key": "8de94c27e8719ef18dd9d2923680d66b",
-      "value": "公共模板",
-      "locations": [
-        {
-          "path": "src/pages/ScriptPage.vue",
-          "kind": "template-literal",
-          "start": {
-            "line": 21,
-            "column": 20
-          },
-          "end": {
-            "line": 21,
-            "column": 24
-          }
-        }
-      ]
-    },
-    {
       "key": "90d33d327a30d134a5e356b9acbba34d",
       "value": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
       "locations": [
@@ -509,24 +461,6 @@
           "end": {
             "line": 6,
             "column": 72
-          }
-        }
-      ]
-    },
-    {
-      "key": "95c9f3130483490aad68d1cc58e812d9",
-      "value": "回来",
-      "locations": [
-        {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 4,
-            "column": 56
-          },
-          "end": {
-            "line": 4,
-            "column": 58
           }
         }
       ]
@@ -593,30 +527,12 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "template-expression",
           "start": {
-            "line": 5,
+            "line": 4,
             "column": 40
           },
           "end": {
-            "line": 5,
+            "line": 4,
             "column": 45
-          }
-        }
-      ]
-    },
-    {
-      "key": "b65699a9e774f398cf4b4887f52c49f3",
-      "value": "拼接后的中文",
-      "locations": [
-        {
-          "path": "src/pages/LiteralPage.vue",
-          "kind": "template-expression",
-          "start": {
-            "line": 6,
-            "column": 54
-          },
-          "end": {
-            "line": 6,
-            "column": 62
           }
         }
       ]
@@ -659,11 +575,11 @@
           "path": "src/pages/LiteralPage.vue",
           "kind": "script-string",
           "start": {
-            "line": 16,
+            "line": 20,
             "column": 13
           },
           "end": {
-            "line": 16,
+            "line": 20,
             "column": 20
           }
         }
@@ -737,42 +653,6 @@
           "end": {
             "line": 4,
             "column": 10
-          }
-        }
-      ]
-    },
-    {
-      "key": "f15261b960ab48421862616e1a53c25f",
-      "value": "片段",
-      "locations": [
-        {
-          "path": "src/pages/ScriptPage.vue",
-          "kind": "template-literal",
-          "start": {
-            "line": 21,
-            "column": 28
-          },
-          "end": {
-            "line": 21,
-            "column": 30
-          }
-        }
-      ]
-    },
-    {
-      "key": "f63206a92a846ff73d0af241519e6b43",
-      "value": "当前用户",
-      "locations": [
-        {
-          "path": "src/pages/MarkupPage.vue",
-          "kind": "html-attribute",
-          "start": {
-            "line": 10,
-            "column": 22
-          },
-          "end": {
-            "line": 10,
-            "column": 26
           }
         }
       ]

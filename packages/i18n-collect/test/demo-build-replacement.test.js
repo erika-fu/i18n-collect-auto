@@ -82,20 +82,24 @@ function scrubBuildLeftovers(root) {
   }
 }
 
-test('Vue 2 demo package scripts expose two-phase build and serial watch Build replacement', () => {
+test('Vue 2 demo package scripts expose collect, build, replace, and serial watch Build replacement', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(vue2Root, 'package.json'), 'utf8'))
+  assert.match(pkg.scripts.collect, /i18n-collect(?:\.js)? collect/)
   assert.match(pkg.scripts.build, /i18n-collect(?:\.js)? build/)
   assert.match(pkg.scripts.watch || '', /i18n-collect(?:\.js)? build --watch/)
+  assert.match(pkg.scripts.replace || '', /replace --adapter vue2/)
   const config = require(path.join(vue2Root, 'i18n-collect.config.js'))
   assert.strictEqual(config.buildReplacement.enabled, true)
   assert.strictEqual(config.buildReplacement.adapter, 'vue2')
   assert.ok(config.buildReplacement.runtimeModule)
 })
 
-test('Vue 3 demo package scripts expose two-phase build and serial watch Build replacement', () => {
+test('Vue 3 demo package scripts expose collect, build, replace, and serial watch Build replacement', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(vue3Root, 'package.json'), 'utf8'))
+  assert.match(pkg.scripts.collect, /i18n-collect(?:\.js)? collect/)
   assert.match(pkg.scripts.build, /i18n-collect(?:\.js)? build/)
   assert.match(pkg.scripts.watch || '', /i18n-collect(?:\.js)? build --watch/)
+  assert.match(pkg.scripts.replace || '', /replace --adapter vue3/)
   const config = require(path.join(vue3Root, 'i18n-collect.config.js'))
   assert.strictEqual(config.buildReplacement.enabled, true)
   assert.strictEqual(config.buildReplacement.adapter, 'vue3')

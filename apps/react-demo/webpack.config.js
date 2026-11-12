@@ -1,5 +1,7 @@
 const path = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+const MyI18nPlugin = require('../../packages/i18n-collect/myplugin')
+const collector = require.resolve('../../packages/i18n-collect/myloader')
 
 module.exports = {
   context: __dirname,
@@ -26,14 +28,16 @@ module.exports = {
                 [require.resolve('@babel/preset-react'), { runtime: 'automatic' }]
               ]
             }
-          }
+          },
+          collector
         ]
       },
       {
         test: /\.css$/,
         use: [
           require.resolve('style-loader'),
-          require.resolve('css-loader')
+          require.resolve('css-loader'),
+          collector
         ]
       }
     ]
@@ -42,6 +46,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),
       title: 'React 文案收集示例'
-    })
+    }),
+    new MyI18nPlugin({ publishOutputs: false })
   ]
 }

@@ -6,8 +6,16 @@ function localizationCalleeName(callee) {
   if (callee.type !== 'MemberExpression' || callee.computed || !callee.property || callee.property.type !== 'Identifier') {
     return null
   }
-  if (callee.property.name !== '$t' || !callee.object || callee.object.type !== 'ThisExpression') return null
-  return 'this.$t'
+  if (callee.property.name !== '$t' || !callee.object) return null
+  if (callee.object.type === 'ThisExpression') return 'this.$t'
+  // Vue 3 render functions rewrite template $t(...) to _ctx.$t / $setup.$t.
+  if (
+    callee.object.type === 'Identifier'
+    && (callee.object.name === '_ctx' || callee.object.name === '$setup')
+  ) {
+    return '$t'
+  }
+  return null
 }
 
 function staticLocalizationKey(argument) {

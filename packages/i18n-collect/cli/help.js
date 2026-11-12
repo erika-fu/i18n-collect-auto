@@ -1,8 +1,9 @@
 const COLLECT_HELP = `i18n-collect collect
 
-Run a Webpack collection compilation and publish runtime messages from the live
-module graph. Unreachable resources are excluded. Collection failures do not
-publish partial results.
+Run a Webpack collection compilation and atomically publish collection outputs
+(source-catalog.json, analysis-report.json, and the runtime dictionary / source
+map) from the live module graph. Unreachable resources are excluded. Collection
+failures do not publish partial results; previous formal outputs are preserved.
 
 Usage:
   i18n-collect collect [options]
@@ -13,6 +14,9 @@ Options:
   --include <pattern>      Replace collection include patterns. Repeatable.
   --exclude <pattern>      Replace collection exclude patterns. Repeatable.
   --context-filter <name>  Replace collection-context filters. Repeatable.
+  --watch                  Keep Webpack watch mode. Publishes after each
+                           successful collection round and preserves previous
+                           outputs after a failed round.
   --json                   Print the collection report as JSON on stdout.
   -h, --help               Show this help.
 
@@ -131,7 +135,7 @@ Exit codes:
 
 const VERIFY_HELP = `i18n-collect verify
 
-Removed. Use i18n-collect scan then i18n-collect check for freshness and
+Removed. Use i18n-collect collect then i18n-collect check for freshness and
 project localization completeness.
 
 Usage:
@@ -155,21 +159,21 @@ Exit codes:
 
 const ROOT_HELP = `i18n-collect
 
-Primary workflow: scan, translate, build, replace, and check.
+Primary workflow: collect, translate, build, replace, and check.
 
 Usage:
   i18n-collect <command> [options]
 
 Commands:
-  scan          Analyze sources; writes source-catalog.json and analysis-report.json only.
-  translate     Fill target-locale catalogs and translation-state.json only.
-  build         Read-only build replacement into the formal webpack bundle.
+  collect       Webpack collection; atomically publishes source-catalog.json, analysis-report.json, and dictionary outputs.
+  translate     Fill target-locale catalogs and translation-state.json only. Independent of Webpack; no network during compilation.
+  build         Verify collection outputs by default; rewrite in-memory modules and the formal webpack bundle only.
   replace       Preview source replacements, or write application source with --write.
   check         Read-only project localization completeness (including hybrid policy).
   migrate-keys  One-shot migration of per-occurrence automatic keys to text-hash keys.
-  collect       Webpack module-graph collection; publishes runtime dictionary outputs.
-  verify        Removed; use scan then check.
-  run           Removed; use scan, translate, replace, build, and check directly.
+  scan          Filesystem analysis; writes source-catalog.json and analysis-report.json only (non-Webpack / legacy path).
+  verify        Removed; use collect then check.
+  run           Removed; use collect, translate, replace, build, and check directly.
   check-policy  Removed; use check.
 
 Run i18n-collect <command> --help for command options and write ownership.
@@ -177,7 +181,7 @@ Run i18n-collect <command> --help for command options and write ownership.
 
 const RUN_HELP = `i18n-collect run
 
-Removed. Use i18n-collect scan, translate, replace, build, and check directly.
+Removed. Use i18n-collect collect, translate, replace, build, and check directly.
 
 Usage:
   i18n-collect run [options]
@@ -247,10 +251,10 @@ const CHECK_HELP = `i18n-collect check
 
 Evaluate project localization completeness without writing files.
 Check analyzes sources in memory, compares them with the committed source catalog from
-scan, and reports runtime localization coverage, Chinese source audit disposition,
-target-locale coverage, complete-static-copy baseline policy, and runtime-multilingual
-boundary policy. Completeness fails for a stale or missing source catalog,
-explicit-required messages, unresolved or needs-review audit findings, missing
+collect (or scan), and reports runtime localization coverage, Chinese source audit
+disposition, target-locale coverage, complete-static-copy baseline policy, and
+runtime-multilingual boundary policy. Completeness fails for a stale or missing source
+catalog, explicit-required messages, unresolved or needs-review audit findings, missing
 translations, needs-review translations, new or modified complete-static-copy violations,
 or runtime-multilingual boundary violations. Stale target keys and grandfathered baseline
 entries are reported but do not fail completeness. Intentionally ignored audit findings
@@ -277,13 +281,13 @@ Exit codes:
 
 const BUILD_HELP = `i18n-collect build
 
-Run a read-only Build replacement through the project's existing webpack integration.
-Phase 1 analyzes project sources in memory and verifies they still match the committed
-source catalog (source-catalog.json). Phase 2 rewrites matching JavaScript, TypeScript,
-and Vue SFC modules in memory and emits the formal bundle. Build does not create, update,
-restore, or delete source catalog, audit, target catalog, or translation-state files.
-Application source files are not modified. Requires buildReplacement.enabled in
-i18n-collect.config.js with adapter js, vue2, or vue3.
+Run Build replacement through the project's existing webpack integration.
+Phase 1 runs a Webpack collection compilation and verifies the result against the
+committed source catalog (source-catalog.json) by default. Phase 2 rewrites matching
+JavaScript, TypeScript, and Vue SFC modules in memory and emits the formal bundle.
+By default build does not create, update, restore, or delete source catalog, audit,
+target catalog, or translation-state files. Application source files are not modified.
+Requires buildReplacement.enabled in i18n-collect.config.js with adapter js, vue2, or vue3.
 Build replacement is fail-closed: unsupported, stale, mismatched, or otherwise unsafe
 runtime-localizable positions abort the build with structured diagnostics. HTML and style
 audit findings are not passed to the replacement planner. A failed analysis keeps the
@@ -300,10 +304,14 @@ Options:
   --exclude <pattern>       Replace the configured exclude scope. Repeat to set several patterns.
   --context-filter <name>   Replace configured context filters. Repeat to select several.
                             Names: logging, tests, analytics.
+  --write-collection        Explicit development build-write mode. Allows this build to
+                            publish collection outputs from the analysis compilation.
+                            Without this flag, build only verifies committed outputs.
   --watch                   Keep a serial analyze-then-replace loop. Each cycle verifies the
-                            committed source catalog, then publishes the formal bundle.
-                            Invalidations are coalesced; at most one coordinated cycle runs at
-                            a time. Watch does not start an implicit scan or catalog write.
+                            committed source catalog (unless --write-collection), then
+                            publishes the formal bundle. Invalidations are coalesced; at most
+                            one coordinated cycle runs at a time. Watch does not start an
+                            implicit collect without --write-collection.
   --json                    Print the build report as JSON on stdout.
   -h, --help                Show this help.
 
