@@ -4,16 +4,16 @@
 
 **Blocked by:** 08: Migrate command ownership and demos to the new workflow.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unreachable modules never enter the runtime catalog.
-- [ ] Watch removal or reachability changes remove stale findings.
-- [ ] Failed compilations do not publish partial snapshots or formal outputs.
-- [ ] Collection and build replacement use the same findings.
-- [ ] Standalone HTML and CSS never enter the runtime catalog.
-- [ ] Key conflicts, placeholder conflicts, and unsafe replacement fail closed.
-- [ ] `collect` and `build` do not modify application source.
-- [ ] Translation providers, network requests, and credentials do not enter compilation.
-- [ ] Schemas and output ordering are stable, and production verification is semantic.
-- [ ] Multiple compilers do not share implicit collection state.
-- [ ] Package tests, demo builds, and the complete regression command pass.
+- [x] Unreachable modules never enter the runtime catalog.
+- [x] Watch removal or reachability changes remove stale findings.
+- [x] Failed compilations do not publish partial snapshots or formal outputs.
+- [x] Collection and build replacement use the same findings.
+- [x] Standalone HTML and CSS never enter the runtime catalog.
+- [x] Key conflicts, placeholder conflicts, and unsafe replacement fail closed.
+- [x] `collect` and `build` do not modify application source.
+- [x] Translation providers, network requests, and credentials do not enter compilation.
+- [x] Schemas and output ordering are stable, and production verification is semantic.
+- [x] Multiple compilers do not share implicit collection state.
+- [x] Package tests, demo builds, and the complete regression command pass.

@@ -37,7 +37,7 @@ npm run regression
 
 `npm run build` and `npm run build-vue3-demo` run verify-by-default `i18n-collect build`. Refresh catalogs with `collect` (then sync the source-locale runtime catalog) and `translate` when needed. Watch variants: `npm run watch -w i18n-auto-webpack-demo` and `npm run watch -w i18n-auto-webpack-vue3-demo`. Collection watch: `npm run collect:watch -w i18n-auto-webpack-demo`.
 
-`npm test` runs the package suite, including migration fixtures under `packages/i18n-collect/fixtures/replacement`.
+`npm test` runs the package suite, including migration fixtures under `packages/i18n-collect/fixtures/replacement` and the Webpack runtime collection end-to-end regression in `packages/i18n-collect/test/webpack-runtime-collection-regression.test.js`.
 
 `npm run regression` runs package tests, all three demo builds, then the hybrid localization gate with `--skip-package-tests`.
 
