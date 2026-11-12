@@ -47,6 +47,7 @@ function parseCollectArgs(args) {
     exclude: undefined,
     include: undefined,
     json: false,
+    replace: false,
     watch: false,
     webpackConfig: null
   }
@@ -70,6 +71,9 @@ function parseCollectArgs(args) {
     } else if (flag === '--watch') {
       if (inline !== null) throw commandError('configuration', 'unknown option "--watch"')
       parsed.watch = true
+    } else if (flag === '--replace') {
+      if (inline !== null) throw commandError('configuration', 'unknown option "--replace"')
+      parsed.replace = true
     } else if (flag === '--cwd') parsed.cwd = value('--cwd')
     else if (flag === '--webpack-config') parsed.webpackConfig = value('--webpack-config')
     else if (flag === '--include') {
@@ -231,13 +235,14 @@ function isMyI18nPlugin(plugin) {
   return Boolean(plugin && plugin.constructor && plugin.constructor.name === 'MyI18nPlugin')
 }
 
-function ensureCollectPublishPlugin(webpackConfig) {
+function ensureCollectPublishPlugin(webpackConfig, { replace = false } = {}) {
   const MyI18nPlugin = require('../myplugin')
   const previous = pluginOptionsFrom(webpackConfig) || {}
   webpackConfig.plugins = (webpackConfig.plugins || []).filter(plugin => !isMyI18nPlugin(plugin))
   webpackConfig.plugins.push(new MyI18nPlugin({
     ...previous,
-    publishOutputs: true
+    publishOutputs: true,
+    replaceDuringCollection: replace
   }))
 }
 
@@ -301,9 +306,22 @@ async function execute(parsed, hooks = {}) {
     if (!webpackConfig || typeof webpackConfig !== 'object' || Array.isArray(webpackConfig)) {
       throw commandError('configuration', 'collect accepts one webpack configuration object')
     }
-    ensureCollectPublishPlugin(webpackConfig)
+    ensureCollectPublishPlugin(webpackConfig, { replace: parsed.replace })
+    if (parsed.replace) {
+      const replacement = resolveConfig(root).buildReplacement
+      if (!replacement || !replacement.enabled) {
+        throw commandError('configuration', 'collect --replace requires buildReplacement.enabled in i18n-collect.config.js')
+      }
+      const { assertReplacementRuntime } = require('../mycommon/replacement-runtime')
+      assertReplacementRuntime(root, replacement.adapter)
+    }
     const pluginOptions = pluginOptionsFrom(webpackConfig)
-    emitDir = redirectEmit(webpackConfig)
+    if (!parsed.replace) emitDir = redirectEmit(webpackConfig)
+    else {
+      webpackConfig.watch = false
+      webpackConfig.cache = false
+      webpackConfig.infrastructureLogging = { level: 'error' }
+    }
     const { error, stats } = await runCompiler(webpackConfig, hooks)
     const failed = classifyBuild(error, stats)
     if (failed) throw failed
@@ -329,6 +347,9 @@ async function collect(args, hooks = {}) {
     return failure(error, json)
   }
   if (parsed.watch) {
+    if (parsed.replace) {
+      return failure(commandError('configuration', 'collect --replace does not support --watch'), json)
+    }
     const root = path.resolve(parsed.cwd || process.cwd())
     if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
       return failure(commandError('configuration', `project root is not a directory: ${root}`), json)

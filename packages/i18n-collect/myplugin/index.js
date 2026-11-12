@@ -55,6 +55,7 @@ function pluginConfigOptions(options = {}) {
   const {
     publishOutputs,
     onAnalysis,
+    replaceDuringCollection,
     ...configOptions
   } = options
   return configOptions
@@ -65,6 +66,7 @@ class MyI18nPlugin {
     this.options = pluginConfigOptions(options)
     this.publishOutputs = options.publishOutputs !== false
     this.onAnalysis = typeof options.onAnalysis === 'function' ? options.onAnalysis : null
+    this.replaceDuringCollection = options.replaceDuringCollection === true
   }
 
   apply(compiler) {
@@ -74,6 +76,7 @@ class MyI18nPlugin {
 
     compiler.hooks.thisCompilation.tap(PLUGIN, compilation => {
       session.begin(compilation)
+      compilation.__i18nCollectReplaceDuringCollection = this.replaceDuringCollection
       compilation.hooks.afterSeal.tap(PLUGIN, () => {
         const round = liveRound(compilation, metadataContext(compiler))
         for (const diagnostic of round.diagnostics) compilation.errors.push(new Error(diagnostic))

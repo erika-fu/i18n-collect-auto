@@ -4,9 +4,9 @@ Discover Chinese user-facing copy via Webpack collection, keep runtime-localizab
 
 Primary workflow:
 
-1. **collect** — Webpack module-graph collection; atomically publishes `source-catalog.json`, `analysis-report.json`, and dictionary outputs.
+1. **collect** — Webpack module-graph collection; atomically publishes `source-catalog.json`, `analysis-report.json`, and dictionary outputs. Add `--replace` to replace eligible runtime messages in the same loader pass and emit the configured bundle without changing application source files.
 2. **translate** — fill target-locale catalogs (and translation state) only. Independent of Webpack; no network during compilation.
-3. **build** — verify collection outputs by default; Build replacement into the formal webpack bundle only (no catalog mutation unless `--write-collection`).
+3. **build** — verify collection outputs by default; legacy Build replacement into the formal webpack bundle only (no catalog mutation unless `--write-collection`). Prefer `collect --replace` when collection and in-memory replacement should occur in one compilation.
 4. **replace** — preview Source replacement; write application source only with `--write`.
 5. **check** — read-only project localization completeness (freshness, coverage, audits, translations, hybrid policy).
 

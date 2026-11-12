@@ -223,6 +223,32 @@ test('collection and build replacement use the same findings', { timeout: 90000 
   assertLangUnchanged(langBefore, root)
 })
 
+test('collect --replace publishes collection outputs and immediately replaces the emitted bundle', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-wrc-collect-replace-'))
+  writeBuildProject(root)
+  const beforeSource = applicationSnapshot(root)
+
+  const result = run(['collect', '--replace', '--json'], root)
+
+  assert.strictEqual(result.status, 0, result.stderr)
+  const key = keyForSource(root, '你好')
+  assert.deepStrictEqual(catalogMessages(root), { [key]: '你好' })
+  const bundle = fs.readFileSync(path.join(root, 'dist/bundle.js'), 'utf8')
+  assert.match(bundle, new RegExp(key.replace(/\./g, '\\.')))
+  assert.doesNotMatch(bundle, /你好/)
+  assertSourcesUnchanged(beforeSource, root)
+})
+
+test('plain collect publishes collection outputs without replacing its disposable compilation', { timeout: 60000 }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-wrc-collect-only-'))
+  writeBuildProject(root)
+
+  const result = run(['collect', '--json'], root)
+
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.ok(!fs.existsSync(path.join(root, 'dist/bundle.js')))
+})
+
 test('standalone HTML and CSS never enter the runtime catalog', { timeout: 60000 }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-wrc-audit-'))
   writeCollectProject(root, {

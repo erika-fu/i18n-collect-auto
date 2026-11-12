@@ -16,7 +16,7 @@ Removed commands (`verify`, `check-policy`, `run`) exit with configuration failu
 
 ## Write ownership
 
-- **collect** runs a Webpack collection compilation and atomically publishes `source-catalog.json`, `analysis-report.json`, and runtime dictionary / source-map outputs. `collect --watch` publishes after successful rounds and preserves previous outputs after failed rounds.
+- **collect** runs a Webpack collection compilation and atomically publishes `source-catalog.json`, `analysis-report.json`, and runtime dictionary / source-map outputs. `collect --replace` also rewrites eligible runtime messages in the same collection loader pass and emits the configured bundle, without changing application source files. `collect --watch` publishes after successful rounds and preserves previous outputs after failed rounds; it cannot be combined with `--replace`.
 - **scan** writes `source-catalog.json` and `analysis-report.json` only (filesystem path; does not dual-write the Webpack dictionary).
 - **translate** writes target-locale catalogs and `translation-state.json` only. Independent of Webpack; does not issue network requests during compilation.
 - **build** verifies committed collection outputs by default and may rewrite in-memory modules and emitted bundles. It does not mutate catalogs unless `--write-collection` is explicitly set (development build-write mode).

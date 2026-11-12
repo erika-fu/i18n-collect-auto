@@ -175,12 +175,20 @@ test('collect fails closed when a staticAudit input is missing and keeps prior o
   assert.deepStrictEqual(fs.readFileSync(analysisPath), beforeAnalysis)
 })
 
-test('collect help documents watch publish ownership', () => {
+test('collect help documents watch publish ownership and immediate replacement', () => {
   const result = run(['collect', '--help'])
   assert.strictEqual(result.status, 0)
   assert.match(result.stdout, /--watch/)
   assert.match(result.stdout, /publishes after each|successful collection round/i)
   assert.match(result.stdout, /preserves previous|failed round/i)
+  assert.match(result.stdout, /--replace/)
+  assert.match(result.stdout, /same\s+collection loader pass/i)
+})
+
+test('collect rejects --replace with --watch', async () => {
+  const outcome = await collect(['--replace', '--watch', '--json'])
+  assert.strictEqual(outcome.code, 1)
+  assert.match(outcome.stderr, /does not support --watch/i)
 })
 
 test('collect --watch publishes after successful rounds and preserves outputs after failed rounds', {

@@ -16,7 +16,12 @@ Options:
   --context-filter <name>  Replace collection-context filters. Repeatable.
   --watch                  Keep Webpack watch mode. Publishes after each
                            successful collection round and preserves previous
-                           outputs after a failed round.
+                           outputs after a failed round. Cannot be combined
+                           with --replace.
+  --replace                Replace eligible runtime messages in the same
+                           collection loader pass and emit the configured
+                           webpack bundle. Requires buildReplacement.enabled.
+                           Application source files are not modified.
   --json                   Print the collection report as JSON on stdout.
   -h, --help               Show this help.
 

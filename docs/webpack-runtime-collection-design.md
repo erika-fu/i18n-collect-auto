@@ -15,7 +15,7 @@ Translation remains a separate workflow. Standalone HTML and styles remain Chine
 ```text
 Webpack compilation / watch
   ├─ discover runtime-localizable messages from live modules
-  ├─ optionally rewrite safe messages in memory
+  ├─ optionally rewrite safe messages in the same collection loader pass
   ├─ aggregate live resource snapshots
   └─ publish or verify collection outputs
 

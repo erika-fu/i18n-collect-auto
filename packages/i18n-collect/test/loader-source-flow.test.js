@@ -146,6 +146,45 @@ test('loader collects Vue render-function template JavaScript through the render
   )
 })
 
+test('loader replaces Vue render-function JavaScript in the same collection pass', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-render-replace-'))
+  const resourcePath = path.join(root, 'src', 'App.vue')
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), `module.exports = {
+  vueVersion: 3,
+  buildReplacement: {
+    enabled: true,
+    adapter: 'vue3',
+    runtimeModule: 'src/i18n.js',
+    runtimeExport: 't'
+  }
+}\n`)
+  const source = [
+    'export function render(_ctx) {',
+    '  return _createTextVNode("你好")',
+    '}',
+    ''
+  ].join('\n')
+  const mod = { buildInfo: {} }
+  const compiler = { root: null }
+  compiler.root = compiler
+  const compilation = { warnings: [], __i18nCollectReplaceDuringCollection: true }
+  let callbackSource = null
+  loader.call({
+    resourcePath,
+    resourceQuery: '?vue&type=template&lang=js',
+    rootContext: root,
+    _module: mod,
+    _compiler: compiler,
+    _compilation: compilation,
+    getOptions() { return { root } },
+    callback(_error, nextSource) { callbackSource = nextSource }
+  }, source, null, null)
+
+  assert.match(callbackSource, new RegExp(`_ctx\\.\\$t\\('${keyFor('你好')}'\\)`))
+  assert.deepStrictEqual(mod.buildInfo[COLLECT_METADATA].snapshot.entries.map(entry => entry.value), ['你好'])
+})
+
 test('loader collects Vue 2 render-function template JavaScript through the Vue 2 policy', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-render-v2-'))
   const resourcePath = path.join(root, 'src', 'App.vue')

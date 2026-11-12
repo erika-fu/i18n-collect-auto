@@ -167,7 +167,8 @@ function transformScriptBuildReplacement({
   adapter,
   runtimeExport,
   styleExtensions,
-  inputSourceMap
+  inputSourceMap,
+  helperAvailable = false
 }) {
   const parseError = parseSourceError(source)
   if (parseError) {
@@ -181,7 +182,7 @@ function transformScriptBuildReplacement({
     runtime: {
       localizationFunction: true,
       helperName,
-      helperAvailable: false
+      helperAvailable
     }
   })
   const planned = planner.plan({
@@ -302,7 +303,8 @@ function transformBuildReplacement({
   runtimeModule,
   runtimeExport = 't',
   styleExtensions = [],
-  inputSourceMap = null
+  inputSourceMap = null,
+  helperAvailable = false
 }) {
   if (typeof source !== 'string') {
     return { code: source, map: null, changed: false, planned: null }
@@ -339,7 +341,8 @@ function transformBuildReplacement({
     adapter: adapter === 'vue2' || adapter === 'vue3' ? adapter : 'js',
     runtimeExport,
     styleExtensions,
-    inputSourceMap
+    inputSourceMap,
+    helperAvailable
   })
 }
 
