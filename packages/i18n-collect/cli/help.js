@@ -330,11 +330,13 @@ Exit codes:
 const CHECK_HELP = `i18n-collect check
 
 Evaluate project localization completeness without writing files.
-For this expand step, check analyzes sources in memory and fails when any Chinese source
-audit finding remains unresolved or needs-review (standalone HTML, proven CSS generated
-content, or conservative preprocessor candidates). Intentionally ignored findings stay
-visible in the JSON report with their non-empty reason. Later work widens this command to
-full runtime coverage and target-locale checks.
+Check analyzes sources in memory, compares them with the committed source catalog from
+scan, and reports runtime localization coverage, Chinese source audit disposition, and
+target-locale coverage. Completeness fails for a stale or missing source catalog,
+explicit-required messages, unresolved or needs-review audit findings, missing
+translations, or needs-review translations. Stale target keys are reported but do not
+fail completeness. Intentionally ignored audit findings stay visible with their reason
+and count as disposed. This command never rewrites project files.
 
 Usage:
   i18n-collect check [options]
@@ -349,9 +351,9 @@ Options:
   -h, --help                Show this help.
 
 Exit codes:
-  0  project localization completeness passed for the audited surfaces
+  0  project localization completeness passed
   1  configuration failure
-  2  incomplete: unresolved or needs-review Chinese source audit findings, or analysis failure
+  2  incomplete localization, analysis failure, or malformed localization artifacts
 `
 
 const BUILD_HELP = `i18n-collect build

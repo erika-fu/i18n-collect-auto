@@ -1,8 +1,16 @@
 const fs = require('fs')
 const path = require('path')
-const { analyzeProject } = require('../mycommon/project-analysis')
+const { catalogFormat } = require('../mycommon/catalog-format')
 const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
-const { isResourceIncluded } = require('../myloader/resource')
+const {
+  evaluateLocalizationCompleteness
+} = require('../mycommon/evaluate-localization-completeness')
+const { analyzeProject } = require('../mycommon/project-analysis')
+const { listProjectSources } = require('../mycommon/project-sources')
+const {
+  readCommittedSourceCatalog,
+  sourceCatalogPath
+} = require('../mycommon/source-catalog-freshness')
 
 const EXIT = {
   ok: 0,
@@ -11,24 +19,7 @@ const EXIT = {
   collection: 2
 }
 
-const SOURCE_EXTENSIONS = new Set([
-  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
-  '.vue', '.html', '.htm',
-  '.css', '.scss', '.sass', '.less', '.styl', '.stylus'
-])
-
-const SKIP_DIRECTORIES = new Set([
-  '.git',
-  '.hg',
-  '.svn',
-  'node_modules',
-  'dist',
-  'coverage',
-  '.next',
-  '.nuxt',
-  '.output',
-  '.cache'
-])
+const REVIEW_NAME = 'translation-state.json'
 
 function commandError(kind, message) {
   const error = new Error(message)
@@ -100,33 +91,116 @@ function parseCheckArgs(args) {
   return parsed
 }
 
-function listSourceFiles(root, config) {
-  const files = []
-  const visit = directory => {
-    let entries
-    try {
-      entries = fs.readdirSync(directory, { withFileTypes: true })
-    } catch (error) {
-      return
+function tryReadCommittedSourceCatalog(root, config) {
+  const relative = sourceCatalogPath(config)
+  const file = path.join(root, relative)
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return null
+  return readCommittedSourceCatalog(root, config)
+}
+
+function localeFile(config, locale) {
+  return path.posix.join(config.catalogDir, `${locale}${catalogFormat(config.catalogFormat).extension}`)
+}
+
+function reviewFile(config) {
+  return path.posix.join(config.catalogDir, REVIEW_NAME)
+}
+
+function readTargetCatalog(root, relative, adapter) {
+  const file = path.join(root, relative)
+  if (!fs.existsSync(file)) return {}
+  try {
+    const parsed = adapter.parse(fs.readFileSync(file, 'utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw commandError('configuration', `target catalog must be a JSON object: ${relative}`)
     }
-    for (const entry of entries) {
-      if (entry.name === '.' || entry.name === '..') continue
-      const absolute = path.join(directory, entry.name)
-      if (entry.isDirectory()) {
-        if (SKIP_DIRECTORIES.has(entry.name)) continue
-        visit(absolute)
-        continue
+    for (const key of Object.keys(parsed)) {
+      if (typeof parsed[key] !== 'string') {
+        throw commandError('configuration', `target catalog key "${key}" must be a string: ${relative}`)
       }
-      if (!entry.isFile()) continue
-      const projectPath = path.relative(root, absolute).split(path.sep).join('/')
-      const extension = path.posix.extname(projectPath).toLowerCase()
-      if (!SOURCE_EXTENSIONS.has(extension)) continue
-      if (!isResourceIncluded(projectPath, config)) continue
-      files.push({ absolute, projectPath })
+    }
+    return parsed
+  } catch (error) {
+    if (error && error.kind === 'configuration') throw error
+    throw commandError('configuration', `cannot read target catalog ${relative}: ${error.message}`)
+  }
+}
+
+function readReviewState(root, relative) {
+  const file = path.join(root, relative)
+  if (!fs.existsSync(file)) return { version: 1, locales: {} }
+  let value
+  try {
+    value = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw commandError('configuration', `cannot read translation state ${relative}: ${error.message}`)
+  }
+  if (!value || value.version !== 1 || !value.locales || typeof value.locales !== 'object' || Array.isArray(value.locales)) {
+    throw commandError('configuration', `translation state ${relative} must be version 1`)
+  }
+  for (const [locale, entries] of Object.entries(value.locales)) {
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+      throw commandError('configuration', `translation state for "${locale}" must be an object`)
+    }
+    for (const [key, record] of Object.entries(entries)) {
+      const review = record && record.review
+      if (!record || typeof record.sourceFingerprint !== 'string' || (review !== 'current' && review !== 'needs-review')) {
+        throw commandError('configuration', `translation state for "${locale}" key "${key}" is invalid`)
+      }
     }
   }
-  visit(root)
-  return files.sort((left, right) => left.projectPath.localeCompare(right.projectPath))
+  return value
+}
+
+function summaryReport(analysis, evaluation, scannedFiles) {
+  return {
+    command: 'check',
+    ok: evaluation.ok,
+    scannedFiles,
+    sourceFreshness: evaluation.sourceFreshness,
+    runtimeLocalization: evaluation.runtimeLocalization,
+    chineseSourceAudit: evaluation.chineseSourceAudit,
+    localeCoverage: evaluation.localeCoverage,
+    missingTranslations: evaluation.missingTranslations,
+    needsReviewTranslations: evaluation.needsReviewTranslations,
+    staleTargetKeys: evaluation.staleTargetKeys,
+    blocking: evaluation.blocking,
+    message: evaluation.message,
+    coverage: analysis.coverage,
+    auditFindings: evaluation.auditFindings,
+    explicitRequiredFindings: evaluation.explicitRequiredFindings
+  }
+}
+
+function humanSummary(evaluation, analysis) {
+  const lines = []
+  if (evaluation.ok) {
+    lines.push(
+      `check: complete; source discovery ${analysis.coverage.sourceDiscovery.total}; ` +
+      `runtime auto ${evaluation.runtimeLocalization.automaticallyRuntimeLocalizable}, ` +
+      `already ${evaluation.runtimeLocalization.alreadyLocalized}, ` +
+      `explicit-required ${evaluation.runtimeLocalization.explicitRequired}; ` +
+      `unresolved audit ${evaluation.chineseSourceAudit.unresolved}; ` +
+      `needs-review audit ${evaluation.chineseSourceAudit.needsReview}; ` +
+      `intentionally ignored ${evaluation.chineseSourceAudit.intentionallyIgnored}`
+    )
+  } else {
+    lines.push(`incomplete: ${evaluation.message}`)
+    for (const code of evaluation.blocking) {
+      lines.push(`blocking: ${code}`)
+    }
+  }
+  if (evaluation.staleTargetKeys.length > 0) {
+    const sample = evaluation.staleTargetKeys
+      .slice(0, 3)
+      .map(item => `${item.locale}:${item.key}`)
+      .join(', ')
+    const more = evaluation.staleTargetKeys.length > 3
+      ? ` (+${evaluation.staleTargetKeys.length - 3} more)`
+      : ''
+    lines.push(`stale target keys (reported only): ${sample}${more}`)
+  }
+  return `${lines.join('\n')}\n`
 }
 
 function check(args) {
@@ -145,45 +219,38 @@ function check(args) {
     if (Object.keys(overrides).length) setCollectionOverrides(overrides)
 
     const config = loadConfig({ root })
-    const sources = listSourceFiles(config.root, config).map(file => ({
-      path: file.projectPath,
-      absolutePath: file.absolute,
-      source: fs.readFileSync(file.absolute, 'utf8')
-    }))
+    const sources = listProjectSources(config.root, config)
     const analysis = analyzeProject({ files: sources, config })
-    const unresolved = analysis.coverage.chineseSourceAudit.unresolved
-    const needsReview = analysis.coverage.chineseSourceAudit.needsReview || 0
-    const blocking = unresolved + needsReview
-    const ok = blocking === 0
-    const summary = {
-      command: 'check',
-      ok,
-      scannedFiles: sources.length,
-      coverage: analysis.coverage,
-      chineseSourceAudit: analysis.coverage.chineseSourceAudit,
-      auditFindings: analysis.auditFindings
+    const committedSourceCatalog = tryReadCommittedSourceCatalog(config.root, config)
+
+    const adapter = catalogFormat(config.catalogFormat)
+    const targets = {}
+    for (const locale of config.targetLocales) {
+      targets[locale] = readTargetCatalog(config.root, localeFile(config, locale), adapter)
     }
-    if (!ok) {
-      const parts = []
-      if (unresolved > 0) parts.push(`${unresolved} unresolved`)
-      if (needsReview > 0) parts.push(`${needsReview} needs-review`)
-      const message =
-        `project localization completeness failed: ${parts.join(', ')} Chinese source audit finding(s)`
+    const reviewState = readReviewState(config.root, reviewFile(config))
+
+    const evaluation = evaluateLocalizationCompleteness({
+      analysis,
+      committedSourceCatalog,
+      targetLocales: config.targetLocales,
+      targets,
+      reviewState
+    })
+    const report = summaryReport(analysis, evaluation, sources.length)
+
+    if (!evaluation.ok) {
       if (parsed.json) {
         return outcome(
           EXIT.incomplete,
-          jsonText({ ...summary, failure: 'incomplete', message }),
-          `incomplete: ${message}\n`
+          jsonText({ ...report, failure: 'incomplete' }),
+          `incomplete: ${evaluation.message}\n`
         )
       }
-      return outcome(EXIT.incomplete, '', `incomplete: ${message}\n`)
+      return outcome(EXIT.incomplete, '', humanSummary(evaluation, analysis))
     }
-    if (parsed.json) return outcome(EXIT.ok, jsonText(summary), '')
-    return outcome(
-      EXIT.ok,
-      `check: complete; source discovery ${analysis.coverage.sourceDiscovery.total}; unresolved audit ${unresolved}; needs-review ${needsReview}\n`,
-      ''
-    )
+    if (parsed.json) return outcome(EXIT.ok, jsonText(report), '')
+    return outcome(EXIT.ok, humanSummary(evaluation, analysis), '')
   } catch (error) {
     return failure(error, parsed.json)
   } finally {
