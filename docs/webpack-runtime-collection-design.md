@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented for Webpack runtime collection and build replacement. Filesystem `scan` remains an intentional non-Webpack / legacy analysis path beside `collect` (see CONTEXT.md and docs/migration.md); it is not a second runtime-collection authority.
+Implemented for Webpack runtime collection and build replacement. Filesystem `scan` remains an intentional non-Webpack / legacy analysis path beside `collect` (see CONTEXT.md and docs/migration.md); it is not a second runtime-collection authority. Dynamic-message candidate review is accepted in ADR-0009 but its CLI and decision manifest are pending implementation.
 
 ## Decision Summary
 
@@ -27,7 +27,8 @@ Translate
 
 - Make the real Webpack module graph the sole source of truth for runtime message discovery.
 - Support incremental collection in Webpack watch and development-server compilations.
-- Collect and optionally replace JavaScript and compiled Vue template render code through a shared JavaScript AST pipeline.
+- Collect complete static JavaScript and Vue template messages, and preserve dynamic or structured Chinese as location-bearing human-review candidates rather than independent translation fragments.
+- Optionally replace only safe, complete runtime messages through the shared replacement pipeline.
 - Preserve an HTML attribute allowlist for user-facing properties.
 - Keep Chinese text in standalone HTML and styles visible through audit reporting without pretending it is runtime-localizable.
 - Keep translation, external network access, API credentials, and target-catalog lifecycle outside compilation.
@@ -97,6 +98,8 @@ The primary collection and replacement transforms run in normal loader phases at
 | Vue style | Audit only |
 | Standalone HTML / CSS | Audit only |
 
+Dynamic expressions and structured messages on a supported runtime surface are not silently dropped or split into catalog fragments. The analysis records the whole expression and source location as an explicit-localization-required candidate for human review. Only a complete static message or an already-valid explicit localization call is eligible for collection and replacement.
+
 For normal JavaScript, the loader chain is conceptually:
 
 ```text
@@ -130,7 +133,7 @@ Build replacement changes only loader-provided in-memory source and emitted asse
 
 ## Vue Templates Through Render Functions
 
-Vue templates are not edited as original template source in this design. Instead, Vue compilation produces render-function JavaScript, which is then processed through the JavaScript AST pipeline.
+For Webpack `collect --replace`, Vue compilation produces render-function JavaScript, which the collection loader analyzes and rewrites in the same loader pass. The loader gives the replacement transform a synthetic `*.render.js` path and uses the Vue runtime helper (`this.$t` for Vue 2 or `_ctx.$t` for Vue 3), so this path operates on compiler output rather than the original `.vue` template.
 
 ```text
 Vue template
@@ -139,7 +142,7 @@ Vue template
   → i18n JavaScript analysis and optional replacement
 ```
 
-This avoids a template-source rewriter that must directly manage `v-bind`, ordinary attributes, directives, interpolations, slots, and template-coordinate edits.
+Dynamic bindings, interpolations, conditional expressions, and structured template content must not be split into independently translated fragments or transformed automatically. The accepted design records them as location-bearing dynamic-message candidates for human review; implementation of that reporting remains pending.
 
 ### Render-function policy
 
@@ -193,7 +196,7 @@ _createElementVNode('input', {
 })
 ```
 
-The render-function policy collects and may replace `placeholder` and `aria-label`, while ignoring `data-test`. The policy is based on property keys in the props object, not on parsing original template attribute syntax.
+The render-function policy collects and may replace `placeholder` and `aria-label`, while ignoring `data-test`. The policy is based on property keys in compiler-generated props objects, not on parsing original template attribute syntax.
 
 ## Keys and Findings
 
@@ -202,7 +205,8 @@ Runtime-localizable messages retain the project key model:
 - Equal exact source text shares a deterministic automatic key when no explicit key is required.
 - An explicit key may be supplied for context-sensitive translation or structured messages.
 - Key conflicts fail collection rather than publishing an ambiguous catalog.
-- Existing localized calls are validated against declared or automatic message contracts.
+- Existing localized calls are validated against declared or automatic message contracts and join the source catalog as explicit occurrences.
+- Dynamic or structured Chinese is a review candidate with source-location evidence, not a fragment-level translation entry or an automatic replacement target (ADR-0009; implementation pending).
 
 A runtime finding retains the information needed within the compilation to safely transform the in-memory module:
 
@@ -237,8 +241,8 @@ The runtime adapter defines the safe call shape and helper injection behavior fo
 
 Collection produces two distinct formal outputs:
 
-- `source-catalog.json`: runtime key to canonical Chinese source text; this is the input for translation and source-locale runtime lookup.
-- `analysis-report.json`: runtime findings, audit findings, diagnostics, coverage, and explicit-handling requirements.
+- `source-catalog.json`: runtime key to canonical Chinese source text for confirmed messages—both automatic complete static copy and validated explicit calls. It preserves message origin, locations, and occurrences in metadata; explicit canonical source and placeholder contracts remain owned by `explicit-messages.json`.
+- `analysis-report.json`: runtime findings, explicit-call findings, audit findings, diagnostics, coverage, and explicit-handling requirements. The accepted dynamic-message design adds location-bearing candidates here; its reporter and CLI decision manifest are not implemented yet.
 
 ### Command modes and output ownership
 

@@ -7,8 +7,8 @@ This context defines the vocabulary for project localization completeness: disco
 ### Localization completeness
 
 **Runtime-localizable message**:
-A message the supported build or source replacement path can turn into a runtime `t` / `$t` lookup (today: complete static JavaScript, TypeScript, and Vue template copy, not standalone HTML or styles).
-_Avoid_: Audit finding, catalog entry alone
+A complete message with a supported runtime `t` / `$t` path: either complete static JavaScript, TypeScript, or Vue template copy, or a validated explicit localization call. It is represented in the source catalog; standalone HTML and styles are not runtime-localizable until an adapter exists.
+_Avoid_: Dynamic message candidate, audit finding, catalog entry alone
 
 **Runtime localization coverage**:
 Whether every runtime-localizable message is already a runtime localization call or has a current source-catalog key that build or source replacement can apply; Chinese source audit findings are out of scope.
@@ -27,7 +27,7 @@ An audit finding migrated to a runtime-localizable surface, handled by a real ad
 _Avoid_: Unresolved audit finding, silent ignore, reasonless ignore
 
 **Project localization completeness**:
-The project state with complete runtime localization coverage and no blocking Chinese source audit findings: no disposition `unresolved` and no disposition `needs-review`. Intentionally ignored findings do not block completeness.
+The project state with complete runtime localization coverage, no blocking Chinese source audit findings, and no blocking dynamic message candidates: no disposition `unresolved` or `needs-review` where policy requires disposition. Intentionally ignored findings and candidates do not block completeness.
 _Avoid_: Runtime localization coverage alone, Chinese source audit alone
 
 ### Commands
@@ -56,30 +56,42 @@ The read-only workflow command that evaluates project localization completeness.
 **Replace**:
 The optional source-replacement command that owns application-source writes only when explicitly requested, otherwise preview-only.
 
+**Review**:
+The planned interactive and non-interactive command for deciding how dynamic message candidates are handled: translate through an explicit message, intentionally ignore with a reason, or defer. It records version-controlled decisions and may apply only a separately confirmed, proven-safe source migration.
+_Avoid_: Automatic dynamic replacement, manual editing of generated reports
+
 ### Collection and messages
 
 **Collected text**:
-Chinese text identified as candidate user-facing copy during source analysis. Analysis does not rewrite application source. Source replacement is a later, explicit command.
+Chinese text identified as candidate user-facing copy during source analysis. Every discovered candidate retains a source location; only confirmed runtime-localizable messages enter the source catalog. Collection may apply enabled build replacement during the same pass, while source replacement remains an explicit command.
 
-**Template literal**:
-A JavaScript or TypeScript backtick literal. Each static Chinese segment is collected independently; interpolation expressions are not collected as copy.
-_Avoid_: Template, template file
+**Dynamic message candidate**:
+The accepted, not-yet-implemented analysis result for user-facing Chinese constructed through interpolation, concatenation, conditional construction, dynamic key construction, plural or formatting logic, or rich-text/component structure. It will report the whole-expression location, context, and reason for human review; it is not a translation message, is never split into independently translated fragments, and is not automatically replaced.
+_Avoid_: Automatic message, message fragment, audit finding
 
 **Complete static copy**:
-A user-facing message wholly represented by one statically determinable source fragment, and therefore eligible for automatic collection. A fragment around interpolation, concatenation, conditional construction, or formatting is not complete static copy.
+A user-facing message wholly represented by one statically determinable source fragment, and therefore eligible for automatic collection. A fragment around interpolation, concatenation, conditional construction, or formatting is not complete static copy; it is evidence for a dynamic message candidate.
 _Avoid_: Dynamic copy, message fragment
+
+**Template literal**:
+A JavaScript or TypeScript backtick literal. A template without interpolation can be complete static copy; a template with interpolation is a dynamic message candidate rather than a set of independently collected segments.
+_Avoid_: Template, template file
 
 **Structured message**:
 A user-facing message whose meaning depends on inline structure such as links, emphasis, controls, or component slots, so translation must control ordering and placeholders in one explicit message. Interleaving Chinese text with those elements in markup is structured fragmentation and is not complete static copy.
 _Avoid_: Rich text fragment, HTML snippet
 
 **Explicit source message**:
-A localization key whose canonical Chinese source text and placeholder contract are declared in the project-owned explicit message manifest, then referenced from a static runtime localization call. It is not automatically collected from complete static copy in source.
+A localization key whose canonical Chinese source text and placeholder contract are declared in the project-owned explicit message manifest, then referenced from a validated runtime localization call. It enters the source catalog as an explicit message with its call locations and occurrences; it is not automatically derived from complete static copy in source.
 _Avoid_: Automatic message, hash dictionary entry
 
 **Explicit message manifest**:
-The versioned document `explicit-messages.json` beside the catalog metadata. Version 1 lists localization keys with their canonical source text. Collection reads it and does not rewrite it. Placeholder contracts are derived from that source text with the same `{identifier}` rules as other message contracts.
+The versioned document `explicit-messages.json` beside the catalog metadata. It is the authority for explicit localization keys, canonical source text, and placeholder contracts. Collection reads and validates it but does not rewrite it; the source catalog records the resulting explicit-message occurrences.
 _Avoid_: Confirmation manifest, translation catalog
+
+**Dynamic message decision manifest**:
+The planned versioned project input `dynamic-message-decisions.json`. It records an identified dynamic message candidate as translate, intentionally ignored with a reason, or deferred; collection consumes it and regenerates dispositions in the analysis report. It is not the analysis report.
+_Avoid_: Manually edited generated report, translation catalog
 
 **Complete-static-copy baseline**:
 The versioned document `complete-static-copy-baseline.json` beside the catalog metadata. Version 1 lists grandfathered complete-static-copy policy violations with reason, path, kind, source range, and text. Policy checks read it and do not rewrite it. Exact matches stay grandfathered; newly added or modified violations fail. The baseline does not hide analysis failures, stale formal outputs, or direct source text inside a declared runtime-multilingual boundary.
@@ -116,10 +128,10 @@ The originating file, semantic kind, and source range associated with collected 
 The fixed category identifying where collected text came from: `script-string`, `template-literal`, `html-text`, `html-attribute`, `template-expression`, `css-generated-content`, `css-preprocessor-candidate`, `static-html-text`, or `static-html-attribute`. A static fragment inside a dynamic HTML attribute remains `html-attribute`.
 
 **Collection result**:
-The runtime-localizable messages in the current source analysis; equal exact source text shares one automatic key unless an explicit key is required, and Chinese source audit findings stay outside the catalog.
+The confirmed runtime-localizable messages in the current source analysis: complete static copy with automatic keys and validated explicit localization calls with explicit keys. Equal exact automatic source text shares one key; each confirmed message retains locations and occurrences. Dynamic message candidates and Chinese source audit findings stay outside the translation catalog.
 
 **Occurrence**:
-One concrete appearance of collected text in source, with its own source location, that shares an automatic key with equal exact source text unless an explicit key is required for contextual translation.
+One concrete appearance of a confirmed catalog message in source, with its own source location and semantic context. Equal exact automatic text shares a key; explicit messages share their declared key. Occurrences are durable source evidence, not deferred replacement instructions.
 
 **Semantic collection stage**:
 A collection point where the source structure still identifies whether text came from a script literal, HTML text or attribute, or a CSS `content` declaration.
@@ -182,7 +194,7 @@ One localization key that names incompatible message contracts. It fails the col
 A hash of a key's source text recorded in catalog metadata. A key whose fingerprint differs between two catalogs has source-changed text.
 
 **Catalog metadata**:
-The per-key record beside the source-locale catalog (source text, fingerprint, explicit or automatic origin, representation, source locations), recovering automatic keys from exact source text rather than per-occurrence identity.
+The per-key record beside the source-locale catalog for every confirmed runtime-localizable message: canonical source text, fingerprint, explicit or automatic origin, representation, source locations, and occurrences. Automatic keys recover from exact source text rather than per-occurrence identity; explicit canonical source and placeholder contracts remain authoritative in the explicit message manifest.
 
 **Resource identity**:
 The normalized project resource path plus its semantic block or resource query, used to replace one resource snapshot without overwriting another block from the same file.
@@ -197,10 +209,10 @@ The stable, versioned shape of the collection result and its source map, includi
 A position in original source. Lines are 1-based. Columns are 0-based and count UTF-16 code units. A source range is half-open: the end coordinate is exclusive.
 
 **Static fragment**:
-A source text segment whose value can be determined without executing application code, including a segment around an interpolation; only fragments containing Chinese are collected.
+A source text segment whose value can be determined without executing application code. Inside a dynamic message expression, it is evidence shown with the dynamic candidate and is not independently collected into a translation catalog.
 
 **Exclusion directive**:
-A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the next associated collected text or static fragment from entering the collection result. The directive is control metadata; its own comment text is not collected. Ordinary comments are not collected. It is not an audit ignore directive: exclusion drops runtime-localizable collection candidates rather than accepting a Chinese source audit finding.
+A syntax-valid, node-local comment marker (`no-i18n-auto`) that prevents the next associated complete-static-copy candidate from entering the automatic collection result. The directive is control metadata; its own comment text is not collected. Ordinary comments are not collected. It is not an audit ignore directive and does not dispose a dynamic message candidate: use a reasoned dynamic decision or audit ignore as appropriate.
 _Avoid_: Audit ignore directive, `i18n-ignore`
 
 **Audit ignore directive**:

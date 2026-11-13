@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. ADR-0006 extends this decision: Vue replacement edits original template surfaces before compilation and does not target generated render functions.
+Accepted for compiler-backed Template IR used by filesystem analysis and source replacement. Superseded by ADR-0010 for the Webpack `collect --replace` surface: that workflow analyzes and rewrites compiler-generated render-function JavaScript.
 
 ## Context
 
@@ -38,9 +38,11 @@ dependencies for its adapter tests.
 
 Only HTML Vue template blocks are supported. Missing template blocks and template
 blocks using a language such as Pug produce no template entries; the collector
-does not invoke preprocessors. Compiler-generated render functions are not
-extraction input. JavaScript expressions found in source templates continue
-through the shared Babel expression collector.
+does not invoke preprocessors. Filesystem analysis and source replacement use
+original template input. Webpack `collect --replace` is a separate path that
+receives compiler-generated render functions and analyzes them as JavaScript
+(ADR-0010). JavaScript expressions found in source templates continue through
+the shared Babel expression collector.
 
 Collection policy stays in the collector. Attribute allowlists, semantic kinds,
 directives, context filters, localized-call recognition, and final entry shaping are

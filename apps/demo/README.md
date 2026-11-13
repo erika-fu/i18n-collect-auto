@@ -2,7 +2,7 @@
 
 Webpack / Vue CLI demo for **collect → translate → build** (verify-by-default Build replacement), locale switching, optional Source replacement (`vue2` adapter), explicit messages, and audited HTML/CSS samples.
 
-Forbidden interpolation and concatenation patterns live under `fixtures/` (excluded from collection). Live pages use `$t(...)` plus `lang/catalog/explicit-messages.json` where variables are required.
+Interpolation and concatenation samples that currently fail the complete-static-copy policy live under `fixtures/` (excluded from collection). Live pages use `$t(...)` plus `lang/catalog/explicit-messages.json` where variables are required. The accepted next design will retain these forms as location-bearing review candidates instead; see [Dynamic message review](../../docs/dynamic-message-review.md).
 
 ## Audit dispositions
 

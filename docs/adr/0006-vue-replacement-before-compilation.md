@@ -2,15 +2,15 @@
 
 ## Status
 
-Accepted. Extends ADR-0002 and ADR-0004: Vue templates remain compiler-backed through Template IR, and the shared replacement planner still decides edits, but Vue build and source replacement must apply those edits to original template text and attributes before the Vue template compiler generates render functions.
+Superseded by ADR-0010. The current implementation distinguishes source replacement from Webpack in-memory collection replacement; this ADR's single original-template surface does not describe the Webpack `collect --replace` path.
 
-## Decision
+## Historical decision
 
-Vue runtime-localizable messages are rewritten in the original template (text nodes and supported user-facing attributes) before template compilation. Replacement never targets generated render functions or compiler output.
+This ADR required all Vue replacement to rewrite original template text and attributes before compilation. The current source-replacement workflow still uses original `.vue` source, but the Webpack `collect --replace` workflow receives and rewrites compiler-generated render-function JavaScript. See ADR-0010 for the current rule.
 
-Build replacement therefore inserts `$t` (or the adapter's equivalent) early enough that Vue 2 static render functions and Vue 3 cached nodes remain correct when the runtime locale changes. Source replacement edits the same original template surfaces so repeated builds and locale switches stay consistent with the planner's decisions.
+## Historical alternatives
 
-## Considered options
+- **Replace inside generated render functions:** previously rejected because Vue static optimizations could freeze locale-specific strings into render output.
+- **Treat Vue like plain JavaScript string replacement after compilation:** previously rejected because template structure, attribute bindings, and compiler ownership would be lost.
 
-- **Replace inside generated render functions:** rejected because Vue static optimizations can freeze locale-specific strings into render output and break later locale changes.
-- **Treat Vue like plain JavaScript string replacement after compilation:** rejected because template structure, attribute bindings, and compiler ownership would be lost.
+These alternatives are retained only as historical context; ADR-0010 records the current implementation's distinct source and Webpack surfaces.

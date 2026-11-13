@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the shared pure planner boundary. Workflow write ownership and Vue/audit constraints follow ADR-0006, ADR-0007, and ADR-0008.
+Accepted for the shared pure planner boundary. Workflow write ownership and Vue/audit constraints follow ADR-0007, ADR-0008, and ADR-0010.
 
 ## Context
 
@@ -34,9 +34,11 @@ The planner does not read or write files, load project configuration, submit a
 catalog, inspect webpack objects, install dependencies, or own localization
 artifact writes. Build replacement applies returned edits only to its in-memory
 module and build artifact. Source replacement applies returned edits to
-application source only when explicitly requested (ADR-0008). Vue edits target
-original template surfaces before compilation (ADR-0006). HTML and style audit
-findings are not planner inputs (ADR-0007).
+application source only when explicitly requested (ADR-0008). For Vue, the
+Webpack collection-replacement path plans edits against compiler-generated
+render-function JavaScript, while source replacement plans edits against
+original template surfaces (ADR-0010). HTML and style audit findings are not
+planner inputs (ADR-0007).
 
 New runtime-localizable messages require a successful scan to place a stable
 localization key in the source catalog before either replacement workflow may

@@ -2,7 +2,7 @@
 
 Standalone Webpack 5 + vue-loader 17 demo for **collect → translate → build** (verify-by-default Build replacement), locale switching, optional Source replacement (`vue3` adapter), and audited HTML/CSS samples.
 
-Interpolation teaching samples that would hard-fail collection are kept under `fixtures/`. Live copy uses `$t(...)` plus `lang/catalog/explicit-messages.json` where variables are required.
+Interpolation teaching samples that currently hard-fail the complete-static-copy policy are kept under `fixtures/`. Live copy uses `$t(...)` plus `lang/catalog/explicit-messages.json` where variables are required. The accepted next design will retain these forms as location-bearing review candidates instead; see [Dynamic message review](../../docs/dynamic-message-review.md).
 
 ## Audit dispositions
 

@@ -10,6 +10,8 @@ Primary workflow:
 4. **replace** — preview Source replacement; write application source only with `--write`.
 5. **check** — read-only project localization completeness (freshness, coverage, audits, translations, hybrid policy).
 
+Complete static copy is collected and can be replaced safely. Explicit localization calls are validated against `explicit-messages.json` and represented in `source-catalog.json` with their call locations. Today, complex Chinese is reported through `explicitRequiredFindings` as static fragments and blocks `check`. The accepted next design replaces that behavior with whole-expression, location-bearing review candidates that are never split into translated fragments or automatically replaced. See [Dynamic message review](docs/dynamic-message-review.md).
+
 One-shot: **migrate-keys** converts legacy per-occurrence automatic keys to deterministic exact-text hash keys.
 
 Filesystem **scan** remains available as a non-Webpack / legacy analysis path. Superseded commands (`verify`, `run`, `check-policy`) fail with a bounded migration error. See [docs/migration.md](docs/migration.md).
@@ -87,7 +89,7 @@ npx i18n-collect check --help
 npx i18n-collect migrate-keys --help
 ```
 
-Runtime-localizable messages receive keys and enter catalogs. Chinese source audit findings (standalone HTML and styles until an adapter exists) never receive keys; dispose them with migration, a future adapter, or `i18n-ignore: <reason>`.
+Runtime-localizable messages receive keys and enter catalogs: complete static copy uses automatic keys, while validated explicit calls use declared keys. Today, complex Chinese yields blocking `explicitRequiredFindings`; the accepted, pending review-candidate design will instead retain whole-expression locations until a reviewer translates, intentionally ignores, or defers each candidate. Chinese source audit findings (standalone HTML and styles until an adapter exists) never receive runtime keys; dispose them with migration, a future adapter, or `i18n-ignore: <reason>`.
 
 ## Webpack 5 Build replacement
 
@@ -99,6 +101,7 @@ The package peer dependency is webpack 5. Vite and Rollup are not supported for 
 
 - [docs/migration.md](docs/migration.md) — command renames, per-occurrence catalogs, removed state files.
 - [docs/webpack-runtime-collection-design.md](docs/webpack-runtime-collection-design.md) — Webpack collection ownership.
+- [docs/dynamic-message-review.md](docs/dynamic-message-review.md) — dynamic-message candidates, locations, and human decisions.
 - [CONTEXT.md](CONTEXT.md) — domain vocabulary.
 - [docs/adr/0008-command-write-ownership.md](docs/adr/0008-command-write-ownership.md) — write ownership.
 - Demo READMEs under `apps/demo`, `apps/vue3-demo`, and `apps/react-demo`.
