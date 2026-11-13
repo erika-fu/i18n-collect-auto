@@ -1,6 +1,6 @@
 # Migration guide
 
-This project moved from legacy `verify` / `check-policy` / `run` workflows to a product surface of **collect**, **translate**, **build**, **replace**, and **check**, with filesystem **scan** kept as a non-Webpack / legacy analysis path. Use `migrate-keys` once for legacy catalogs.
+This project moved from legacy `verify` / `check-policy` / `run` workflows to a product surface of **collect**, **translate**, **build**, **replace**, **review**, and **check**, with filesystem **scan** kept as a non-Webpack / legacy analysis path. Use `migrate-keys` once for legacy catalogs.
 
 ## Command map
 
@@ -21,8 +21,8 @@ Removed commands (`verify`, `check-policy`, `run`) exit with configuration failu
 - **translate** writes target-locale catalogs and `translation-state.json` only. Independent of Webpack; does not issue network requests during compilation.
 - **build** verifies committed collection outputs by default and may rewrite in-memory modules and emitted bundles. It does not mutate catalogs unless `--write-collection` is explicitly set (development build-write mode).
 - **replace** previews by default; with `--write` it writes application source only.
-- **check** writes nothing. Today, explicit-required findings plus unresolved or needs-review audits block completeness. The accepted review-candidate design will additionally let policy block unresolved dynamic candidates.
-- **review** is planned, not yet implemented. It will record version-controlled decisions for dynamic message candidates (translate through an explicit message, intentionally ignore with a reason, or defer) and may apply only separately confirmed safe source migrations.
+- **check** writes nothing. It evaluates runtime localization coverage, Chinese source audit disposition, **dynamic message candidate** dispositions, target translations, and hybrid policy. Candidates still `needs-review` (never reviewed) and candidates still `translation-approved` (awaiting verified migration) block completeness; deferred candidates follow `deferredDynamicCandidates` (`error` by default). Unresolved or needs-review audits also block.
+- **review** owns `dynamic-message-decisions.json` and, for Translate, atomically updates that file with `explicit-messages.json`. After Translate, separately confirmed `--write` may migrate only proven-safe concatenation and template-literal expressions; `--apply` is not accepted.
 - **migrate-keys** may rewrite the source-locale catalog, target catalogs, and `source-catalog.json` together for the one-shot key migration.
 
 After `collect`, keep the runtime source-locale catalog (`zh.json`) aligned with `source-catalog.json` when the app loads that file at runtime.
@@ -50,11 +50,11 @@ These are no longer part of the supported product:
 - Replacement bookkeeping / `replacements.json`
 - Full preprocessor Style IR collection (styles are Chinese source audit surfaces)
 
-## Runtime catalog messages vs audit-only findings
+## Runtime catalog messages vs dynamic candidates vs audit findings
 
 - **Runtime-localizable messages** enter `source-catalog.json`, receive keys, and can be translated / replaced / build-replaced. This includes both automatically collected complete static copy and validated explicit localization calls; explicit canonical source and placeholder contracts remain owned by `explicit-messages.json`.
-- **Complex source copy today** (interpolation, concatenation, conditional construction, formatting, and structured copy) produces blocking `explicitRequiredFindings` based on static fragments. It requires migration to an explicit message before translation.
-- **Dynamic message candidates (accepted, pending implementation)** will replace that fragment model with whole-expression locations in `analysis-report.json`. They will not receive translation keys, enter catalogs, or receive automatic replacement; a human will translate them through an explicit message, intentionally ignore them with a reason, or defer them.
+- **Dynamic message candidates** are whole-expression findings in `analysis-report.json` for interpolation, concatenation, conditional construction, formatting, and structured copy. They do not receive translation keys, enter catalogs, or receive automatic replacement. Dispose them with **Review** (translate through an explicit message, intentionally ignore with a reason, or defer; optional proven-safe `--write` after Translate).
+- **Superseded fragment model:** historical fragment-level `explicitRequiredFindings` are no longer published. Treat any older notes that describe them as migration history.
 - **Chinese source audit findings** (standalone HTML, proven CSS `content`, conservative preprocessor candidates) never receive keys and never enter catalogs. Dispose them by migrating to a runtime-localizable surface, adding a real adapter later, or an adjacent `i18n-ignore: <reason>` directive.
 
-Today, `check` reports runtime messages, explicit-required findings, and audits. The accepted review-candidate design extends completeness to dynamic-candidate disposition. In either model, completeness requires fresh collection outputs, disposed audits, complete target translations, and clean hybrid policy (complete-static-copy baseline + runtime-multilingual boundaries). See [Dynamic message review](dynamic-message-review.md).
+`check` reports runtime messages, dynamic-candidate dispositions, and audits. Completeness requires fresh collection outputs, disposed audits and dynamic candidates (per policy), complete target translations, and clean hybrid policy (complete-static-copy baseline + runtime-multilingual boundaries). See [Dynamic message review](dynamic-message-review.md).

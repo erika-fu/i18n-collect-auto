@@ -57,8 +57,8 @@ The read-only workflow command that evaluates project localization completeness.
 The optional source-replacement command that owns application-source writes only when explicitly requested, otherwise preview-only.
 
 **Review**:
-The planned interactive and non-interactive command for deciding how dynamic message candidates are handled: translate through an explicit message, intentionally ignore with a reason, or defer. It records version-controlled decisions and may apply only a separately confirmed, proven-safe source migration.
-_Avoid_: Automatic dynamic replacement, manual editing of generated reports
+The interactive and non-interactive command for deciding how dynamic message candidates are handled: translate through an explicit message, intentionally ignore with a reason, or defer. It owns the dynamic message decision manifest and, for Translate, atomically updates that manifest together with the explicit message manifest. After a Translate decision, separately confirmed `--write` may migrate only proven-safe concatenation and template-literal expressions to explicit localization calls; other rewrite classes are refused. `--write` is the only source-write flag.
+_Avoid_: Automatic dynamic replacement, `--apply`, manual editing of generated reports
 
 ### Collection and messages
 
@@ -66,8 +66,8 @@ _Avoid_: Automatic dynamic replacement, manual editing of generated reports
 Chinese text identified as candidate user-facing copy during source analysis. Every discovered candidate retains a source location; only confirmed runtime-localizable messages enter the source catalog. Collection may apply enabled build replacement during the same pass, while source replacement remains an explicit command.
 
 **Dynamic message candidate**:
-The accepted, not-yet-implemented analysis result for user-facing Chinese constructed through interpolation, concatenation, conditional construction, dynamic key construction, plural or formatting logic, or rich-text/component structure. It will report the whole-expression location, context, and reason for human review; it is not a translation message, is never split into independently translated fragments, and is not automatically replaced.
-_Avoid_: Automatic message, message fragment, audit finding
+The analysis result for user-facing Chinese constructed through interpolation, concatenation, conditional construction, dynamic key construction, plural or formatting logic, or rich-text/component structure. It reports a stable review id, the whole-expression text and location, static-fragment evidence, context, and diagnostic reason for human review; it is not a translation message, is never split into independently translated fragments, and is not automatically replaced. Dispositions include `needs-review`, `intentionally-ignored`, `translation-approved`, and (after a verified source migration) `migrated`.
+_Avoid_: Automatic message, message fragment, audit finding, `explicitRequiredFindings`
 
 **Complete static copy**:
 A user-facing message wholly represented by one statically determinable source fragment, and therefore eligible for automatic collection. A fragment around interpolation, concatenation, conditional construction, or formatting is not complete static copy; it is evidence for a dynamic message candidate.
@@ -90,7 +90,7 @@ The versioned document `explicit-messages.json` beside the catalog metadata. It 
 _Avoid_: Confirmation manifest, translation catalog
 
 **Dynamic message decision manifest**:
-The planned versioned project input `dynamic-message-decisions.json`. It records an identified dynamic message candidate as translate, intentionally ignored with a reason, or deferred; collection consumes it and regenerates dispositions in the analysis report. It is not the analysis report.
+The versioned project input `dynamic-message-decisions.json`. It records an identified dynamic message candidate as translate (or migrated after a verified write), intentionally ignored with a reason, or deferred; collection consumes it and regenerates dispositions in the analysis report. Stale or ambiguous matches fail closed. It is not the analysis report.
 _Avoid_: Manually edited generated report, translation catalog
 
 **Complete-static-copy baseline**:

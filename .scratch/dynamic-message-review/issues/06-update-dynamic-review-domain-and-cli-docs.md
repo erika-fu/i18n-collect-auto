@@ -4,9 +4,9 @@
 
 **Blocked by:** 03: Add review CLI and atomic explicit-message decisions; 04: Implement proven-safe review write migrations; 05: Evaluate dynamic candidates in localization completeness.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Documentation uses the glossary’s runtime-localizable message, dynamic message candidate, explicit message manifest, and dynamic message decision manifest terminology consistently.
-- [ ] All references to fragment-level explicit-required findings, old coverage fields, and competing `--apply` write semantics are removed or clearly identified as superseded migration history.
-- [ ] CLI help and examples match actual command behavior, confirmation requirements, decision states, and unsupported rewrite classes.
-- [ ] Documentation review verifies that no pending design is presented as already implemented and that the final workflow is discoverable from the primary README and migration guide.
+- [x] Documentation uses the glossary’s runtime-localizable message, dynamic message candidate, explicit message manifest, and dynamic message decision manifest terminology consistently.
+- [x] All references to fragment-level explicit-required findings, old coverage fields, and competing `--apply` write semantics are removed or clearly identified as superseded migration history.
+- [x] CLI help and examples match actual command behavior, confirmation requirements, decision states, and unsupported rewrite classes.
+- [x] Documentation review verifies that no pending design is presented as already implemented and that the final workflow is discoverable from the primary README and migration guide.

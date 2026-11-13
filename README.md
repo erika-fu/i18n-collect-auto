@@ -5,12 +5,13 @@ Discover Chinese user-facing copy via Webpack collection, keep runtime-localizab
 Primary workflow:
 
 1. **collect** — Webpack module-graph collection; atomically publishes `source-catalog.json`, `analysis-report.json`, and dictionary outputs. Add `--replace` to replace eligible runtime messages in the same loader pass and emit the configured bundle without changing application source files.
-2. **translate** — fill target-locale catalogs (and translation state) only. Independent of Webpack; no network during compilation.
-3. **build** — verify collection outputs by default; legacy Build replacement into the formal webpack bundle only (no catalog mutation unless `--write-collection`). Prefer `collect --replace` when collection and in-memory replacement should occur in one compilation.
-4. **replace** — preview Source replacement; write application source only with `--write`.
-5. **check** — read-only project localization completeness (freshness, coverage, audits, translations, hybrid policy).
+2. **review** — list and decide **dynamic message candidates** (translate, intentionally ignore, or defer). Translate updates `dynamic-message-decisions.json` and `explicit-messages.json` atomically; proven-safe `--write` may then migrate supported expressions after confirmation.
+3. **translate** — fill target-locale catalogs (and translation state) only. Independent of Webpack; no network during compilation.
+4. **build** — verify collection outputs by default; legacy Build replacement into the formal webpack bundle only (no catalog mutation unless `--write-collection`). Prefer `collect --replace` when collection and in-memory replacement should occur in one compilation.
+5. **replace** — preview Source replacement; write application source only with `--write`.
+6. **check** — read-only project localization completeness (freshness, coverage, audits, dynamic candidates, translations, hybrid policy).
 
-Complete static copy is collected and can be replaced safely. Explicit localization calls are validated against `explicit-messages.json` and represented in `source-catalog.json` with their call locations. Today, complex Chinese is reported through `explicitRequiredFindings` as static fragments and blocks `check`. The accepted next design replaces that behavior with whole-expression, location-bearing review candidates that are never split into translated fragments or automatically replaced. See [Dynamic message review](docs/dynamic-message-review.md).
+Complete static copy is collected and can be replaced safely. Explicit localization calls are validated against `explicit-messages.json` and represented in `source-catalog.json` with their call locations. Dynamic or structured Chinese is reported as whole-expression **dynamic message candidates** (never split into translated fragments or automatically replaced); dispose them with **review** before **check** can pass. See [Dynamic message review](docs/dynamic-message-review.md) and [docs/migration.md](docs/migration.md).
 
 One-shot: **migrate-keys** converts legacy per-occurrence automatic keys to deterministic exact-text hash keys.
 
@@ -82,6 +83,7 @@ npx i18n-collect check --help
 
 ```
 npx i18n-collect collect --help
+npx i18n-collect review --help
 npx i18n-collect translate --help
 npx i18n-collect build --help
 npx i18n-collect replace --help
@@ -89,7 +91,7 @@ npx i18n-collect check --help
 npx i18n-collect migrate-keys --help
 ```
 
-Runtime-localizable messages receive keys and enter catalogs: complete static copy uses automatic keys, while validated explicit calls use declared keys. Today, complex Chinese yields blocking `explicitRequiredFindings`; the accepted, pending review-candidate design will instead retain whole-expression locations until a reviewer translates, intentionally ignores, or defers each candidate. Chinese source audit findings (standalone HTML and styles until an adapter exists) never receive runtime keys; dispose them with migration, a future adapter, or `i18n-ignore: <reason>`.
+Runtime-localizable messages receive keys and enter catalogs: complete static copy uses automatic keys, while validated explicit calls use declared keys. Dynamic message candidates retain whole-expression locations until a reviewer translates, intentionally ignores, or defers each one (`review --write` migrates only proven-safe patterns). Chinese source audit findings (standalone HTML and styles until an adapter exists) never receive runtime keys; dispose them with migration, a future adapter, or `i18n-ignore: <reason>`.
 
 ## Webpack 5 Build replacement
 

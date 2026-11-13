@@ -2,30 +2,20 @@
 
 ## Status
 
-Accepted design; command-line review support is pending implementation. Until it is implemented, the generated analysis report remains the source of candidates and developers must perform the equivalent decisions manually.
+Implemented. Collection reports whole-expression **dynamic message candidates**; **Review** records decisions in the **dynamic message decision manifest**; proven-safe `--write` migrates supported expressions; **Check** evaluates candidate dispositions as part of **project localization completeness**.
 
 ## Purpose
 
-Collection must make every discovered user-facing Chinese occurrence locatable without pretending that every occurrence is already a safe translation unit. Complete static copy can be collected and optionally replaced automatically. Dynamic or structured copy must be discovered as a review candidate, then receive an explicit human decision before it can become a translatable message.
+Collection must make every discovered user-facing Chinese occurrence locatable without pretending that every occurrence is already a safe translation unit. **Complete static copy** can be collected and optionally replaced automatically. Dynamic or structured copy is discovered as a **dynamic message candidate**, then receives an explicit human decision before it can become a **runtime-localizable message**.
 
-## Implementation status
+## Workflow
 
-### Implemented today
+1. **Collect** (or filesystem **Scan**) discovers candidates and regenerates dispositions from `dynamic-message-decisions.json` into `analysis-report.json`.
+2. **Review** lists unresolved candidates and records translate, intentionally-ignore, or defer decisions. Translate writes the decision manifest and **explicit message manifest** (`explicit-messages.json`) atomically.
+3. After Translate, **Review `--write`** (with `--adapter` and confirmation) migrates only proven-safe expressions to explicit localization calls and marks matching decisions `migrated`.
+4. Re-**collect**, then **check**. Candidates still `needs-review` (including never-reviewed) and candidates still `translation-approved` (awaiting verified source migration) block completeness by default; deferred candidates follow `deferredDynamicCandidates` (`error` by default, or `warn`).
 
-- Complete static copy is collected into the source catalog and can be replaced when the selected workflow supports that source surface.
-- Valid explicit localization calls are validated against `explicit-messages.json`, enter the source catalog as explicit messages, and retain call locations and occurrences.
-- The complete-static-copy policy detects interpolation, concatenation, conditionals, formatting, and structured fragmentation. It currently writes **fragment-level** `explicitRequiredFindings` and causes `check` to fail.
-- Webpack `collect --replace` handles Vue through compiler-generated render-function JavaScript. The separate `replace --write` workflow rewrites original `.vue` source and template ranges.
-
-### Accepted but not implemented
-
-1. Replace fragment-level `explicitRequiredFindings` for complex copy with a **whole-expression dynamic message candidate**.
-2. Give each candidate a stable review identifier, expression text, static-fragment evidence, whole-expression location, semantic context, and diagnostic reason.
-3. Add `dynamic-message-decisions.json` as the version-controlled input for translate, intentionally-ignore, and defer decisions.
-4. Make `collect` read that decision manifest, validate that each decision still matches its candidate, and regenerate the candidate disposition in `analysis-report.json`.
-5. Add `i18n-collect review` in interactive and non-interactive forms.
-6. Extend `check` so project policy evaluates unresolved or deferred dynamic candidates instead of treating every complex-copy finding as an unconditional explicit-required failure.
-7. ~~Support `review --write` for proven-safe source migrations.~~ Implemented: interactive use shows the diff and requires confirmation; non-interactive `--yes` confirms the already-explicit write intent. It does not guess how to rewrite arbitrary dynamic expressions.
+Superseded: fragment-level `explicitRequiredFindings` and any competing `--apply` write flag. Those are not part of the supported product.
 
 ## Classification
 
@@ -51,7 +41,7 @@ Every discovered user-facing Chinese fact retains a source location. The purpose
 
 ## Dynamic candidate shape
 
-The exact schema may evolve, but each candidate must carry a stable review identifier and enough context for a human decision:
+Each candidate carries a stable review identifier and enough context for a human decision:
 
 ```json
 {
@@ -73,24 +63,26 @@ The exact schema may evolve, but each candidate must carry a stable review ident
 
 The candidate identifier is a stable review identity derived from the occurrence and expression fingerprint; it is never a localization key.
 
+Analysis coverage summarizes candidates under `coverage.dynamicMessageCandidates` (`total`, `needsReview`, `intentionallyIgnored`, `translationApproved`, `deferred`, and related migrated counts). That summary is distinct from runtime-localization coverage and Chinese source audit coverage.
+
 ## Human decisions
 
-A decision is a version-controlled project input, not a field manually maintained in the generated report. The planned `dynamic-message-decisions.json` records the candidate identity, disposition, and a non-empty reason where needed. `collect` reads that input and regenerates the resulting disposition in `analysis-report.json`.
+A decision is a version-controlled project input in `dynamic-message-decisions.json`, not a field manually maintained in the generated report. Collection reads that input and regenerates the resulting disposition in `analysis-report.json`.
 
 | Decision | Result |
 | --- | --- |
-| **Translate** | Define an explicit key and canonical source in `explicit-messages.json`, then migrate the source to an explicit localization call. The next collection records it as an explicit catalog message. |
-| **Intentionally ignore** | Keep the candidate visible with `disposition: "intentionally-ignored"` and a reason. It does not become a translation message. |
-| **Defer** | Keep `disposition: "needs-review"` with an optional reason. CI may warn or fail according to project policy. |
+| **Translate** | Define an explicit key and canonical source in `explicit-messages.json`, record `decision: "translate"`, and keep the live candidate as `disposition: "translation-approved"` until source is migrated. |
+| **Intentionally ignore** | Keep the candidate visible with `disposition: "intentionally-ignored"` and a non-empty reason. It does not become a translation message. |
+| **Defer** | Keep `disposition: "needs-review"` with an optional reason and `decision: "defer"`. Completeness treats deferred candidates per `deferredDynamicCandidates` (`error` by default). |
+
+After a verified proven-safe `--write`, the decision record becomes terminal `decision: "migrated"` and the live candidate disappears. `review --prune` may remove eligible migrated terminals only; it never removes active translate, ignore, or defer decisions.
 
 A reviewed candidate is not complete merely because a decision file mentions it: the next collection must verify the source still matches the candidate and must reject stale or ambiguous decisions.
 
-## Planned command-line interface
-
-The planned `review` command provides both interactive and scriptable decisions. It must not be documented as implemented until the CLI exists.
+## Command-line interface
 
 ```bash
-# List unresolved dynamic candidates.
+# List unresolved dynamic candidates (default --status needs-review).
 i18n-collect review --status needs-review
 
 # Inspect one candidate interactively and choose translate, ignore, or defer.
@@ -105,21 +97,36 @@ i18n-collect review dynamic.7a4e91 --translate \
   --key upload.selectedFiles \
   --source '已选择 {count} 个文件' --yes
 
-# Only after a shown diff and explicit confirmation, write a supported migration.
+# After Translate (or combined with --translate), preview and write a proven-safe migration.
 i18n-collect review dynamic.7a4e91 --write --adapter js --yes
 ```
 
-`--write` is intentionally separate from recording the decision. Dynamic expressions vary by framework and semantics, so the tool must reject rewrites it cannot prove safe. For supported patterns, however, writing the approved explicit-localization migration is the normal purpose of write mode: it shows the diff and requires confirmation before writing source.
+Mutating decisions, prune, and `--write` require confirmation (`--yes` non-interactively). `--bulk` applies a compatible decision to every matching unresolved occurrence while persisting one decision per occurrence. `--write` is the only source-write flag; `--apply` is rejected.
+
+### Proven-safe `--write` boundary
+
+Supported for automatic source writing: side-effect-free string concatenation and template literals whose interpolations yield mechanically derivable named placeholders, for adapters `js`, `vue2`, and `vue3`.
+
+Refused (decision and review remain available; source is unchanged): conditional construction, dynamic keys, plural or formatting logic, rich text / structured messages, and any expression the tool cannot prove safe. Refusal is not a guessed rewrite.
+
+## Completeness policy
+
+`check` evaluates dynamic message candidate dispositions separately from Chinese source audit findings and target-translation `needs-review` state:
+
+- Candidates with disposition `needs-review` that were never decided, and candidates still `translation-approved` awaiting source migration, block completeness.
+- Deferred candidates (`decision: "defer"`) fail when `deferredDynamicCandidates` is `"error"` (default), or are reported without failing when set to `"warn"`. Never-reviewed candidates are never silently waived by that setting.
+- Intentionally ignored candidates stay visible with their reason and do not block completeness.
 
 ## Example lifecycle
 
 ```text
 '已选择 ' + count + ' 个文件'
   → collect records a needs-review dynamic candidate with its location
-  → reviewer chooses Translate and approves: 已选择 {count} 个文件
-  → explicit-messages.json defines upload.selectedFiles
-  → source becomes t('upload.selectedFiles', { count })
-  → the next collect removes the candidate and records an explicit catalog occurrence
+  → reviewer chooses Translate: 已选择 {count} 个文件
+  → explicit-messages.json defines upload.selectedFiles; candidate becomes translation-approved
+  → review --write --adapter js migrates source to t('upload.selectedFiles', { count })
+  → the next collect verifies the migrated decision and removes the live candidate
+  → check passes for that candidate once coverage and translations are otherwise complete
 ```
 
-This workflow ensures that all visible Chinese is discoverable and locatable, that only complete messages are translated, and that no dynamic expression is silently ignored or incorrectly split into fragments.
+This workflow keeps all visible Chinese discoverable and locatable, translates only complete messages, and never silently ignores a dynamic expression or splits it into fragments.

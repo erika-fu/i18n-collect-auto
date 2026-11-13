@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented for Webpack runtime collection and build replacement. Filesystem `scan` remains an intentional non-Webpack / legacy analysis path beside `collect` (see CONTEXT.md and docs/migration.md); it is not a second runtime-collection authority. Dynamic-message candidate review is accepted in ADR-0009 but its CLI and decision manifest are pending implementation.
+Implemented for Webpack runtime collection and build replacement. Filesystem `scan` remains an intentional non-Webpack / legacy analysis path beside `collect` (see CONTEXT.md and docs/migration.md); it is not a second runtime-collection authority. Dynamic message candidate discovery, decision-manifest consumption, Review CLI, proven-safe `--write`, and Check disposition policy are implemented (ADR-0009); see [Dynamic message review](dynamic-message-review.md).
 
 ## Decision Summary
 
@@ -98,7 +98,7 @@ The primary collection and replacement transforms run in normal loader phases at
 | Vue style | Audit only |
 | Standalone HTML / CSS | Audit only |
 
-Dynamic expressions and structured messages on a supported runtime surface are not silently dropped or split into catalog fragments. The analysis records the whole expression and source location as an explicit-localization-required candidate for human review. Only a complete static message or an already-valid explicit localization call is eligible for collection and replacement.
+Dynamic expressions and structured messages on a supported runtime surface are not silently dropped or split into catalog fragments. The analysis records the whole expression and source location as a **dynamic message candidate** for human review. Only a complete static message or an already-valid explicit localization call is eligible for collection and replacement.
 
 For normal JavaScript, the loader chain is conceptually:
 
@@ -142,7 +142,7 @@ Vue template
   → i18n JavaScript analysis and optional replacement
 ```
 
-Dynamic bindings, interpolations, conditional expressions, and structured template content must not be split into independently translated fragments or transformed automatically. The accepted design records them as location-bearing dynamic-message candidates for human review; implementation of that reporting remains pending.
+Dynamic bindings, interpolations, conditional expressions, and structured template content must not be split into independently translated fragments or transformed automatically. Collection records them as location-bearing dynamic message candidates for human review (ADR-0009).
 
 ### Render-function policy
 
@@ -206,7 +206,7 @@ Runtime-localizable messages retain the project key model:
 - An explicit key may be supplied for context-sensitive translation or structured messages.
 - Key conflicts fail collection rather than publishing an ambiguous catalog.
 - Existing localized calls are validated against declared or automatic message contracts and join the source catalog as explicit occurrences.
-- Dynamic or structured Chinese is a review candidate with source-location evidence, not a fragment-level translation entry or an automatic replacement target (ADR-0009; implementation pending).
+- Dynamic or structured Chinese is a dynamic message candidate with source-location evidence, not a fragment-level translation entry or an automatic replacement target (ADR-0009).
 
 A runtime finding retains the information needed within the compilation to safely transform the in-memory module:
 
@@ -242,7 +242,7 @@ The runtime adapter defines the safe call shape and helper injection behavior fo
 Collection produces two distinct formal outputs:
 
 - `source-catalog.json`: runtime key to canonical Chinese source text for confirmed messages—both automatic complete static copy and validated explicit calls. It preserves message origin, locations, and occurrences in metadata; explicit canonical source and placeholder contracts remain owned by `explicit-messages.json`.
-- `analysis-report.json`: runtime findings, explicit-call findings, audit findings, diagnostics, coverage, and explicit-handling requirements. The accepted dynamic-message design adds location-bearing candidates here; its reporter and CLI decision manifest are not implemented yet.
+- `analysis-report.json`: runtime findings, explicit-call findings, audit findings, **dynamic message candidates** (with dispositions regenerated from the **dynamic message decision manifest**), diagnostics, and coverage.
 
 ### Command modes and output ownership
 

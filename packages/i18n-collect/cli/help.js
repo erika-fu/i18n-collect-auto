@@ -211,7 +211,7 @@ Exit codes:
 
 const ROOT_HELP = `i18n-collect
 
-Primary workflow: collect, translate, build, replace, and check.
+Primary workflow: collect, review, translate, build, replace, and check.
 
 Usage:
   i18n-collect <command> [options]
@@ -221,7 +221,7 @@ Commands:
   translate     Fill target-locale catalogs and translation-state.json only. Independent of Webpack; no network during compilation.
   build         Verify collection outputs by default; rewrite in-memory modules and the formal webpack bundle only.
   replace       Preview source replacements, or write application source with --write.
-  check         Read-only project localization completeness (including hybrid policy).
+  check         Read-only project localization completeness (audits, dynamic candidates, hybrid policy).
   review        List and decide dynamic message candidates; optional proven-safe --write for source migrations.
   migrate-keys  One-shot migration of per-occurrence automatic keys to text-hash keys.
   scan          Filesystem analysis; writes source-catalog.json and analysis-report.json only (non-Webpack / legacy path).
@@ -307,13 +307,13 @@ Check analyzes sources in memory, compares them with the committed source catalo
 collect (or scan), and reports runtime localization coverage, Chinese source audit
 disposition, dynamic message candidate dispositions, target-locale coverage,
 complete-static-copy baseline policy, and runtime-multilingual boundary policy.
-Completeness fails for a stale or missing source catalog, unreviewed or
-translation-approved-pending-migration dynamic candidates, deferred dynamic candidates
-when deferredDynamicCandidates is "error" (the default), unresolved or needs-review audit
-findings, missing translations, needs-review translations, new or modified
-complete-static-copy violations, or runtime-multilingual boundary violations. Configure
-deferredDynamicCandidates to "warn" to report deferred candidates without failing while
-still blocking never-reviewed candidates. Stale target keys and grandfathered baseline
+Completeness fails for a stale or missing source catalog, dynamic candidates still
+needs-review or still translation-approved (awaiting verified source migration), deferred
+dynamic candidates when deferredDynamicCandidates is "error" (the default), unresolved or
+needs-review audit findings, missing translations, needs-review translations, new or
+modified complete-static-copy violations, or runtime-multilingual boundary violations.
+Configure deferredDynamicCandidates to "warn" to report deferred candidates without failing
+while still blocking never-reviewed candidates. Stale target keys and grandfathered baseline
 entries are reported but do not fail completeness. Intentionally ignored audit findings
 and intentionally ignored dynamic candidates stay visible with their reason and count as
 disposed. This command never rewrites project files.

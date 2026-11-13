@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Supersedes the per-occurrence automatic-key identity decision in ADR-0001. The hybrid authoring rules remain accepted: complete static copy may stay as source text, while dynamic, structured, and runtime-multilingual copy needs an explicit localization call before translation. ADR-0009 additionally accepts future location-bearing review candidates for dynamic and structured copy; that reporting is not implemented yet.
+Accepted. Supersedes the per-occurrence automatic-key identity decision in ADR-0001. The hybrid authoring rules remain accepted: complete static copy may stay as source text, while dynamic, structured, and runtime-multilingual copy needs an explicit localization call before translation. ADR-0009 records dynamic and structured copy as location-bearing **dynamic message candidates** for human review.
 
 ## Decision
 
