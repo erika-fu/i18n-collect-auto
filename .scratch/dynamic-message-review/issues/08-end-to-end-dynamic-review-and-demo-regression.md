@@ -4,10 +4,10 @@
 
 **Blocked by:** 04: Implement proven-safe review write migrations; 05: Evaluate dynamic candidates in localization completeness; 07: Refresh all demo localization artifacts through the new workflow.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] End-to-end tests cover `collect` and `scan` producing equivalent candidate disposition semantics from shared decisions.
-- [ ] Tests prove failed decision validation does not replace prior formal collection outputs.
-- [ ] Tests cover the review command, safe write success and refusal paths, decision state transitions, and completeness policy results.
-- [ ] The standard demo, React demo, and Vue 3 demo run their supported localization workflow and validate regenerated artifacts and runtime/build behavior.
-- [ ] The package test suite and relevant demo verification commands pass without relying on uncommitted generated artifacts.
+- [x] End-to-end tests cover `collect` and `scan` producing equivalent candidate disposition semantics from shared decisions.
+- [x] Tests prove failed decision validation does not replace prior formal collection outputs.
+- [x] Tests cover the review command, safe write success and refusal paths, decision state transitions, and completeness policy results.
+- [x] The standard demo, React demo, and Vue 3 demo run their supported localization workflow and validate regenerated artifacts and runtime/build behavior.
+- [x] The package test suite and relevant demo verification commands pass without relying on uncommitted generated artifacts.

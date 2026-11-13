@@ -411,6 +411,43 @@ test('a defer decision keeps the candidate unreviewed and records why it was def
   assert.strictEqual(analysis.coverage.dynamicMessageCandidates.deferred, 1)
 })
 
+test('a migrated Vue SFC decision still verifies recorded expression fragments', () => {
+  const expression = '"已选择 " + count + " 个文件"'
+  const entry = decisionEntry({
+    projectPath: 'src/Home.vue',
+    expression,
+    candidateReason: 'concatenation',
+    decision: 'migrated',
+    key: 'upload.selectedFiles'
+  })
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-dynamic-decision-migrated-vue-'))
+  const source = "<template><p>{{ $t('upload.selectedFiles', { count }) }}</p></template>\n"
+  writeProject(root, {
+    'src/Home.vue': source,
+    'lang/catalog/dynamic-message-decisions.json': `${JSON.stringify({
+      version: 1,
+      decisions: [entry]
+    }, null, 2)}\n`,
+    'lang/catalog/explicit-messages.json': `${JSON.stringify({
+      version: 1,
+      messages: [{ key: 'upload.selectedFiles', source: '已选择 {count} 个文件' }]
+    }, null, 2)}\n`
+  })
+
+  const analysis = analyzeProject({
+    files: [{ path: 'src/Home.vue', source }],
+    config: { root, catalogDir: 'lang/catalog', vueVersion: 3 }
+  })
+  assert.deepStrictEqual(analysis.dynamicMessageCandidates, [])
+  assert.deepStrictEqual(analysis.migratedDynamicDecisions, [{
+    id: entry.id,
+    path: 'src/Home.vue',
+    expression,
+    key: 'upload.selectedFiles',
+    disposition: 'migrated'
+  }])
+})
+
 test('an unfinished or unverifiable migration is not a migrated terminal decision', () => {
   const expression = "'已选择 ' + count + ' 个文件'"
   const entry = decisionEntry({

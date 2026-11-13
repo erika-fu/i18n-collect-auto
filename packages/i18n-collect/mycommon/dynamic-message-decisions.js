@@ -108,15 +108,15 @@ function migratedRecord(decision) {
 }
 
 function recordedCandidate(decision) {
+  // Probe with a JS path so Vue/SFC decision paths still re-parse the recorded
+  // expression as a script fragment rather than as a whole single-file component.
   const found = discoverDynamicMessageCandidates([{
-    path: decision.path,
+    path: 'recorded-candidate-probe.js',
     source: `const __candidate = ${decision.expression}\n`
   }])
   const normalized = normalizeExpressionForId(decision.expression)
   return found.find(item => (
     item.reason === decision.candidateReason
-    && item.location
-    && item.location.path === decision.path
     && normalizeExpressionForId(item.expression) === normalized
   )) || null
 }
