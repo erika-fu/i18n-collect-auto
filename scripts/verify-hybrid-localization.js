@@ -38,7 +38,7 @@ const CATEGORY_HINTS = {
   configuration: 'Fix i18n-collect configuration or command options, then re-run npm run verify.',
   collection: 'Fix the analysis failure (key conflict, malformed directive, or stale source catalog). Run collect, then check.',
   build: 'Fix the webpack/demo build failure, then re-run npm run verify.',
-  policy: 'Fix project localization completeness: migrate explicit-required copy, dispose audit findings with i18n-ignore reasons, update translations, or refresh the complete-static-copy baseline for exact grandfathered entries. Runtime-multilingual boundary literals cannot be grandfathered.',
+  policy: 'Fix project localization completeness: dispose dynamic message candidates with review (translate, ignore, or defer), dispose audit findings with i18n-ignore reasons, update translations, or refresh the complete-static-copy baseline for exact grandfathered entries. Runtime-multilingual boundary literals cannot be grandfathered.',
   stale: 'Refresh and commit localization artifacts via collect (source-catalog/analysis-report) and, when needed, sync the source-locale catalog for runtime. Build must not mutate catalogs without --write-collection.',
   tests: 'Fix the failing package tests under packages/i18n-collect, then re-run npm run verify.',
   'demo-build': 'Fix the React demo production build, then re-run npm run verify.'

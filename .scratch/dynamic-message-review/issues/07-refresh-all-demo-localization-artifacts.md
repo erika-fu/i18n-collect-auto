@@ -4,9 +4,9 @@
 
 **Blocked by:** 03: Add review CLI and atomic explicit-message decisions; 04: Implement proven-safe review write migrations; 05: Evaluate dynamic candidates in localization completeness.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Every committed demo catalog input and generated localization artifact is reconciled with the current collection schema and contains no retired fragment-model data.
-- [ ] Each demo resolves dynamic user-facing copy through an appropriate explicit migration, explicit decision, or documented supported exception, and `check` produces the intended clean result under its configured policy.
-- [ ] The refresh is performed through the product workflow—using collection, review, source replacement where applicable, translation synchronization, and checking—not by hand-editing generated collection outputs.
-- [ ] Demo runtime source-locale catalogs, target catalogs, metadata, reports, dictionaries, and translation state agree after regeneration.
+- [x] Every committed demo catalog input and generated localization artifact is reconciled with the current collection schema and contains no retired fragment-model data.
+- [x] Each demo resolves dynamic user-facing copy through an appropriate explicit migration, explicit decision, or documented supported exception, and `check` produces the intended clean result under its configured policy.
+- [x] The refresh is performed through the product workflow—using collection, review, source replacement where applicable, translation synchronization, and checking—not by hand-editing generated collection outputs.
+- [x] Demo runtime source-locale catalogs, target catalogs, metadata, reports, dictionaries, and translation state agree after regeneration.

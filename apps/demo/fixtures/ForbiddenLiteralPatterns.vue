@@ -1,6 +1,6 @@
 <template>
   <section>
-  <!-- Teaching fixture: scan excludes fixtures/**; patterns below hard-fail in live src. -->
+  <!-- Teaching fixture: collect excludes fixtures/**; scan these to practice review → --write. -->
     <p data-role="forbidden-interpolation">{{ `欢迎${name}回来` }}</p>
     <p data-role="forbidden-concatenation">{{ empty + '拼接后的中文' }}</p>
   </section>

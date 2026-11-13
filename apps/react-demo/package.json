@@ -6,6 +6,8 @@
     "build": "webpack --mode production",
     "collect": "node ../../packages/i18n-collect/bin/i18n-collect.js collect",
     "collect:watch": "node ../../packages/i18n-collect/bin/i18n-collect.js collect --watch",
+    "review": "node ../../packages/i18n-collect/bin/i18n-collect.js review",
+    "translate": "node ../../packages/i18n-collect/bin/i18n-collect.js translate",
     "scan": "node ../../packages/i18n-collect/bin/i18n-collect.js scan",
     "check": "node ../../packages/i18n-collect/bin/i18n-collect.js check"
   },

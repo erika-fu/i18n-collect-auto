@@ -22,8 +22,9 @@ function run(args, cwd) {
 test('root help presents the primary workflow and migration stubs', () => {
   const result = run(['--help'])
   assert.strictEqual(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Primary workflow:\s*collect, translate, build, replace, and check/i)
+  assert.match(result.stdout, /Primary workflow:\s*collect, review, translate, build, replace, and check/i)
   assert.match(result.stdout, /collect\s+Webpack collection/i)
+  assert.match(result.stdout, /\breview\b/)
   assert.match(result.stdout, /\btranslate\b/)
   assert.match(result.stdout, /\bbuild\b/)
   assert.match(result.stdout, /\breplace\b/)

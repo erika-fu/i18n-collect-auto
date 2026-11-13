@@ -113,6 +113,53 @@ test('loader keeps Vue script setup identity distinct and leaves application sou
   assert.deepStrictEqual(snapshot.entries.map(entry => entry.value), ['设置管线'])
 })
 
+test('loader maps extracted Vue script locations back to the SFC file', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-vue-script-loc-'))
+  const resourcePath = path.join(root, 'src', 'App.vue')
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = {}\n')
+  const fileSource = [
+    '<template>',
+    '  <p>{{ scriptCopy }}</p>',
+    '</template>',
+    '',
+    '<script>',
+    'export default {',
+    '  data () {',
+    '    return {',
+    '      scriptCopy: \'脚本文案\'',
+    '    }',
+    '  }',
+    '}',
+    '</script>',
+    ''
+  ].join('\n')
+  fs.writeFileSync(resourcePath, fileSource)
+  const extractedScript = [
+    'export default {',
+    '  data () {',
+    '    return {',
+    '      scriptCopy: \'脚本文案\'',
+    '    }',
+    '  }',
+    '}',
+    ''
+  ].join('\n')
+  const { mod, callbackSource } = invokeLoader({
+    root,
+    resourcePath,
+    resourceQuery: '?vue&type=script&lang=js',
+    source: extractedScript
+  })
+  assert.strictEqual(callbackSource, extractedScript)
+  const snapshot = mod.buildInfo[COLLECT_METADATA].snapshot
+  assert.strictEqual(snapshot.identity, 'src/App.vue::script[lang=js]')
+  const entry = snapshot.entries.find(item => item.value === '脚本文案')
+  assert.ok(entry)
+  assert.strictEqual(entry.locations[0].start.line, 9)
+  assert.strictEqual(entry.locations[0].end.line, 9)
+})
+
 test('loader collects Vue render-function template JavaScript through the render policy', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-loader-render-'))
   const resourcePath = path.join(root, 'src', 'App.vue')

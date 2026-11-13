@@ -4,9 +4,9 @@
     <p data-role="automatic-static">{{ `纯静态插值` }}</p>
     <p data-role="explicit-welcome">{{ $t('demo.welcomeBack', { name }) }}</p>
     <p class="note">
-      Forbidden interpolation and concatenation samples live in
+      Pre-migration interpolation and concatenation samples live in
       <code>fixtures/ForbiddenLiteralPatterns.vue</code>
-      (excluded from scan).
+      (excluded from collect; use scan + review to migrate).
     </p>
     <p data-role="explicit-unread">{{ $t('demo.unread.count', { count }) }}</p>
   </section>

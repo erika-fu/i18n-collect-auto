@@ -1,7 +1,7 @@
 {
   "version": 1,
   "parserVersion": "babel-7",
-  "configHash": "374016ae6fa391b89815d58247335645",
+  "configHash": "306e62c64078d7b1eaf6bd445e9a9fc1",
   "entries": [
     {
       "key": "2cb4acf6bd44f31e528b5dca612827ba",
@@ -11,11 +11,11 @@
           "path": "src/App.vue",
           "kind": "template-literal",
           "start": {
-            "line": 9,
+            "line": 50,
             "column": 27
           },
           "end": {
-            "line": 9,
+            "line": 50,
             "column": 33
           }
         }
@@ -137,11 +137,11 @@
           "path": "src/App.vue",
           "kind": "script-string",
           "start": {
-            "line": 8,
+            "line": 49,
             "column": 18
           },
           "end": {
-            "line": 8,
+            "line": 49,
             "column": 24
           }
         }

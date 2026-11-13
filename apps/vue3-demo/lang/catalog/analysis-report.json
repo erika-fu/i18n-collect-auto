@@ -187,6 +187,26 @@
       "semanticRole": "css-generated-content",
       "capability": "chinese-source-audit",
       "resourceIdentity": "src/base.css::style[index=0;lang=css]",
+      "disposition": "unresolved",
+      "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
+    },
+    {
+      "text": "独立样式中文",
+      "location": {
+        "path": "src/base.css",
+        "start": {
+          "line": 77,
+          "column": 12
+        },
+        "end": {
+          "line": 77,
+          "column": 18
+        }
+      },
+      "sourceSurface": "css",
+      "semanticRole": "css-generated-content",
+      "capability": "chinese-source-audit",
+      "resourceIdentity": "src/base.css::style[index=0;lang=css]",
       "disposition": "intentionally-ignored",
       "ignoreReason": "CSS generated-content audit sample is not runtime-localizable",
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
@@ -290,7 +310,7 @@
   "diagnostics": [],
   "coverage": {
     "sourceDiscovery": {
-      "total": 14
+      "total": 15
     },
     "runtimeLocalization": {
       "total": 12,
@@ -298,8 +318,8 @@
       "alreadyLocalized": 4
     },
     "chineseSourceAudit": {
-      "total": 2,
-      "unresolved": 0,
+      "total": 3,
+      "unresolved": 1,
       "needsReview": 0,
       "intentionallyIgnored": 2
     },

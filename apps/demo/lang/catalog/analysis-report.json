@@ -776,6 +776,7 @@
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
     }
   ],
+  "dynamicMessageCandidates": [],
   "localizedCallFindings": [
     {
       "text": "demo.build.localeLabel",
@@ -1187,8 +1188,8 @@
       "needsReview": 0,
       "intentionallyIgnored": 0,
       "translationApproved": 0,
+      "deferred": 0,
       "migrated": 0
     }
-  },
-  "dynamicMessageCandidates": []
+  }
 }

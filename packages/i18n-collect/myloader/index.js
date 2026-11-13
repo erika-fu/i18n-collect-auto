@@ -9,7 +9,7 @@ const {
 const { extractScript } = require('./extract-script')
 const { extractHtml } = require('./extract-html')
 const { extractCss } = require('./extract-css')
-const { extractVueScript } = require('./extract-vue-compat')
+const { extractVueScript, extractVueScriptBlocks } = require('./extract-vue-compat')
 const { extractVueRender, looksLikeVueRenderSource } = require('./extract-vue-render')
 const { transformBuildReplacement } = require('../mycommon/build-replace')
 const { keyFor } = require('../mycommon/store')
@@ -109,6 +109,18 @@ function publishWarnings(loaderContext, warnings) {
   }
 }
 
+function matchingVueScriptEntries(fileSource, resource, config) {
+  const blocks = extractVueScriptBlocks({ source: fileSource, resource, config })
+  const match = blocks.find(item => (
+    item.resource
+    && item.resource.setup === (resource.setup === true)
+    && String(item.resource.lang || 'js') === String(resource.lang || 'js')
+  ))
+  if (match) return match.entries
+  if (blocks.length === 1) return blocks[0].entries
+  return null
+}
+
 function collectedFor(resource, sourceText, config, { useRenderSource = false } = {}) {
   if (vueFile(resource.projectPath) && resource.block === 'script') {
     if (/<script[\s>]/i.test(sourceText)) {
@@ -119,6 +131,13 @@ function collectedFor(resource, sourceText, config, { useRenderSource = false } 
           config
         }),
         warnings: []
+      }
+    }
+    if (resource.absolutePath && fs.existsSync(resource.absolutePath)) {
+      const fileSource = fs.readFileSync(resource.absolutePath, 'utf8')
+      if (/<script[\s>]/i.test(fileSource)) {
+        const entries = matchingVueScriptEntries(fileSource, resource, config)
+        if (entries) return { entries, warnings: [] }
       }
     }
     return { entries: extractScript({ source: sourceText, resource, config }), warnings: [] }
