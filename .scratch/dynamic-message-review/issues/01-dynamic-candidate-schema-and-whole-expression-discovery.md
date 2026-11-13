@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] `collect` and `scan` produce equivalent dynamic-message candidate semantics for interpolation, concatenation, conditional construction, dynamic keys, plural/formatting logic, and structured copy.
-- [ ] The generated analysis report no longer exposes `explicitRequiredFindings` or `coverage.explicitRequired`, and consumers migrate to the new schema without retaining incompatible compatibility fields.
-- [ ] Regression tests demonstrate whole-expression locations, static-fragment evidence, deterministic identities, and identity behavior for harmless versus semantic source changes.
+- [x] `collect` and `scan` produce equivalent dynamic-message candidate semantics for interpolation, concatenation, conditional construction, dynamic keys, plural/formatting logic, and structured copy.
+- [x] The generated analysis report no longer exposes `explicitRequiredFindings` or `coverage.explicitRequired`, and consumers migrate to the new schema without retaining incompatible compatibility fields.
+- [x] Regression tests demonstrate whole-expression locations, static-fragment evidence, deterministic identities, and identity behavior for harmless versus semantic source changes.

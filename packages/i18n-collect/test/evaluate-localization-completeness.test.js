@@ -20,7 +20,7 @@ function emptyCoverage(overrides = {}) {
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    explicitRequired: { total: 0 },
+    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 },
     ...overrides
   }
 }
@@ -29,7 +29,7 @@ function cleanAnalysis(overrides = {}) {
   return {
     runtimeMessages: [],
     auditFindings: [],
-    explicitRequiredFindings: [],
+    dynamicMessageCandidates: [],
     localizedCallFindings: [],
     coverage: emptyCoverage(),
     ...overrides
@@ -49,8 +49,12 @@ test('evaluateLocalizationCompleteness passes when analysis is clean and source 
   assert.deepStrictEqual(report.blocking, [])
   assert.deepStrictEqual(report.runtimeLocalization, {
     automaticallyRuntimeLocalizable: 0,
-    alreadyLocalized: 0,
-    explicitRequired: 0
+    alreadyLocalized: 0
+  })
+  assert.deepStrictEqual(report.dynamicMessageCandidates, {
+    total: 0,
+    needsReview: 0,
+    intentionallyIgnored: 0
   })
   assert.deepStrictEqual(report.chineseSourceAudit, {
     total: 0,
@@ -108,19 +112,22 @@ test('evaluateLocalizationCompleteness fails for missing committed source catalo
   assert.match(report.message, /run collect/i)
 })
 
-test('evaluateLocalizationCompleteness fails for explicit-required messages', () => {
+test('evaluateLocalizationCompleteness fails for dynamic message candidates', () => {
   const finding = {
-    text: '你好${name}',
+    id: 'dynamic.abc123',
+    expression: '`你好${name}`',
+    staticFragments: ['你好'],
     location: { path: 'src/app.js', start: { line: 1, column: 0 }, end: { line: 1, column: 8 } },
-    semanticRole: 'script-string',
-    capability: 'explicit-required',
-    reason: 'interpolation'
+    semanticRole: 'dynamic-message',
+    capability: 'explicit-localization-required',
+    disposition: 'needs-review',
+    diagnostic: 'Template interpolation constructs user-facing copy and cannot be safely translated as fragments.'
   }
   const analysis = cleanAnalysis({
-    explicitRequiredFindings: [finding],
+    dynamicMessageCandidates: [finding],
     coverage: emptyCoverage({
       sourceDiscovery: { total: 1 },
-      explicitRequired: { total: 1 }
+      dynamicMessageCandidates: { total: 1, needsReview: 1, intentionallyIgnored: 0 }
     })
   })
   const report = evaluateLocalizationCompleteness({
@@ -131,14 +138,18 @@ test('evaluateLocalizationCompleteness fails for explicit-required messages', ()
     reviewState: { version: 1, locales: {} }
   })
   assert.strictEqual(report.ok, false)
-  assert.ok(report.blocking.includes('explicit-required'))
+  assert.ok(report.blocking.includes('dynamic-message-candidates'))
   assert.deepStrictEqual(report.runtimeLocalization, {
     automaticallyRuntimeLocalizable: 0,
-    alreadyLocalized: 0,
-    explicitRequired: 1
+    alreadyLocalized: 0
   })
-  assert.strictEqual(report.explicitRequiredFindings.length, 1)
-  assert.match(report.message, /explicit-required|explicit-messages/i)
+  assert.deepStrictEqual(report.dynamicMessageCandidates, {
+    total: 1,
+    needsReview: 1,
+    intentionallyIgnored: 0
+  })
+  assert.strictEqual(report.dynamicMessageCandidateFindings.length, 1)
+  assert.match(report.message, /dynamic message candidate/i)
 })
 
 test('evaluateLocalizationCompleteness fails for unresolved and needs-review audit findings', () => {
@@ -261,8 +272,7 @@ test('evaluateLocalizationCompleteness reports runtime buckets separately includ
   assert.strictEqual(report.ok, true)
   assert.deepStrictEqual(report.runtimeLocalization, {
     automaticallyRuntimeLocalizable: 1,
-    alreadyLocalized: 1,
-    explicitRequired: 0
+    alreadyLocalized: 1
   })
 })
 

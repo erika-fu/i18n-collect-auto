@@ -454,7 +454,9 @@ test('schemas and output ordering are stable, and production verification is sem
   const config = loadConfig({ root })
   const committed = readFormalCollectionOutputs(root, config)
   assert.strictEqual(committed.catalog.version, 1)
-  assert.strictEqual(committed.report.version, 1)
+  assert.strictEqual(committed.report.version, 2)
+  assert.ok(Array.isArray(committed.report.dynamicMessageCandidates))
+  assert.ok(!Object.prototype.hasOwnProperty.call(committed.report, 'explicitRequiredFindings'))
   const keys = Object.keys(committed.catalog.messages)
   assert.deepStrictEqual(keys, [...keys].sort((left, right) => left.localeCompare(right)))
   const runtimePaths = committed.report.runtimeMessages.map(item => [

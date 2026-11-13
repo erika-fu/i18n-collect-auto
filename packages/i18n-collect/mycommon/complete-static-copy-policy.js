@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const fs = require('fs')
 const parser = require('@babel/parser')
 const traverse = require('@babel/traverse').default
@@ -21,6 +22,138 @@ const REASON_INTERPOLATION = 'interpolation'
 const REASON_CONDITIONAL = 'conditional'
 const REASON_FORMATTING = 'formatting'
 const REASON_STRUCTURED_FRAGMENTATION = 'structured-fragmentation'
+const REASON_DYNAMIC_KEY = 'dynamic-key'
+
+const CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED = 'explicit-localization-required'
+const DISPOSITION_NEEDS_REVIEW = 'needs-review'
+const SEMANTIC_ROLE_DYNAMIC_MESSAGE = 'dynamic-message'
+
+const DIAGNOSTIC_BY_REASON = {
+  [REASON_CONCATENATION]:
+    'String concatenation constructs user-facing copy and cannot be safely translated as fragments.',
+  [REASON_INTERPOLATION]:
+    'Template interpolation constructs user-facing copy and cannot be safely translated as fragments.',
+  [REASON_CONDITIONAL]:
+    'Conditional construction selects user-facing copy and cannot be safely translated as fragments.',
+  [REASON_FORMATTING]:
+    'Formatting or plural logic constructs user-facing copy and cannot be safely translated as fragments.',
+  [REASON_STRUCTURED_FRAGMENTATION]:
+    'Structured markup interleaves user-facing copy with inline elements and cannot be safely translated as fragments.',
+  [REASON_DYNAMIC_KEY]:
+    'Dynamic key construction builds user-facing copy and cannot be safely translated as fragments.'
+}
+
+function normalizeExpressionForId(expression) {
+  const source = String(expression || '')
+  let result = ''
+  let index = 0
+
+  while (index < source.length) {
+    const char = source[index]
+    if (char === '"' || char === "'") {
+      const quote = char
+      result += char
+      index += 1
+      while (index < source.length) {
+        const current = source[index]
+        result += current
+        index += 1
+        if (current === '\\') {
+          if (index < source.length) {
+            result += source[index]
+            index += 1
+          }
+          continue
+        }
+        if (current === quote) break
+      }
+      continue
+    }
+    if (char === '`') {
+      result += '`'
+      index += 1
+      while (index < source.length) {
+        const current = source[index]
+        if (current === '`') {
+          result += '`'
+          index += 1
+          break
+        }
+        if (current === '\\') {
+          result += current + (source[index + 1] || '')
+          index += 2
+          continue
+        }
+        if (current === '$' && source[index + 1] === '{') {
+          index += 2
+          let depth = 1
+          const innerStart = index
+          while (index < source.length && depth > 0) {
+            const inner = source[index]
+            if (inner === '"' || inner === "'") {
+              const quote = inner
+              index += 1
+              while (index < source.length) {
+                const nested = source[index]
+                index += 1
+                if (nested === '\\') {
+                  index += 1
+                  continue
+                }
+                if (nested === quote) break
+              }
+              continue
+            }
+            if (inner === '`') {
+              index += 1
+              while (index < source.length) {
+                const nested = source[index]
+                index += 1
+                if (nested === '\\') {
+                  index += 1
+                  continue
+                }
+                if (nested === '`') break
+              }
+              continue
+            }
+            if (inner === '{') depth += 1
+            else if (inner === '}') depth -= 1
+            if (depth > 0) index += 1
+          }
+          result += '${' + normalizeExpressionForId(source.slice(innerStart, index)) + '}'
+          index += 1
+          continue
+        }
+        result += current
+        index += 1
+      }
+      continue
+    }
+    if (/\s/.test(char)) {
+      index += 1
+      continue
+    }
+    result += char
+    index += 1
+  }
+  return result
+}
+
+function dynamicCandidateId({ path: projectPath, expression, reason }) {
+  const fingerprint = crypto
+    .createHash('sha256')
+    .update(
+      [
+        String(projectPath || '').split('\\').join('/'),
+        String(reason || ''),
+        normalizeExpressionForId(expression)
+      ].join('\0'),
+      'utf8'
+    )
+    .digest('hex')
+  return `dynamic.${fingerprint.slice(0, 6)}`
+}
 
 const FORMAT_METHODS = new Set([
   'concat',
@@ -125,6 +258,199 @@ function markHanLeaves(violations, seen, fullSource, projectPath, node, baseOffs
   }
 }
 
+function absoluteRange(node, baseOffset, mapOffset) {
+  if (!node || node.start == null || node.end == null) return null
+  const start = mapOffset ? mapOffset(node.start) : baseOffset + node.start
+  const end = mapOffset ? mapOffset(node.end) : baseOffset + node.end
+  return { start, end }
+}
+
+function collectHanFragmentTexts(node, fragments) {
+  if (!node) return
+  if (node.type === 'StringLiteral') {
+    if (containsHan(node.value || '')) fragments.push(node.value)
+    return
+  }
+  if (node.type === 'TemplateLiteral') {
+    for (const quasi of node.quasis) {
+      const text = quasi.value.cooked || ''
+      if (containsHan(text)) fragments.push(text)
+    }
+    return
+  }
+  if (isConcatBinary(node)) {
+    walkConcatOperands(node, operand => collectHanFragmentTexts(operand, fragments))
+  }
+}
+
+function collectHanFragmentRecords(node, fullSource, projectPath, baseOffset, reason, kind, mapOffset, records) {
+  if (!node) return
+  if (node.type === 'StringLiteral') {
+    if (!containsHan(node.value || '')) return
+    const range = absoluteRange(node, baseOffset, mapOffset)
+    if (!range) return
+    const loc = locationOf(fullSource, projectPath, range.start, range.end, kind)
+    records.push({
+      text: node.value,
+      kind: loc.kind,
+      start: loc.start,
+      end: loc.end
+    })
+    return
+  }
+  if (node.type === 'TemplateLiteral') {
+    for (const quasi of node.quasis) {
+      const text = quasi.value.cooked || ''
+      if (!containsHan(text)) continue
+      const range = absoluteRange(quasi, baseOffset, mapOffset)
+      if (!range) continue
+      const loc = locationOf(fullSource, projectPath, range.start, range.end, 'template-literal')
+      records.push({
+        text,
+        kind: loc.kind,
+        start: loc.start,
+        end: loc.end
+      })
+    }
+    return
+  }
+  if (isConcatBinary(node)) {
+    walkConcatOperands(node, operand => {
+      collectHanFragmentRecords(
+        operand,
+        fullSource,
+        projectPath,
+        baseOffset,
+        reason,
+        kind,
+        mapOffset,
+        records
+      )
+    })
+  }
+}
+
+function pushCandidate(candidates, seenCandidates, item) {
+  if (!candidates || !seenCandidates) return
+  if (!item.staticFragments || item.staticFragments.length === 0) return
+  const key = [
+    item.location.path,
+    item.reason,
+    item.expression,
+    item.location.start.line,
+    item.location.start.column,
+    item.location.end.line,
+    item.location.end.column
+  ].join('\0')
+  if (seenCandidates.has(key)) return
+  seenCandidates.add(key)
+  const id = dynamicCandidateId({
+    path: item.location.path,
+    expression: item.expression,
+    reason: item.reason
+  })
+  candidates.push({
+    id,
+    expression: item.expression,
+    staticFragments: item.staticFragments,
+    fragmentRecords: item.fragmentRecords || [],
+    location: item.location,
+    reason: item.reason,
+    kind: item.kind,
+    semanticRole: SEMANTIC_ROLE_DYNAMIC_MESSAGE,
+    capability: CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED,
+    disposition: DISPOSITION_NEEDS_REVIEW,
+    diagnostic: DIAGNOSTIC_BY_REASON[item.reason] || DIAGNOSTIC_BY_REASON[REASON_INTERPOLATION]
+  })
+}
+
+function recordExpressionCandidate(
+  candidates,
+  seenCandidates,
+  fullSource,
+  projectPath,
+  node,
+  baseOffset,
+  reason,
+  kind,
+  mapOffset
+) {
+  if (!candidates || !node) return
+  const range = absoluteRange(node, baseOffset, mapOffset)
+  if (!range) return
+  const fragments = []
+  const fragmentRecords = []
+  if (reason === REASON_CONDITIONAL) {
+    for (const branch of [node.consequent, node.alternate]) {
+      collectHanFragmentTexts(branch, fragments)
+      collectHanFragmentRecords(
+        branch,
+        fullSource,
+        projectPath,
+        baseOffset,
+        reason,
+        branch && branch.type === 'TemplateLiteral' ? 'template-literal' : kind,
+        mapOffset,
+        fragmentRecords
+      )
+    }
+  } else if (reason === REASON_FORMATTING && node.type === 'CallExpression') {
+    const callee = node.callee
+    if (callee && callee.type === 'MemberExpression') {
+      collectHanFragmentTexts(callee.object, fragments)
+      collectHanFragmentRecords(
+        callee.object,
+        fullSource,
+        projectPath,
+        baseOffset,
+        reason,
+        kind,
+        mapOffset,
+        fragmentRecords
+      )
+    }
+    for (const arg of node.arguments || []) {
+      collectHanFragmentTexts(arg, fragments)
+      collectHanFragmentRecords(
+        arg,
+        fullSource,
+        projectPath,
+        baseOffset,
+        reason,
+        kind,
+        mapOffset,
+        fragmentRecords
+      )
+    }
+  } else {
+    collectHanFragmentTexts(node, fragments)
+    collectHanFragmentRecords(
+      node,
+      fullSource,
+      projectPath,
+      baseOffset,
+      reason,
+      kind,
+      mapOffset,
+      fragmentRecords
+    )
+  }
+  if (fragments.length === 0) return
+  const loc = locationOf(fullSource, projectPath, range.start, range.end, kind)
+  pushCandidate(candidates, seenCandidates, {
+    expression: fullSource.slice(range.start, range.end),
+    staticFragments: fragments,
+    fragmentRecords,
+    location: {
+      path: loc.path,
+      start: loc.start,
+      end: loc.end
+    },
+    reason,
+    kind: loc.kind
+  })
+}
+
 function parseModule(source) {
   return parser.parse(source, {
     sourceType: 'unambiguous',
@@ -184,7 +510,44 @@ function collectHtmlHanTexts(node, visit) {
   for (const child of node.childNodes) collectHtmlHanTexts(child, visit)
 }
 
-function scanHtmlStructuredElement(element, fullSource, projectPath, baseOffset, kind, violations, seen) {
+function recordStructuredCandidate(
+  candidates,
+  seenCandidates,
+  fullSource,
+  projectPath,
+  absoluteStart,
+  absoluteEnd,
+  fragments,
+  fragmentRecords,
+  kind
+) {
+  if (!candidates || fragments.length === 0) return
+  const loc = locationOf(fullSource, projectPath, absoluteStart, absoluteEnd, kind)
+  pushCandidate(candidates, seenCandidates, {
+    expression: fullSource.slice(absoluteStart, absoluteEnd),
+    staticFragments: fragments,
+    fragmentRecords,
+    location: {
+      path: loc.path,
+      start: loc.start,
+      end: loc.end
+    },
+    reason: REASON_STRUCTURED_FRAGMENTATION,
+    kind: loc.kind
+  })
+}
+
+function scanHtmlStructuredElement(
+  element,
+  fullSource,
+  projectPath,
+  baseOffset,
+  kind,
+  violations,
+  seen,
+  candidates,
+  seenCandidates
+) {
   if (!element || !element.childNodes) return
   const host = String(element.tagName || '').toLowerCase()
   if (STRUCTURED_MESSAGE_HOSTS.has(host)) {
@@ -199,6 +562,8 @@ function scanHtmlStructuredElement(element, fullSource, projectPath, baseOffset,
       if (child.tagName && isStructuredTag(child.tagName)) structuredKids.push(child)
     }
     if (textKids.length > 0 && structuredKids.length > 0) {
+      const fragments = []
+      const fragmentRecords = []
       for (const textNode of textKids) {
         const location = textNode.sourceCodeLocation
         if (!location) continue
@@ -212,6 +577,20 @@ function scanHtmlStructuredElement(element, fullSource, projectPath, baseOffset,
           textNode.value,
           kind
         )
+        fragments.push(textNode.value)
+        const loc = locationOf(
+          fullSource,
+          projectPath,
+          baseOffset + location.startOffset,
+          baseOffset + location.endOffset,
+          kind
+        )
+        fragmentRecords.push({
+          text: textNode.value,
+          kind: loc.kind,
+          start: loc.start,
+          end: loc.end
+        })
       }
       for (const structured of structuredKids) {
         collectHtmlHanTexts(structured, textNode => {
@@ -227,23 +606,81 @@ function scanHtmlStructuredElement(element, fullSource, projectPath, baseOffset,
             textNode.value,
             kind
           )
+          fragments.push(textNode.value)
+          const loc = locationOf(
+            fullSource,
+            projectPath,
+            baseOffset + location.startOffset,
+            baseOffset + location.endOffset,
+            kind
+          )
+          fragmentRecords.push({
+            text: textNode.value,
+            kind: loc.kind,
+            start: loc.start,
+            end: loc.end
+          })
         })
+      }
+      const hostLocation = element.sourceCodeLocation
+      if (hostLocation) {
+        recordStructuredCandidate(
+          candidates,
+          seenCandidates,
+          fullSource,
+          projectPath,
+          baseOffset + hostLocation.startOffset,
+          baseOffset + hostLocation.endOffset,
+          fragments,
+          fragmentRecords,
+          kind
+        )
       }
     }
   }
   for (const child of element.childNodes) {
     if (child.tagName) {
-      scanHtmlStructuredElement(child, fullSource, projectPath, baseOffset, kind, violations, seen)
+      scanHtmlStructuredElement(
+        child,
+        fullSource,
+        projectPath,
+        baseOffset,
+        kind,
+        violations,
+        seen,
+        candidates,
+        seenCandidates
+      )
     }
   }
 }
 
-function scanHtmlStructuredMarkup(fullSource, projectPath, templateStart, templateEnd, kind, violations, seen) {
+function scanHtmlStructuredMarkup(
+  fullSource,
+  projectPath,
+  templateStart,
+  templateEnd,
+  kind,
+  violations,
+  seen,
+  candidates,
+  seenCandidates
+) {
   const fragment = fullSource.slice(templateStart, templateEnd)
   const root = parse5.parseFragment(fragment, { sourceCodeLocationInfo: true })
   for (const child of root.childNodes || []) {
     if (child.tagName) {
-      scanHtmlStructuredElement(child, fullSource, projectPath, templateStart, kind, violations, seen)
+      scanHtmlStructuredElement(
+        child,
+        fullSource,
+        projectPath,
+        templateStart,
+        kind,
+        violations,
+        seen,
+        candidates,
+        seenCandidates
+      )
     }
   }
 }
@@ -284,7 +721,16 @@ function collectJsxHanTexts(node, visit) {
   }
 }
 
-function scanJsxStructuredElement(node, fullSource, projectPath, baseOffset, violations, seen) {
+function scanJsxStructuredElement(
+  node,
+  fullSource,
+  projectPath,
+  baseOffset,
+  violations,
+  seen,
+  candidates,
+  seenCandidates
+) {
   if (!node || node.type !== 'JSXElement') return
   const host = String(jsxElementName(node) || '').toLowerCase()
   if (STRUCTURED_MESSAGE_HOSTS.has(host)) {
@@ -300,6 +746,8 @@ function scanJsxStructuredElement(node, fullSource, projectPath, baseOffset, vio
       if (isStructuredTag(name)) structuredKids.push(child)
     }
     if (textKids.length > 0 && structuredKids.length > 0) {
+      const fragments = []
+      const fragmentRecords = []
       for (const textNode of textKids) {
         recordStructuredText(
           violations,
@@ -311,6 +759,20 @@ function scanJsxStructuredElement(node, fullSource, projectPath, baseOffset, vio
           textNode.value,
           'script-string'
         )
+        fragments.push(textNode.value)
+        const loc = locationOf(
+          fullSource,
+          projectPath,
+          baseOffset + textNode.start,
+          baseOffset + textNode.end,
+          'script-string'
+        )
+        fragmentRecords.push({
+          text: textNode.value,
+          kind: loc.kind,
+          start: loc.start,
+          end: loc.end
+        })
       }
       for (const structured of structuredKids) {
         collectJsxHanTexts(structured, textNode => {
@@ -324,21 +786,81 @@ function scanJsxStructuredElement(node, fullSource, projectPath, baseOffset, vio
             textNode.value,
             'script-string'
           )
+          fragments.push(textNode.value)
+          const loc = locationOf(
+            fullSource,
+            projectPath,
+            baseOffset + textNode.start,
+            baseOffset + textNode.end,
+            'script-string'
+          )
+          fragmentRecords.push({
+            text: textNode.value,
+            kind: loc.kind,
+            start: loc.start,
+            end: loc.end
+          })
         })
+      }
+      if (node.start != null && node.end != null) {
+        recordStructuredCandidate(
+          candidates,
+          seenCandidates,
+          fullSource,
+          projectPath,
+          baseOffset + node.start,
+          baseOffset + node.end,
+          fragments,
+          fragmentRecords,
+          'script-string'
+        )
       }
     }
   }
 }
 
-function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, expressionKind, mapOffset) {
+function isComputedKeyExpression(nodePath) {
+  const parent = nodePath.parent
+  if (!parent) return false
+  if (parent.type === 'MemberExpression' && parent.computed && parent.property === nodePath.node) {
+    return true
+  }
+  if (parent.type === 'ObjectProperty' && parent.computed && parent.key === nodePath.node) {
+    return true
+  }
+  return false
+}
+
+function scanAst(
+  ast,
+  fullSource,
+  projectPath,
+  baseOffset,
+  violations,
+  seen,
+  expressionKind,
+  mapOffset,
+  candidates,
+  seenCandidates
+) {
   const scriptKind = expressionKind || 'script-string'
   traverse(ast, {
     JSXElement(nodePath) {
-      scanJsxStructuredElement(nodePath.node, fullSource, projectPath, baseOffset, violations, seen)
+      scanJsxStructuredElement(
+        nodePath.node,
+        fullSource,
+        projectPath,
+        baseOffset,
+        violations,
+        seen,
+        candidates,
+        seenCandidates
+      )
     },
     BinaryExpression(nodePath) {
       if (nodePath.node.operator !== '+') return
       if (nodePath.parent && isConcatBinary(nodePath.parent)) return
+      if (isComputedKeyExpression(nodePath)) return
       walkConcatOperands(nodePath.node, operand => {
         markHanLeaves(
           violations,
@@ -352,9 +874,21 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           mapOffset
         )
       })
+      recordExpressionCandidate(
+        candidates,
+        seenCandidates,
+        fullSource,
+        projectPath,
+        nodePath.node,
+        baseOffset,
+        REASON_CONCATENATION,
+        scriptKind,
+        mapOffset
+      )
     },
     TemplateLiteral(nodePath) {
       if (nodePath.node.expressions.length === 0) return
+      if (isComputedKeyExpression(nodePath)) return
       for (const quasi of nodePath.node.quasis) {
         recordNode(
           violations,
@@ -368,6 +902,17 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           mapOffset
         )
       }
+      recordExpressionCandidate(
+        candidates,
+        seenCandidates,
+        fullSource,
+        projectPath,
+        nodePath.node,
+        baseOffset,
+        REASON_INTERPOLATION,
+        'template-literal',
+        mapOffset
+      )
     },
     ConditionalExpression(nodePath) {
       const { consequent, alternate } = nodePath.node
@@ -400,6 +945,17 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           mapOffset
         )
       }
+      recordExpressionCandidate(
+        candidates,
+        seenCandidates,
+        fullSource,
+        projectPath,
+        nodePath.node,
+        baseOffset,
+        REASON_CONDITIONAL,
+        scriptKind,
+        mapOffset
+      )
     },
 
     CallExpression(nodePath) {
@@ -436,16 +992,126 @@ function scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, exp
           mapOffset
         )
       }
+      recordExpressionCandidate(
+        candidates,
+        seenCandidates,
+        fullSource,
+        projectPath,
+        nodePath.node,
+        baseOffset,
+        REASON_FORMATTING,
+        scriptKind,
+        mapOffset
+      )
+    },
+
+    MemberExpression(nodePath) {
+      if (!nodePath.node.computed) return
+      const property = nodePath.node.property
+      const fragments = []
+      collectHanFragmentTexts(property, fragments)
+      if (fragments.length === 0) return
+      if (
+        property.type === 'TemplateLiteral' && property.expressions.length > 0
+        || isConcatBinary(property)
+      ) {
+        markHanLeaves(
+          violations,
+          seen,
+          fullSource,
+          projectPath,
+          property,
+          baseOffset,
+          REASON_DYNAMIC_KEY,
+          property.type === 'TemplateLiteral' ? 'template-literal' : scriptKind,
+          mapOffset
+        )
+        recordExpressionCandidate(
+          candidates,
+          seenCandidates,
+          fullSource,
+          projectPath,
+          property,
+          baseOffset,
+          REASON_DYNAMIC_KEY,
+          property.type === 'TemplateLiteral' ? 'template-literal' : scriptKind,
+          mapOffset
+        )
+      }
+    },
+
+    ObjectProperty(nodePath) {
+      if (!nodePath.node.computed) return
+      const key = nodePath.node.key
+      const fragments = []
+      collectHanFragmentTexts(key, fragments)
+      if (fragments.length === 0) return
+      if (
+        key.type === 'TemplateLiteral' && key.expressions.length > 0
+        || isConcatBinary(key)
+      ) {
+        markHanLeaves(
+          violations,
+          seen,
+          fullSource,
+          projectPath,
+          key,
+          baseOffset,
+          REASON_DYNAMIC_KEY,
+          key.type === 'TemplateLiteral' ? 'template-literal' : scriptKind,
+          mapOffset
+        )
+        recordExpressionCandidate(
+          candidates,
+          seenCandidates,
+          fullSource,
+          projectPath,
+          key,
+          baseOffset,
+          REASON_DYNAMIC_KEY,
+          key.type === 'TemplateLiteral' ? 'template-literal' : scriptKind,
+          mapOffset
+        )
+      }
     }
   })
 }
 
-function scanScriptSource(fullSource, projectPath, baseOffset, slice, violations, seen) {
+function scanScriptSource(
+  fullSource,
+  projectPath,
+  baseOffset,
+  slice,
+  violations,
+  seen,
+  candidates,
+  seenCandidates
+) {
   const ast = parseModule(slice)
-  scanAst(ast, fullSource, projectPath, baseOffset, violations, seen, 'script-string')
+  scanAst(
+    ast,
+    fullSource,
+    projectPath,
+    baseOffset,
+    violations,
+    seen,
+    'script-string',
+    null,
+    candidates,
+    seenCandidates
+  )
 }
 
-function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violations, seen) {
+function scanExpressionSource(
+  fullSource,
+  projectPath,
+  baseOffset,
+  slice,
+  violations,
+  seen,
+  candidates,
+  seenCandidates
+) {
   const trimmed = slice.trim()
   if (!trimmed) return
   const lead = slice.indexOf(trimmed)
@@ -456,10 +1122,29 @@ function scanExpressionSource(fullSource, projectPath, baseOffset, slice, violat
     errorRecovery: true
   })
   // Leading '(' shifts every node start by 1 relative to the trimmed expression.
-  scanAst(ast, fullSource, projectPath, baseOffset + lead - 1, violations, seen, 'template-expression')
+  scanAst(
+    ast,
+    fullSource,
+    projectPath,
+    baseOffset + lead - 1,
+    violations,
+    seen,
+    'template-expression',
+    null,
+    candidates,
+    seenCandidates
+  )
 }
 
-function scanExpressionRegion(fullSource, projectPath, region, violations, seen) {
+function scanExpressionRegion(
+  fullSource,
+  projectPath,
+  region,
+  violations,
+  seen,
+  candidates,
+  seenCandidates
+) {
   const trimmed = region.value.trim()
   if (!trimmed) return
   const lead = region.value.indexOf(trimmed)
@@ -469,7 +1154,18 @@ function scanExpressionRegion(fullSource, projectPath, region, violations, seen)
     errorRecovery: true
   })
   const mapOffset = offset => sourceOffset(region, lead - 1 + offset)
-  scanAst(ast, fullSource, projectPath, 0, violations, seen, 'template-expression', mapOffset)
+  scanAst(
+    ast,
+    fullSource,
+    projectPath,
+    0,
+    violations,
+    seen,
+    'template-expression',
+    mapOffset,
+    candidates,
+    seenCandidates
+  )
 }
 
 function scanTag(source, index) {
@@ -614,7 +1310,17 @@ function interpolationSpans(raw) {
   return spans
 }
 
-function scanTemplateMarkup(fullSource, projectPath, templateStart, templateEnd, violations, seen, htmlKind) {
+function scanTemplateMarkup(
+  fullSource,
+  projectPath,
+  templateStart,
+  templateEnd,
+  violations,
+  seen,
+  htmlKind,
+  candidates,
+  seenCandidates
+) {
   const fragment = fullSource.slice(templateStart, templateEnd)
   const spans = interpolationSpans(fragment)
   for (const span of spans) {
@@ -625,7 +1331,9 @@ function scanTemplateMarkup(fullSource, projectPath, templateStart, templateEnd,
       templateStart + span.start,
       expression,
       violations,
-      seen
+      seen,
+      candidates,
+      seenCandidates
     )
   }
 
@@ -651,7 +1359,9 @@ function scanTemplateMarkup(fullSource, projectPath, templateStart, templateEnd,
       templateStart + valueStart,
       expression,
       violations,
-      seen
+      seen,
+      candidates,
+      seenCandidates
     )
   }
 
@@ -662,26 +1372,54 @@ function scanTemplateMarkup(fullSource, projectPath, templateStart, templateEnd,
     templateEnd,
     htmlKind || 'html-text',
     violations,
-    seen
+    seen,
+    candidates,
+    seenCandidates
   )
 }
 
-function scanVueSource(file, projectPath, violations, seen, options) {
+function scanVueSource(file, projectPath, violations, seen, options, candidates, seenCandidates) {
   const fullSource = file.source
   for (const block of findBlock(fullSource, 'script')) {
-    scanScriptSource(fullSource, projectPath, block.start, fullSource.slice(block.start, block.end), violations, seen)
+    scanScriptSource(
+      fullSource,
+      projectPath,
+      block.start,
+      fullSource.slice(block.start, block.end),
+      violations,
+      seen,
+      candidates,
+      seenCandidates
+    )
   }
   const template = findBlock(fullSource, 'template').length > 0
     ? parseVueTemplate(fullSource, file, options)
     : emptyTemplate()
   for (const region of template.regions) {
     if (region.type === 'expression') {
-      scanExpressionRegion(fullSource, projectPath, region, violations, seen)
+      scanExpressionRegion(
+        fullSource,
+        projectPath,
+        region,
+        violations,
+        seen,
+        candidates,
+        seenCandidates
+      )
     } else if (region.type === 'attribute' && bindingAttribute(region.name)) {
-      scanExpressionRegion(fullSource, projectPath, region, violations, seen)
+      scanExpressionRegion(
+        fullSource,
+        projectPath,
+        region,
+        violations,
+        seen,
+        candidates,
+        seenCandidates
+      )
     }
   }
-  for (const region of structuredTextRegions(template)) {
+  const structured = structuredTextRegions(template)
+  for (const region of structured) {
     recordStructuredText(
       violations,
       seen,
@@ -693,21 +1431,72 @@ function scanVueSource(file, projectPath, violations, seen, options) {
       'html-text'
     )
   }
+  if (candidates && structured.length > 0) {
+    const byHost = new Map()
+    for (const region of structured) {
+      const hostKey = region.hostId == null ? `${region.start}:${region.end}` : String(region.hostId)
+      const group = byHost.get(hostKey) || []
+      group.push(region)
+      byHost.set(hostKey, group)
+    }
+    for (const group of byHost.values()) {
+      if (group.length === 0) continue
+      const start = group[0].hostStart != null
+        ? group[0].hostStart
+        : Math.min(...group.map(item => item.start))
+      const end = group[0].hostEnd != null
+        ? group[0].hostEnd
+        : Math.max(...group.map(item => item.end))
+      const fragments = group.map(item => item.value)
+      const fragmentRecords = group.map(item => {
+        const loc = locationOf(fullSource, projectPath, item.start, item.end, 'html-text')
+        return {
+          text: item.value,
+          kind: loc.kind,
+          start: loc.start,
+          end: loc.end
+        }
+      })
+      recordStructuredCandidate(
+        candidates,
+        seenCandidates,
+        fullSource,
+        projectPath,
+        start,
+        end,
+        fragments,
+        fragmentRecords,
+        'html-text'
+      )
+    }
+  }
 }
 
-function scanCompleteStaticCopyPolicy(files, options = {}) {
-  if (!Array.isArray(files)) throw new TypeError('scanCompleteStaticCopyPolicy requires a files array')
+function scanPolicyFiles(files, options = {}) {
+  if (!Array.isArray(files)) throw new TypeError('scanPolicyFiles requires a files array')
   const violations = []
   const seen = new Set()
+  const candidates = []
+  const seenCandidates = new Set()
   for (const file of files) {
     if (!file || typeof file.path !== 'string' || typeof file.source !== 'string') {
       throw new TypeError('each file needs path and source strings')
     }
     const projectPath = file.path.split('\\').join('/')
     const ext = extensionOf(projectPath)
-    if (ext === '.vue') scanVueSource(file, projectPath, violations, seen, options)
-    else if (SCRIPT_EXTENSIONS.has(ext) || ext === '') {
-      scanScriptSource(file.source, projectPath, 0, file.source, violations, seen)
+    if (ext === '.vue') {
+      scanVueSource(file, projectPath, violations, seen, options, candidates, seenCandidates)
+    } else if (SCRIPT_EXTENSIONS.has(ext) || ext === '') {
+      scanScriptSource(
+        file.source,
+        projectPath,
+        0,
+        file.source,
+        violations,
+        seen,
+        candidates,
+        seenCandidates
+      )
     } else if (ext === '.html' || ext === '.htm') {
       scanTemplateMarkup(
         file.source,
@@ -716,7 +1505,9 @@ function scanCompleteStaticCopyPolicy(files, options = {}) {
         file.source.length,
         violations,
         seen,
-        'static-html-text'
+        'static-html-text',
+        candidates,
+        seenCandidates
       )
     }
   }
@@ -727,7 +1518,39 @@ function scanCompleteStaticCopyPolicy(files, options = {}) {
     if (left.start.column !== right.start.column) return left.start.column - right.start.column
     return left.reason.localeCompare(right.reason)
   })
-  return violations
+  candidates.sort((left, right) => {
+    const byPath = left.location.path.localeCompare(right.location.path)
+    if (byPath) return byPath
+    if (left.location.start.line !== right.location.start.line) {
+      return left.location.start.line - right.location.start.line
+    }
+    if (left.location.start.column !== right.location.start.column) {
+      return left.location.start.column - right.location.start.column
+    }
+    return left.expression.localeCompare(right.expression)
+  })
+  return { violations, candidates }
+}
+
+function scanCompleteStaticCopyPolicy(files, options = {}) {
+  return scanPolicyFiles(files, options).violations
+}
+
+function discoverDynamicMessageCandidates(files, options = {}) {
+  return scanPolicyFiles(files, options).candidates.map(candidate => ({
+    id: candidate.id,
+    expression: candidate.expression,
+    staticFragments: candidate.staticFragments,
+    fragmentRecords: candidate.fragmentRecords,
+    location: candidate.location,
+    reason: candidate.reason,
+    kind: candidate.kind,
+    sourceSurfaceHint: candidate.kind,
+    semanticRole: candidate.semanticRole,
+    capability: candidate.capability,
+    disposition: candidate.disposition,
+    diagnostic: candidate.diagnostic
+  }))
 }
 
 function positionKey(position) {
@@ -834,10 +1657,14 @@ module.exports = {
   BASELINE_VERSION,
   REASON_CONCATENATION,
   REASON_CONDITIONAL,
+  REASON_DYNAMIC_KEY,
   REASON_FORMATTING,
   REASON_INTERPOLATION,
   REASON_STRUCTURED_FRAGMENTATION,
+  CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED,
   comparePolicyBaseline,
+  discoverDynamicMessageCandidates,
+  dynamicCandidateId,
   readPolicyBaseline,
   scanCompleteStaticCopyPolicy
 }

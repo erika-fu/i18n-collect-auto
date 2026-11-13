@@ -127,7 +127,12 @@ function structuredTextRegions(template) {
         const key = `${region.start}:${region.end}`
         if (seen.has(key)) continue
         seen.add(key)
-        selected.push(region)
+        selected.push({
+          ...region,
+          hostId: host.id,
+          hostStart: host.start,
+          hostEnd: host.end
+        })
       }
     }
   }

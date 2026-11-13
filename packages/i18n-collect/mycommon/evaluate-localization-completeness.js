@@ -6,11 +6,26 @@ const { needsReview, planTranslation } = require('./translate')
 function runtimeLocalizationSummary(analysis) {
   const coverage = analysis.coverage || {}
   const runtime = coverage.runtimeLocalization || {}
-  const explicit = coverage.explicitRequired || {}
   return {
     automaticallyRuntimeLocalizable: runtime.automaticallyRuntimeLocalizable || 0,
-    alreadyLocalized: runtime.alreadyLocalized || 0,
-    explicitRequired: explicit.total || (analysis.explicitRequiredFindings || []).length
+    alreadyLocalized: runtime.alreadyLocalized || 0
+  }
+}
+
+function dynamicMessageCandidateSummary(analysis) {
+  const coverage = analysis.coverage || {}
+  const dynamic = coverage.dynamicMessageCandidates || {}
+  const candidates = analysis.dynamicMessageCandidates || []
+  const needsReview = dynamic.needsReview != null
+    ? dynamic.needsReview
+    : candidates.filter(item => item.disposition === 'needs-review').length
+  const intentionallyIgnored = dynamic.intentionallyIgnored != null
+    ? dynamic.intentionallyIgnored
+    : candidates.filter(item => item.disposition === 'intentionally-ignored').length
+  return {
+    total: dynamic.total != null ? dynamic.total : candidates.length,
+    needsReview,
+    intentionallyIgnored
   }
 }
 
@@ -129,7 +144,8 @@ function sampleKeys(pairs, limit = 3) {
 function sampleFindings(findings, limit = 3) {
   const labels = findings.map(item => {
     const path = item.location && item.location.path ? item.location.path : '?'
-    return `${path}:${JSON.stringify(item.text)}`
+    const label = item.expression != null ? item.expression : item.text
+    return `${path}:${JSON.stringify(label)}`
   })
   if (labels.length <= limit) return labels.join(', ')
   return `${labels.slice(0, limit).join(', ')} (+${labels.length - limit} more)`
@@ -144,6 +160,7 @@ function evaluateLocalizationCompleteness(input = {}) {
   const analysis = input.analysis || {}
   const runtimeLocalization = runtimeLocalizationSummary(analysis)
   const chineseSourceAudit = chineseSourceAuditSummary(analysis)
+  const dynamicMessageCandidates = dynamicMessageCandidateSummary(analysis)
   const sourceFreshness = evaluateSourceFreshness(analysis, input.committedSourceCatalog)
 
   const blocking = []
@@ -154,11 +171,14 @@ function evaluateLocalizationCompleteness(input = {}) {
     remediation.push(sourceFreshness.message)
   }
 
-  const explicitRequiredFindings = analysis.explicitRequiredFindings || []
-  if (explicitRequiredFindings.length > 0 || runtimeLocalization.explicitRequired > 0) {
-    blocking.push('explicit-required')
+  const candidateFindings = analysis.dynamicMessageCandidates || []
+  const blockingCandidates = candidateFindings.filter(
+    item => item.disposition !== 'intentionally-ignored'
+  )
+  if (blockingCandidates.length > 0 || dynamicMessageCandidates.needsReview > 0) {
+    blocking.push('dynamic-message-candidates')
     remediation.push(
-      `${explicitRequiredFindings.length || runtimeLocalization.explicitRequired} explicit-required message(s) (${sampleFindings(explicitRequiredFindings)}); migrate to explicit-messages.json and static localized calls`
+      `${blockingCandidates.length || dynamicMessageCandidates.needsReview} dynamic message candidate(s) (${sampleFindings(blockingCandidates)}); review to translate, intentionally ignore, or defer`
     )
   }
 
@@ -218,11 +238,12 @@ function evaluateLocalizationCompleteness(input = {}) {
     },
     runtimeLocalization,
     chineseSourceAudit,
+    dynamicMessageCandidates,
     localeCoverage: localeResult.localeCoverage,
     missingTranslations: localeResult.missingTranslations,
     needsReviewTranslations: localeResult.needsReviewTranslations,
     staleTargetKeys: localeResult.staleTargetKeys,
-    explicitRequiredFindings,
+    dynamicMessageCandidateFindings: candidateFindings,
     auditFindings: analysis.auditFindings || []
   }
 }

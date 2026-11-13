@@ -199,7 +199,8 @@ function summaryReport(analysis, evaluation, scannedFiles) {
     message: evaluation.message,
     coverage: analysis.coverage,
     auditFindings: evaluation.auditFindings,
-    explicitRequiredFindings: evaluation.explicitRequiredFindings,
+    dynamicMessageCandidates: evaluation.dynamicMessageCandidates,
+    dynamicMessageCandidateFindings: evaluation.dynamicMessageCandidateFindings,
     policy: evaluation.policy
       ? {
         ok: evaluation.policy.ok,
@@ -226,7 +227,7 @@ function humanSummary(evaluation, analysis) {
       `check: complete; source discovery ${analysis.coverage.sourceDiscovery.total}; ` +
       `runtime auto ${evaluation.runtimeLocalization.automaticallyRuntimeLocalizable}, ` +
       `already ${evaluation.runtimeLocalization.alreadyLocalized}, ` +
-      `explicit-required ${evaluation.runtimeLocalization.explicitRequired}; ` +
+      `dynamic candidates ${evaluation.dynamicMessageCandidates.total}; ` +
       `unresolved audit ${evaluation.chineseSourceAudit.unresolved}; ` +
       `needs-review audit ${evaluation.chineseSourceAudit.needsReview}; ` +
       `intentionally ignored ${evaluation.chineseSourceAudit.intentionallyIgnored}` +

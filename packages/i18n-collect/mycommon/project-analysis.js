@@ -1,9 +1,12 @@
+const fs = require('fs')
 const path = require('path')
 const { REPRESENTATION_LOCALIZED_CALL } = require('./localized-call')
 const { messageContract, readExplicitMessages, referenceMessage } = require('./catalog')
 const { identityFiles } = require('./config')
 const { keyFor } = require('./store')
-const { scanCompleteStaticCopyPolicy } = require('./complete-static-copy-policy')
+const {
+  discoverDynamicMessageCandidates
+} = require('./complete-static-copy-policy')
 const { extractScript } = require('../myloader/extract-script')
 const { extractHtml } = require('../myloader/extract-html')
 const { extractVueScriptBlocks } = require('../myloader/extract-vue-compat')
@@ -11,7 +14,7 @@ const { auditStyle } = require('../myloader/audit-style')
 
 const HASH_DICTIONARY_KEY = /^[a-f0-9]{32}$/
 
-const ANALYSIS_REPORT_VERSION = 1
+const ANALYSIS_REPORT_VERSION = 2
 const SOURCE_CATALOG_VERSION = 1
 
 const SCRIPT_EXTENSIONS = new Set([
@@ -25,7 +28,7 @@ const STYLE_EXTENSIONS = new Set([
 const CAPABILITY_AUTOMATIC = 'automatically-runtime-localizable'
 const CAPABILITY_LOCALIZED = 'already-localized'
 const CAPABILITY_AUDIT = 'chinese-source-audit'
-const CAPABILITY_EXPLICIT_REQUIRED = 'explicit-required'
+const CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED = 'explicit-localization-required'
 const DISPOSITION_UNRESOLVED = 'unresolved'
 const DISPOSITION_NEEDS_REVIEW = 'needs-review'
 const DISPOSITION_INTENTIONALLY_IGNORED = 'intentionally-ignored'
@@ -46,7 +49,7 @@ function emptyAnalysis() {
   return {
     runtimeMessages: [],
     auditFindings: [],
-    explicitRequiredFindings: [],
+    dynamicMessageCandidates: [],
     localizedCallFindings: [],
     diagnostics: [],
     coverage: {
@@ -62,7 +65,11 @@ function emptyAnalysis() {
         needsReview: 0,
         intentionallyIgnored: 0
       },
-      explicitRequired: { total: 0 }
+      dynamicMessageCandidates: {
+        total: 0,
+        needsReview: 0,
+        intentionallyIgnored: 0
+      }
     }
   }
 }
@@ -229,34 +236,76 @@ function policyMatchKey(pathValue, kind, text, line) {
   return [pathValue, kind, text, line].join('\0')
 }
 
-function explicitRequiredFromPolicy(files, config) {
+function dynamicCandidatesFromPolicy(files, config) {
   const policyFiles = files.filter(file => isRuntimeLocalizablePolicyPath(file.path))
-  if (!policyFiles.length) return { findings: [], matchKeys: new Set() }
-  const violations = scanCompleteStaticCopyPolicy(policyFiles, {
+  if (!policyFiles.length) return { candidates: [], matchKeys: new Set() }
+  const discovered = discoverDynamicMessageCandidates(policyFiles, {
     vueVersion: config.vueVersion,
     attributeAllowlist: config.attributeAllowlist
   })
-  const findings = []
+  const candidates = []
   const matchKeys = new Set()
-  for (const item of violations) {
+  for (const item of discovered) {
     if (AUDIT_KINDS.has(item.kind)) continue
-    matchKeys.add(policyMatchKey(item.path, item.kind, item.text, item.start.line))
-    findings.push({
-      text: item.text,
+    for (const fragment of item.fragmentRecords || []) {
+      matchKeys.add(policyMatchKey(
+        item.location.path,
+        fragment.kind,
+        fragment.text,
+        fragment.start.line
+      ))
+    }
+    for (const text of item.staticFragments || []) {
+      matchKeys.add(policyMatchKey(
+        item.location.path,
+        item.kind,
+        text,
+        item.location.start.line
+      ))
+    }
+    candidates.push({
+      id: item.id,
+      expression: item.expression,
+      staticFragments: item.staticFragments,
       location: {
-        path: item.path,
-        start: { line: item.start.line, column: item.start.column },
-        end: { line: item.end.line, column: item.end.column }
+        path: item.location.path,
+        start: { line: item.location.start.line, column: item.location.start.column },
+        end: { line: item.location.end.line, column: item.location.end.column }
       },
-      sourceSurface: sourceSurfaceFor(item.path, item.kind === 'html-text' || item.kind === 'html-attribute'
-        ? 'template'
-        : 'script'),
-      semanticRole: item.kind,
-      capability: CAPABILITY_EXPLICIT_REQUIRED,
-      reason: item.reason
+      sourceSurface: sourceSurfaceFor(
+        item.location.path,
+        item.kind === 'html-text' || item.kind === 'html-attribute' ? 'template' : 'script'
+      ),
+      semanticRole: item.semanticRole,
+      capability: CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED,
+      disposition: item.disposition || DISPOSITION_NEEDS_REVIEW,
+      diagnostic: item.diagnostic
     })
   }
-  return { findings, matchKeys }
+  return { candidates, matchKeys }
+}
+
+function policyFilesFromSnapshots(snapshots, config = {}) {
+  const root = config.root
+  if (!root || typeof root !== 'string') return []
+  const byPath = new Map()
+  for (const snapshot of snapshots || []) {
+    if (!snapshot) continue
+    const projectPath = typeof snapshot.projectPath === 'string' && snapshot.projectPath
+      ? snapshot.projectPath.split('\\').join('/')
+      : (typeof snapshot.identity === 'string' ? snapshot.identity.split('::')[0] : '')
+    if (!projectPath || !isRuntimeLocalizablePolicyPath(projectPath)) continue
+    if (byPath.has(projectPath)) continue
+    const absolutePath = path.resolve(root, projectPath)
+    let source
+    try {
+      source = fs.readFileSync(absolutePath, 'utf8')
+    } catch (_) {
+      continue
+    }
+    byPath.set(projectPath, { path: projectPath, absolutePath, source })
+  }
+  return [...byPath.values()]
 }
 
 function collectedItem(entry, sourceSurface, resourceIdentity) {
@@ -380,9 +429,9 @@ function auditDiagnostic(location) {
   return undefined
 }
 
-function classifyCollected(collected, explicitRequired = { findings: [], matchKeys: new Set() }) {
+function classifyCollected(collected, dynamicRequired = { candidates: [], matchKeys: new Set() }) {
   const analysis = emptyAnalysis()
-  analysis.explicitRequiredFindings.push(...explicitRequired.findings)
+  analysis.dynamicMessageCandidates.push(...dynamicRequired.candidates)
   for (const item of collected) {
     const { entry, sourceSurface, resourceIdentity } = item
     const identityExtras = resourceIdentity ? { resourceIdentity } : {}
@@ -420,8 +469,8 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
         entry.value,
         location.start.line
       )
-      if (explicitRequired.matchKeys.has(matchKey)) {
-        // Already reported from the complete-static-copy policy scan; do not
+      if (dynamicRequired.matchKeys.has(matchKey)) {
+        // Static fragment evidence for a dynamic message candidate; do not
         // treat the fragment as independently runtime-localizable.
         continue
       }
@@ -433,7 +482,13 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
   const automatic = analysis.runtimeMessages.length
   const already = analysis.localizedCallFindings.length
   const audit = analysis.auditFindings.length
-  const explicit = analysis.explicitRequiredFindings.length
+  const dynamicTotal = analysis.dynamicMessageCandidates.length
+  const dynamicNeedsReview = analysis.dynamicMessageCandidates.filter(
+    candidate => candidate.disposition === DISPOSITION_NEEDS_REVIEW
+  ).length
+  const dynamicIgnored = analysis.dynamicMessageCandidates.filter(
+    candidate => candidate.disposition === DISPOSITION_INTENTIONALLY_IGNORED
+  ).length
   const intentionallyIgnored = analysis.auditFindings.filter(
     finding => finding.disposition === DISPOSITION_INTENTIONALLY_IGNORED
   ).length
@@ -444,7 +499,7 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
     finding => finding.disposition === DISPOSITION_UNRESOLVED
   ).length
   analysis.coverage = {
-    sourceDiscovery: { total: automatic + already + audit + explicit },
+    sourceDiscovery: { total: automatic + already + audit + dynamicTotal },
     runtimeLocalization: {
       total: automatic + already,
       automaticallyRuntimeLocalizable: automatic,
@@ -456,7 +511,11 @@ function classifyCollected(collected, explicitRequired = { findings: [], matchKe
       needsReview,
       intentionallyIgnored
     },
-    explicitRequired: { total: explicit }
+    dynamicMessageCandidates: {
+      total: dynamicTotal,
+      needsReview: dynamicNeedsReview,
+      intentionallyIgnored: dynamicIgnored
+    }
   }
   return analysis
 }
@@ -475,6 +534,18 @@ function sortFindings(findings) {
   return [...findings].sort(compareFindings)
 }
 
+function compareCandidates(left, right) {
+  return left.location.path.localeCompare(right.location.path)
+    || left.location.start.line - right.location.start.line
+    || left.location.start.column - right.location.start.column
+    || String(left.expression || '').localeCompare(String(right.expression || ''))
+    || String(left.id || '').localeCompare(String(right.id || ''))
+}
+
+function sortCandidates(candidates) {
+  return [...candidates].sort(compareCandidates)
+}
+
 function compareDiagnostics(left, right) {
   return String(left.path || '').localeCompare(String(right.path || ''))
     || String(left.message || '').localeCompare(String(right.message || ''))
@@ -489,7 +560,7 @@ function sortDiagnostics(diagnostics) {
 function finalizeAnalysis(analysis, input, config) {
   analysis.runtimeMessages = sortFindings(analysis.runtimeMessages)
   analysis.auditFindings = sortFindings(analysis.auditFindings)
-  analysis.explicitRequiredFindings = sortFindings(analysis.explicitRequiredFindings)
+  analysis.dynamicMessageCandidates = sortCandidates(analysis.dynamicMessageCandidates)
   analysis.localizedCallFindings = sortFindings(analysis.localizedCallFindings)
   analysis.diagnostics = sortDiagnostics(analysis.diagnostics)
   const explicitMessages = loadExplicitMessages(input, config)
@@ -524,7 +595,11 @@ function collectedFromSnapshots(snapshots) {
 
 function analyzeSnapshots(snapshots, config = {}, input = {}) {
   const collected = collectedFromSnapshots(snapshots)
-  const analysis = classifyCollected(collected, { findings: [], matchKeys: new Set() })
+  const policyFiles = Array.isArray(input.files) && input.files.length
+    ? input.files
+    : policyFilesFromSnapshots(snapshots, config)
+  const dynamicRequired = dynamicCandidatesFromPolicy(policyFiles, config)
+  const analysis = classifyCollected(collected, dynamicRequired)
   if (Array.isArray(input.diagnostics)) {
     analysis.diagnostics.push(...input.diagnostics)
   }
@@ -543,8 +618,8 @@ function analyzeProject(input = {}) {
     }
     collected.push(...entriesForFile(file, config))
   }
-  const explicitRequired = explicitRequiredFromPolicy(input.files, config)
-  const analysis = classifyCollected(collected, explicitRequired)
+  const dynamicRequired = dynamicCandidatesFromPolicy(input.files, config)
+  const analysis = classifyCollected(collected, dynamicRequired)
   if (Array.isArray(input.diagnostics)) {
     analysis.diagnostics.push(...input.diagnostics)
   }
@@ -584,7 +659,7 @@ function analysisReport(analysis) {
     version: ANALYSIS_REPORT_VERSION,
     runtimeMessages: analysis.runtimeMessages,
     auditFindings: analysis.auditFindings,
-    explicitRequiredFindings: analysis.explicitRequiredFindings,
+    dynamicMessageCandidates: analysis.dynamicMessageCandidates,
     localizedCallFindings: analysis.localizedCallFindings,
     diagnostics: sortDiagnostics(analysis.diagnostics),
     coverage: analysis.coverage
@@ -601,7 +676,7 @@ module.exports = {
   CAPABILITY_AUTOMATIC,
   CAPABILITY_LOCALIZED,
   CAPABILITY_AUDIT,
-  CAPABILITY_EXPLICIT_REQUIRED,
+  CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED,
   DISPOSITION_UNRESOLVED,
   DISPOSITION_NEEDS_REVIEW,
   DISPOSITION_INTENTIONALLY_IGNORED

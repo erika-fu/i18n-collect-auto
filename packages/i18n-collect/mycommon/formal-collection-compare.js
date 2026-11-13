@@ -50,6 +50,8 @@ function compareNormalizedFindings(left, right) {
     || (leftStart.column || 0) - (rightStart.column || 0)
     || String(left && left.semanticRole || '').localeCompare(String(right && right.semanticRole || ''))
     || String(left && left.text || '').localeCompare(String(right && right.text || ''))
+    || String(left && left.expression || '').localeCompare(String(right && right.expression || ''))
+    || String(left && left.id || '').localeCompare(String(right && right.id || ''))
     || String(left && left.key || '').localeCompare(String(right && right.key || ''))
     || String(left && left.resourceIdentity || '').localeCompare(String(right && right.resourceIdentity || ''))
 }
@@ -81,7 +83,7 @@ function normalizeAnalysisReport(report) {
     version: report.version,
     runtimeMessages: normalizeFindingList(report.runtimeMessages),
     auditFindings: normalizeFindingList(report.auditFindings),
-    explicitRequiredFindings: normalizeFindingList(report.explicitRequiredFindings),
+    dynamicMessageCandidates: normalizeFindingList(report.dynamicMessageCandidates),
     localizedCallFindings: normalizeFindingList(report.localizedCallFindings),
     diagnostics: normalizeDiagnosticList(report.diagnostics),
     coverage: stripEnvironment(report.coverage || {})

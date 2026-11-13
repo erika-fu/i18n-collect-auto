@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "runtimeMessages": [
     {
       "text": "插值",
@@ -776,7 +776,6 @@
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
     }
   ],
-  "explicitRequiredFindings": [],
   "localizedCallFindings": [
     {
       "text": "demo.build.localeLabel",
@@ -1183,8 +1182,11 @@
       "needsReview": 0,
       "intentionallyIgnored": 2
     },
-    "explicitRequired": {
-      "total": 0
+    "dynamicMessageCandidates": {
+      "total": 0,
+      "needsReview": 0,
+      "intentionallyIgnored": 0
     }
-  }
+  },
+  "dynamicMessageCandidates": []
 }

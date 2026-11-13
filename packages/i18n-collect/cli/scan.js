@@ -161,20 +161,20 @@ function scan(args) {
       source: fs.readFileSync(file.absolute, 'utf8')
     }))
     const analysis = analyzeProject({ files: sources, config })
-    if (analysis.explicitRequiredFindings.length > 0) {
-      const sample = analysis.explicitRequiredFindings
+    if (analysis.dynamicMessageCandidates.length > 0) {
+      const sample = analysis.dynamicMessageCandidates
         .slice(0, 5)
         .map(item => {
           const at = `${item.location.path}:${item.location.start.line}:${item.location.start.column}`
-          return `  ${item.reason}: ${JSON.stringify(item.text)} at ${at}`
+          return `  ${item.id}: ${JSON.stringify(item.expression)} at ${at}`
         })
         .join('\n')
-      const more = analysis.explicitRequiredFindings.length > 5
-        ? `\n  ... and ${analysis.explicitRequiredFindings.length - 5} more`
+      const more = analysis.dynamicMessageCandidates.length > 5
+        ? `\n  ... and ${analysis.dynamicMessageCandidates.length - 5} more`
         : ''
       throw commandError(
         'collection',
-        `scan rejected ${analysis.explicitRequiredFindings.length} explicit-required finding(s); migrate them to explicit-messages.json and static localized calls\n${sample}${more}`
+        `scan rejected ${analysis.dynamicMessageCandidates.length} dynamic message candidate(s); review to translate, intentionally ignore, or defer\n${sample}${more}`
       )
     }
     const catalog = buildSourceCatalog(analysis)

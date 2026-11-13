@@ -129,8 +129,7 @@ test('check succeeds when every HTML audit finding is intentionally ignored with
   assert.strictEqual(report.auditFindings[0].ignoreReason, 'legal copy stays Chinese')
   assert.deepStrictEqual(report.runtimeLocalization, {
     automaticallyRuntimeLocalizable: 0,
-    alreadyLocalized: 0,
-    explicitRequired: 0
+    alreadyLocalized: 0
   })
   assert.strictEqual(report.sourceFreshness.ok, true)
   assertReadOnly(root, before, result)
@@ -262,7 +261,7 @@ test('check fails when committed source catalog is missing or stale', () => {
   assertReadOnly(staleRoot, staleBefore, staleResult)
 })
 
-test('check fails for explicit-required messages and missing translations', () => {
+test('check fails for dynamic message candidates and missing translations', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-runtime-locale-'))
   fs.mkdirSync(path.join(root, 'src'), { recursive: true })
   fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
@@ -277,9 +276,10 @@ test('check fails for explicit-required messages and missing translations', () =
   assert.notStrictEqual(result.status, 0, result.stdout)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.ok, false)
-  assert.ok(report.blocking.includes('explicit-required'))
-  assert.ok(report.runtimeLocalization.explicitRequired >= 1)
-  assert.ok(Array.isArray(report.explicitRequiredFindings))
+  assert.ok(report.blocking.includes('dynamic-message-candidates'))
+  assert.ok(report.dynamicMessageCandidates.total >= 1)
+  assert.ok(Array.isArray(report.dynamicMessageCandidateFindings))
+  assert.ok(report.dynamicMessageCandidateFindings.length >= 1)
   assertReadOnly(root, before, result)
 })
 
@@ -355,8 +355,7 @@ test('check succeeds when source catalog is fresh and every target locale is com
   })
   assert.deepStrictEqual(report.runtimeLocalization, {
     automaticallyRuntimeLocalizable: 1,
-    alreadyLocalized: 0,
-    explicitRequired: 0
+    alreadyLocalized: 0
   })
   assertReadOnly(root, before, result)
 })

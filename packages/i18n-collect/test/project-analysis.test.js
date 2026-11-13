@@ -3,7 +3,12 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
-const { analyzeProject, analysisReport, buildSourceCatalog } = require('../mycommon/project-analysis')
+const {
+  analyzeProject,
+  analyzeSnapshots,
+  analysisReport,
+  buildSourceCatalog
+} = require('../mycommon/project-analysis')
 const { keyFor } = require('../mycommon/store')
 const { installVue3 } = require('./vue3-fixture')
 
@@ -13,7 +18,7 @@ test('analyzeProject classifies complete static JavaScript copy as automatically
   })
 
   assert.strictEqual(analysis.auditFindings.length, 0)
-  assert.strictEqual(analysis.explicitRequiredFindings.length, 0)
+  assert.strictEqual(analysis.dynamicMessageCandidates.length, 0)
   assert.strictEqual(analysis.localizedCallFindings.length, 0)
   assert.strictEqual(analysis.runtimeMessages.length, 1)
 
@@ -27,7 +32,61 @@ test('analyzeProject classifies complete static JavaScript copy as automatically
   assert.strictEqual(finding.capability, 'automatically-runtime-localizable')
 })
 
-test('analyzeProject classifies dynamic script interpolation as explicit-required without catalog keys', () => {
+test('analyzeSnapshots and analyzeProject produce equivalent dynamic message candidates', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-analysis-equiv-'))
+  const projectPath = 'src/dynamic.js'
+  const absolutePath = path.join(root, projectPath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  const source = [
+    'const message = `你好${name}世界`',
+    'const split = "已选择 " + count + " 个文件"',
+    'const label = ready ? "就绪" : "等待"',
+    'const title = "标题".repeat(2)',
+    'const keyed = messages[`键${id}`]',
+    'const plural = pluralize("一项", "多项", count)',
+    'const plain = "完整静态"'
+  ].join('\n') + '\n'
+  fs.writeFileSync(absolutePath, source)
+
+  const files = [{ path: projectPath, absolutePath, source }]
+  const fromProject = analyzeProject({ files, config: { root } })
+  const snapshots = [{
+    identity: `${projectPath}::script`,
+    projectPath,
+    entries: [{
+      value: '完整静态',
+      locations: [{
+        path: projectPath,
+        kind: 'script-string',
+        start: { line: 7, column: 14 },
+        end: { line: 7, column: 20 }
+      }]
+    }]
+  }]
+  const fromSnapshots = analyzeSnapshots(snapshots, { root }, { files })
+
+  assert.ok(fromProject.dynamicMessageCandidates.length >= 6)
+  assert.strictEqual(
+    fromProject.dynamicMessageCandidates.length,
+    fromSnapshots.dynamicMessageCandidates.length
+  )
+  const projectById = new Map(fromProject.dynamicMessageCandidates.map(item => [item.id, item]))
+  for (const candidate of fromSnapshots.dynamicMessageCandidates) {
+    const matched = projectById.get(candidate.id)
+    assert.ok(matched, candidate.expression)
+    assert.strictEqual(matched.expression, candidate.expression)
+    assert.deepStrictEqual(matched.staticFragments, candidate.staticFragments)
+    assert.strictEqual(matched.sourceSurface, candidate.sourceSurface)
+    assert.strictEqual(matched.capability, 'explicit-localization-required')
+  }
+  assert.ok(fromProject.runtimeMessages.some(item => item.text === '完整静态'))
+  assert.ok(fromSnapshots.runtimeMessages.some(item => item.text === '完整静态'))
+  assert.ok(!fromProject.runtimeMessages.some(item => (
+    ['你好', '世界', '已选择 ', ' 个文件', '就绪', '等待', '标题', '键', '一项', '多项'].includes(item.text)
+  )))
+})
+
+test('analyzeProject classifies dynamic script interpolation as a whole-expression candidate without catalog keys', () => {
   const analysis = analyzeProject({
     files: [{ path: 'src/dynamic.js', source: 'const message = `你好${name}世界`\n' }]
   })
@@ -35,21 +94,21 @@ test('analyzeProject classifies dynamic script interpolation as explicit-require
   assert.strictEqual(analysis.runtimeMessages.length, 0)
   assert.strictEqual(analysis.localizedCallFindings.length, 0)
   assert.strictEqual(analysis.auditFindings.length, 0)
-  assert.strictEqual(analysis.explicitRequiredFindings.length, 2)
+  assert.strictEqual(analysis.dynamicMessageCandidates.length, 1)
 
-  const texts = analysis.explicitRequiredFindings.map(item => item.text).sort()
-  assert.deepStrictEqual(texts, ['世界', '你好'])
-  for (const finding of analysis.explicitRequiredFindings) {
-    assert.strictEqual(finding.capability, 'explicit-required')
-    assert.strictEqual(finding.sourceSurface, 'javascript')
-    assert.strictEqual(finding.semanticRole, 'template-literal')
-    assert.strictEqual(finding.reason, 'interpolation')
-    assert.strictEqual(finding.key, undefined)
-  }
+  const candidate = analysis.dynamicMessageCandidates[0]
+  assert.strictEqual(candidate.expression, '`你好${name}世界`')
+  assert.deepStrictEqual(candidate.staticFragments, ['你好', '世界'])
+  assert.strictEqual(candidate.capability, 'explicit-localization-required')
+  assert.strictEqual(candidate.sourceSurface, 'javascript')
+  assert.strictEqual(candidate.semanticRole, 'dynamic-message')
+  assert.strictEqual(candidate.disposition, 'needs-review')
+  assert.ok(candidate.id.startsWith('dynamic.'))
+  assert.ok(candidate.diagnostic)
 
   assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
   assert.deepStrictEqual(analysis.coverage, {
-    sourceDiscovery: { total: 2 },
+    sourceDiscovery: { total: 1 },
     runtimeLocalization: {
       total: 0,
       automaticallyRuntimeLocalizable: 0,
@@ -61,7 +120,7 @@ test('analyzeProject classifies dynamic script interpolation as explicit-require
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    explicitRequired: { total: 2 }
+    dynamicMessageCandidates: { total: 1, needsReview: 1, intentionallyIgnored: 0 }
   })
 })
 
@@ -120,11 +179,11 @@ test('analyzeProject reports coverage totals that distinguish discovery from run
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    explicitRequired: { total: 0 }
+    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 }
   })
 })
 
-test('analyzeProject classifies structured Vue content as explicit-required', () => {
+test('analyzeProject classifies structured Vue content as a dynamic message candidate', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-analysis-structured-'))
   installVue3(root)
   const absolutePath = path.join(root, 'src', 'Notice.vue')
@@ -146,20 +205,21 @@ test('analyzeProject classifies structured Vue content as explicit-required', ()
 
   assert.ok(analysis.runtimeMessages.some(item => item.text === '完整静态段落'))
   assert.ok(!analysis.runtimeMessages.some(item => item.text === '请阅读我们的'))
-  const structured = analysis.explicitRequiredFindings.filter(item => item.reason === 'structured-fragmentation')
-  const texts = structured.map(item => item.text)
-  assert.ok(texts.includes('请阅读我们的'))
-  assert.ok(texts.includes('服务条款'))
-  assert.ok(texts.includes('隐私政策'))
-  assert.ok(structured.every(item => item.capability === 'explicit-required'))
-  assert.ok(structured.every(item => item.key === undefined))
+  assert.strictEqual(analysis.dynamicMessageCandidates.length, 1)
+  const structured = analysis.dynamicMessageCandidates[0]
+  assert.ok(structured.staticFragments.includes('请阅读我们的'))
+  assert.ok(structured.staticFragments.includes('服务条款'))
+  assert.ok(structured.staticFragments.includes('隐私政策'))
+  assert.strictEqual(structured.capability, 'explicit-localization-required')
+  assert.strictEqual(structured.semanticRole, 'dynamic-message')
+  assert.match(structured.diagnostic, /structured|fragment/i)
   const catalog = buildSourceCatalog(analysis)
   assert.ok(Object.values(catalog.messages).includes('完整静态段落'))
   assert.ok(!Object.values(catalog.messages).includes('请阅读我们的'))
   assert.ok(!Object.values(catalog.messages).includes('服务条款'))
 })
 
-test('analyzeProject classifies formatting and concatenation as explicit-required', () => {
+test('analyzeProject classifies formatting and concatenation as whole-expression candidates', () => {
   const analysis = analyzeProject({
     files: [{
       path: 'src/build.js',
@@ -171,10 +231,15 @@ test('analyzeProject classifies formatting and concatenation as explicit-require
     }]
   })
   assert.ok(analysis.runtimeMessages.some(item => item.text === '完整静态'))
-  const reasons = new Map(analysis.explicitRequiredFindings.map(item => [item.text, item.reason]))
-  assert.strictEqual(reasons.get('你'), 'concatenation')
-  assert.strictEqual(reasons.get('好'), 'concatenation')
-  assert.strictEqual(reasons.get('标题'), 'formatting')
+  assert.ok(analysis.dynamicMessageCandidates.some(item => (
+    item.expression.includes('"你" + name + "好"')
+    && item.staticFragments.includes('你')
+    && item.staticFragments.includes('好')
+  )))
+  assert.ok(analysis.dynamicMessageCandidates.some(item => (
+    item.expression.includes('"标题".repeat(2)')
+    && item.staticFragments.includes('标题')
+  )))
   assert.ok(!analysis.runtimeMessages.some(item => ['你', '好', '标题'].includes(item.text)))
 })
 
@@ -188,7 +253,7 @@ test('analyzeProject keeps the explicit message manifest as the canonical source
       { key: 'items.deleted', source: '已删除 {count} 项' }
     ]
   })
-  assert.strictEqual(analysis.explicitRequiredFindings.length, 0)
+  assert.strictEqual(analysis.dynamicMessageCandidates.length, 0)
   assert.strictEqual(analysis.localizedCallFindings.length, 1)
   assert.strictEqual(analysis.localizedCallFindings[0].key, 'items.deleted')
   assert.strictEqual(analysis.localizedCallFindings[0].source, '已删除 {count} 项')
@@ -247,7 +312,7 @@ test('analyzeProject fails on unknown project keys and unused explicit declarati
   )
 })
 
-test('analyzeProject fails on conflicting source text and classifies pluralization helpers as explicit-required', () => {
+test('analyzeProject fails on conflicting source text and classifies pluralization helpers as dynamic candidates', () => {
   assert.throws(
     () => analyzeProject({
       files: [{
@@ -277,8 +342,10 @@ test('analyzeProject fails on conflicting source text and classifies pluralizati
       source: 'const label = pluralize("一项", "多项", count)\nconst plain = "完整静态"\n'
     }]
   })
-  assert.ok(pluralized.explicitRequiredFindings.some(item => (
-    item.reason === 'formatting' && (item.text === '一项' || item.text === '多项')
+  assert.ok(pluralized.dynamicMessageCandidates.some(item => (
+    item.expression.includes('pluralize')
+    && item.staticFragments.includes('一项')
+    && item.staticFragments.includes('多项')
   )))
   assert.ok(pluralized.runtimeMessages.some(item => item.text === '完整静态'))
   assert.ok(!pluralized.runtimeMessages.some(item => item.text === '一项' || item.text === '多项'))
@@ -359,7 +426,9 @@ test('buildSourceCatalog assigns deterministic text-hash keys for automatic mess
   })
   assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: { [keyFor('你好')]: '你好' } })
   const report = analysisReport(analysis)
-  assert.strictEqual(report.version, 1)
+  assert.strictEqual(report.version, 2)
+  assert.ok(!Object.prototype.hasOwnProperty.call(report, 'explicitRequiredFindings'))
+  assert.ok(Array.isArray(report.dynamicMessageCandidates))
   assert.strictEqual(report.runtimeMessages.length, 2)
   assert.strictEqual(report.localizedCallFindings.length, 1)
 })
@@ -384,7 +453,7 @@ test('analyzeProject classifies standalone HTML text and allowlisted attributes 
 
   assert.strictEqual(analysis.runtimeMessages.length, 0)
   assert.strictEqual(analysis.localizedCallFindings.length, 0)
-  assert.strictEqual(analysis.explicitRequiredFindings.length, 0)
+  assert.strictEqual(analysis.dynamicMessageCandidates.length, 0)
   assert.strictEqual(analysis.auditFindings.length, 2)
 
   const byText = new Map(analysis.auditFindings.map(item => [item.text, item]))
@@ -412,7 +481,7 @@ test('analyzeProject classifies standalone HTML text and allowlisted attributes 
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    explicitRequired: { total: 0 }
+    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 }
   })
   assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
 })

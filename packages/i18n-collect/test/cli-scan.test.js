@@ -68,7 +68,7 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    explicitRequired: { total: 0 }
+    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 }
   })
 
   const catalogPath = path.join(root, 'lang/catalog/source-catalog.json')
@@ -82,7 +82,7 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
   assert.deepStrictEqual(catalog, { version: 1, messages: { [HELLO]: '你好' } })
 
   const analysis = JSON.parse(fs.readFileSync(analysisPath, 'utf8'))
-  assert.strictEqual(analysis.version, 1)
+  assert.strictEqual(analysis.version, 2)
   assert.ok(Array.isArray(analysis.diagnostics))
   assert.strictEqual(analysis.runtimeMessages.length, 1)
   assert.strictEqual(analysis.localizedCallFindings.length, 1)
@@ -90,17 +90,17 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
   assert.deepStrictEqual(analysis.coverage, report.coverage)
 })
 
-test('scan rejects explicit-required fragment automation and keeps previous outputs unpublished', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-explicit-req-'))
+test('scan rejects dynamic message candidates and keeps previous outputs unpublished', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-dynamic-cand-'))
   writeScanProject(root, {
     source: 'const message = `你好${name}世界`\n'
   })
   const result = run(['scan', '--json'], root)
   assert.notStrictEqual(result.status, 0, result.stdout)
-  assert.match(result.stderr, /explicit-required|interpolation/)
+  assert.match(result.stderr, /dynamic message candidate|你好\$\{name\}世界/)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.ok, false)
-  assert.match(report.message, /explicit-required|interpolation/)
+  assert.match(report.message, /dynamic message candidate/)
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
   assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/analysis-report.json')))
 })

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "runtimeMessages": [
     {
       "text": "原生 Vue 三模板",
@@ -192,7 +192,7 @@
       "diagnostic": "Proven CSS generated content: Chinese static string in a content declaration"
     }
   ],
-  "explicitRequiredFindings": [],
+  "dynamicMessageCandidates": [],
   "localizedCallFindings": [
     {
       "text": "vue3.fieldPlaceholder",
@@ -303,8 +303,10 @@
       "needsReview": 0,
       "intentionallyIgnored": 2
     },
-    "explicitRequired": {
-      "total": 0
+    "dynamicMessageCandidates": {
+      "total": 0,
+      "needsReview": 0,
+      "intentionallyIgnored": 0
     }
   }
 }
