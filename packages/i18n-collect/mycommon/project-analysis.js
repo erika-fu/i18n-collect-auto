@@ -76,6 +76,7 @@ function emptyAnalysis() {
         needsReview: 0,
         intentionallyIgnored: 0,
         translationApproved: 0,
+        deferred: 0,
         migrated: 0
       }
     }
@@ -183,6 +184,7 @@ function refreshDynamicCoverage(analysis) {
     translationApproved: candidates.filter(
       candidate => candidate.disposition === DISPOSITION_TRANSLATION_APPROVED
     ).length,
+    deferred: candidates.filter(candidate => candidate.decision === 'defer').length,
     migrated: Array.isArray(analysis.migratedDynamicDecisions) ? analysis.migratedDynamicDecisions.length : 0
   }
 }
@@ -522,6 +524,9 @@ function classifyCollected(collected, dynamicRequired = { candidates: [], matchK
   const dynamicIgnored = analysis.dynamicMessageCandidates.filter(
     candidate => candidate.disposition === DISPOSITION_INTENTIONALLY_IGNORED
   ).length
+  const dynamicDeferred = analysis.dynamicMessageCandidates.filter(
+    candidate => candidate.decision === 'defer'
+  ).length
   const intentionallyIgnored = analysis.auditFindings.filter(
     finding => finding.disposition === DISPOSITION_INTENTIONALLY_IGNORED
   ).length
@@ -549,6 +554,7 @@ function classifyCollected(collected, dynamicRequired = { candidates: [], matchK
       needsReview: dynamicNeedsReview,
       intentionallyIgnored: dynamicIgnored,
       translationApproved: 0,
+      deferred: dynamicDeferred,
       migrated: 0
     }
   }

@@ -20,7 +20,27 @@ function emptyCoverage(overrides = {}) {
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 },
+    dynamicMessageCandidates: {
+      total: 0,
+      needsReview: 0,
+      intentionallyIgnored: 0,
+      translationApproved: 0,
+      deferred: 0
+    },
+    ...overrides
+  }
+}
+
+function dynamicCandidate(overrides = {}) {
+  return {
+    id: 'dynamic.abc123',
+    expression: '`你好${name}`',
+    staticFragments: ['你好'],
+    location: { path: 'src/app.js', start: { line: 1, column: 0 }, end: { line: 1, column: 8 } },
+    semanticRole: 'dynamic-message',
+    capability: 'explicit-localization-required',
+    disposition: 'needs-review',
+    diagnostic: 'Template interpolation constructs user-facing copy and cannot be safely translated as fragments.',
     ...overrides
   }
 }
@@ -54,7 +74,9 @@ test('evaluateLocalizationCompleteness passes when analysis is clean and source 
   assert.deepStrictEqual(report.dynamicMessageCandidates, {
     total: 0,
     needsReview: 0,
-    intentionallyIgnored: 0
+    intentionallyIgnored: 0,
+    translationApproved: 0,
+    deferred: 0
   })
   assert.deepStrictEqual(report.chineseSourceAudit, {
     total: 0,
@@ -63,6 +85,7 @@ test('evaluateLocalizationCompleteness passes when analysis is clean and source 
     intentionallyIgnored: 0
   })
   assert.deepStrictEqual(report.localeCoverage, {})
+  assert.deepStrictEqual(report.warnings, [])
   assert.strictEqual(report.sourceFreshness.ok, true)
 })
 
@@ -112,22 +135,19 @@ test('evaluateLocalizationCompleteness fails for missing committed source catalo
   assert.match(report.message, /run collect/i)
 })
 
-test('evaluateLocalizationCompleteness fails for dynamic message candidates', () => {
-  const finding = {
-    id: 'dynamic.abc123',
-    expression: '`你好${name}`',
-    staticFragments: ['你好'],
-    location: { path: 'src/app.js', start: { line: 1, column: 0 }, end: { line: 1, column: 8 } },
-    semanticRole: 'dynamic-message',
-    capability: 'explicit-localization-required',
-    disposition: 'needs-review',
-    diagnostic: 'Template interpolation constructs user-facing copy and cannot be safely translated as fragments.'
-  }
+test('evaluateLocalizationCompleteness fails for unreviewed dynamic candidates with an actionable diagnostic', () => {
+  const finding = dynamicCandidate()
   const analysis = cleanAnalysis({
     dynamicMessageCandidates: [finding],
     coverage: emptyCoverage({
       sourceDiscovery: { total: 1 },
-      dynamicMessageCandidates: { total: 1, needsReview: 1, intentionallyIgnored: 0 }
+      dynamicMessageCandidates: {
+        total: 1,
+        needsReview: 1,
+        intentionallyIgnored: 0,
+        translationApproved: 0,
+        deferred: 0
+      }
     })
   })
   const report = evaluateLocalizationCompleteness({
@@ -138,7 +158,11 @@ test('evaluateLocalizationCompleteness fails for dynamic message candidates', ()
     reviewState: { version: 1, locales: {} }
   })
   assert.strictEqual(report.ok, false)
-  assert.ok(report.blocking.includes('dynamic-message-candidates'))
+  assert.ok(report.blocking.includes('unreviewed-dynamic-candidates'))
+  assert.ok(!report.blocking.includes('deferred-dynamic-candidates'))
+  assert.ok(!report.blocking.includes('translation-approved-dynamic-candidates'))
+  assert.ok(!report.blocking.includes('needs-review-audit'))
+  assert.ok(!report.blocking.includes('needs-review-translations'))
   assert.deepStrictEqual(report.runtimeLocalization, {
     automaticallyRuntimeLocalizable: 0,
     alreadyLocalized: 0
@@ -146,10 +170,270 @@ test('evaluateLocalizationCompleteness fails for dynamic message candidates', ()
   assert.deepStrictEqual(report.dynamicMessageCandidates, {
     total: 1,
     needsReview: 1,
-    intentionallyIgnored: 0
+    intentionallyIgnored: 0,
+    translationApproved: 0,
+    deferred: 0
   })
   assert.strictEqual(report.dynamicMessageCandidateFindings.length, 1)
-  assert.match(report.message, /dynamic message candidate/i)
+  assert.deepStrictEqual(report.warnings, [])
+  assert.match(report.message, /unreviewed dynamic message candidate/i)
+  assert.match(report.message, /review to translate, intentionally ignore, or defer/i)
+})
+
+test('evaluateLocalizationCompleteness fails for translation-approved candidates awaiting source migration', () => {
+  const finding = dynamicCandidate({
+    id: 'dynamic.approved',
+    disposition: 'translation-approved',
+    key: 'upload.greeting'
+  })
+  const analysis = cleanAnalysis({
+    dynamicMessageCandidates: [finding],
+    coverage: emptyCoverage({
+      sourceDiscovery: { total: 1 },
+      dynamicMessageCandidates: {
+        total: 1,
+        needsReview: 0,
+        intentionallyIgnored: 0,
+        translationApproved: 1,
+        deferred: 0
+      }
+    })
+  })
+  const report = evaluateLocalizationCompleteness({
+    analysis,
+    committedSourceCatalog: {},
+    targetLocales: [],
+    targets: {},
+    reviewState: { version: 1, locales: {} }
+  })
+  assert.strictEqual(report.ok, false)
+  assert.deepStrictEqual(report.blocking, ['translation-approved-dynamic-candidates'])
+  assert.deepStrictEqual(report.dynamicMessageCandidates, {
+    total: 1,
+    needsReview: 0,
+    intentionallyIgnored: 0,
+    translationApproved: 1,
+    deferred: 0
+  })
+  assert.deepStrictEqual(report.warnings, [])
+  assert.match(report.message, /translation-approved dynamic message candidate/i)
+  assert.match(report.message, /awaiting source migration|migrate source/i)
+})
+
+test('evaluateLocalizationCompleteness fails for deferred candidates by default', () => {
+  const finding = dynamicCandidate({
+    id: 'dynamic.deferred',
+    decision: 'defer',
+    deferReason: 'waiting on copy'
+  })
+  const analysis = cleanAnalysis({
+    dynamicMessageCandidates: [finding],
+    coverage: emptyCoverage({
+      sourceDiscovery: { total: 1 },
+      dynamicMessageCandidates: {
+        total: 1,
+        needsReview: 1,
+        intentionallyIgnored: 0,
+        translationApproved: 0,
+        deferred: 1
+      }
+    })
+  })
+  const report = evaluateLocalizationCompleteness({
+    analysis,
+    committedSourceCatalog: {},
+    targetLocales: [],
+    targets: {},
+    reviewState: { version: 1, locales: {} }
+  })
+  assert.strictEqual(report.ok, false)
+  assert.deepStrictEqual(report.blocking, ['deferred-dynamic-candidates'])
+  assert.deepStrictEqual(report.dynamicMessageCandidates, {
+    total: 1,
+    needsReview: 1,
+    intentionallyIgnored: 0,
+    translationApproved: 0,
+    deferred: 1
+  })
+  assert.deepStrictEqual(report.warnings, [])
+  assert.match(report.message, /deferred dynamic message candidate/i)
+})
+
+test('evaluateLocalizationCompleteness can warn for deferred candidates without waiving never-reviewed ones', () => {
+  const deferred = dynamicCandidate({
+    id: 'dynamic.deferred',
+    decision: 'defer',
+    deferReason: 'waiting on copy'
+  })
+  const unreviewed = dynamicCandidate({
+    id: 'dynamic.unreviewed',
+    expression: '`再见${name}`',
+    staticFragments: ['再见']
+  })
+  const analysis = cleanAnalysis({
+    dynamicMessageCandidates: [deferred, unreviewed],
+    coverage: emptyCoverage({
+      sourceDiscovery: { total: 2 },
+      dynamicMessageCandidates: {
+        total: 2,
+        needsReview: 2,
+        intentionallyIgnored: 0,
+        translationApproved: 0,
+        deferred: 1
+      }
+    })
+  })
+  const report = evaluateLocalizationCompleteness({
+    analysis,
+    committedSourceCatalog: {},
+    targetLocales: [],
+    targets: {},
+    reviewState: { version: 1, locales: {} },
+    deferredDynamicCandidates: 'warn'
+  })
+  assert.strictEqual(report.ok, false)
+  assert.deepStrictEqual(report.blocking, ['unreviewed-dynamic-candidates'])
+  assert.strictEqual(report.warnings.length, 1)
+  assert.strictEqual(report.warnings[0].code, 'deferred-dynamic-candidates')
+  assert.match(report.warnings[0].message, /deferred dynamic message candidate/i)
+  assert.match(report.message, /unreviewed dynamic message candidate/i)
+  assert.ok(!/deferred dynamic message candidate/i.test(report.message))
+})
+
+test('evaluateLocalizationCompleteness passes with deferred warnings when policy is warn and nothing else blocks', () => {
+  const deferred = dynamicCandidate({
+    id: 'dynamic.deferred',
+    decision: 'defer',
+    deferReason: 'waiting on copy'
+  })
+  const analysis = cleanAnalysis({
+    dynamicMessageCandidates: [deferred],
+    coverage: emptyCoverage({
+      sourceDiscovery: { total: 1 },
+      dynamicMessageCandidates: {
+        total: 1,
+        needsReview: 1,
+        intentionallyIgnored: 0,
+        translationApproved: 0,
+        deferred: 1
+      }
+    })
+  })
+  const report = evaluateLocalizationCompleteness({
+    analysis,
+    committedSourceCatalog: {},
+    targetLocales: [],
+    targets: {},
+    reviewState: { version: 1, locales: {} },
+    deferredDynamicCandidates: 'warn'
+  })
+  assert.strictEqual(report.ok, true)
+  assert.deepStrictEqual(report.blocking, [])
+  assert.strictEqual(report.warnings.length, 1)
+  assert.strictEqual(report.warnings[0].code, 'deferred-dynamic-candidates')
+})
+
+test('evaluateLocalizationCompleteness does not block intentionally ignored dynamic candidates', () => {
+  const ignored = dynamicCandidate({
+    id: 'dynamic.ignored',
+    disposition: 'intentionally-ignored',
+    ignoreReason: 'China-only legal notice'
+  })
+  const analysis = cleanAnalysis({
+    dynamicMessageCandidates: [ignored],
+    coverage: emptyCoverage({
+      sourceDiscovery: { total: 1 },
+      dynamicMessageCandidates: {
+        total: 1,
+        needsReview: 0,
+        intentionallyIgnored: 1,
+        translationApproved: 0,
+        deferred: 0
+      }
+    })
+  })
+  const report = evaluateLocalizationCompleteness({
+    analysis,
+    committedSourceCatalog: {},
+    targetLocales: [],
+    targets: {},
+    reviewState: { version: 1, locales: {} }
+  })
+  assert.strictEqual(report.ok, true)
+  assert.deepStrictEqual(report.blocking, [])
+  assert.deepStrictEqual(report.warnings, [])
+  assert.deepStrictEqual(report.dynamicMessageCandidates, {
+    total: 1,
+    needsReview: 0,
+    intentionallyIgnored: 1,
+    translationApproved: 0,
+    deferred: 0
+  })
+})
+
+test('evaluateLocalizationCompleteness keeps audit and translation needs-review distinct from dynamic candidates', () => {
+  const unreviewed = dynamicCandidate()
+  const auditNeedsReview = {
+    text: '待审',
+    location: { path: 'src/theme.scss', start: { line: 1, column: 20 }, end: { line: 1, column: 22 } },
+    semanticRole: 'css-preprocessor-candidate',
+    capability: 'chinese-source-audit',
+    disposition: 'needs-review'
+  }
+  const key = keyFor('标题')
+  const previous = fingerprintOf('旧标题')
+  const analysis = cleanAnalysis({
+    dynamicMessageCandidates: [unreviewed],
+    auditFindings: [auditNeedsReview],
+    runtimeMessages: [{
+      text: '标题',
+      key,
+      location: { path: 'src/title.js', start: { line: 1, column: 0 }, end: { line: 1, column: 2 } },
+      semanticRole: 'script-string',
+      capability: 'automatically-runtime-localizable'
+    }],
+    coverage: emptyCoverage({
+      sourceDiscovery: { total: 3 },
+      runtimeLocalization: {
+        total: 1,
+        automaticallyRuntimeLocalizable: 1,
+        alreadyLocalized: 0
+      },
+      chineseSourceAudit: {
+        total: 1,
+        unresolved: 0,
+        needsReview: 1,
+        intentionallyIgnored: 0
+      },
+      dynamicMessageCandidates: {
+        total: 1,
+        needsReview: 1,
+        intentionallyIgnored: 0,
+        translationApproved: 0,
+        deferred: 0
+      }
+    })
+  })
+  const report = evaluateLocalizationCompleteness({
+    analysis,
+    committedSourceCatalog: { [key]: '标题' },
+    targetLocales: ['en'],
+    targets: { en: { [key]: 'Title' } },
+    reviewState: {
+      version: 1,
+      locales: {
+        en: { [key]: { sourceFingerprint: previous, review: 'current' } }
+      }
+    }
+  })
+  assert.strictEqual(report.ok, false)
+  assert.ok(report.blocking.includes('unreviewed-dynamic-candidates'))
+  assert.ok(report.blocking.includes('needs-review-audit'))
+  assert.ok(report.blocking.includes('needs-review-translations'))
+  assert.ok(!report.blocking.includes('dynamic-message-candidates'))
+  assert.match(report.message, /unreviewed dynamic message candidate/i)
+  assert.match(report.message, /needs-review Chinese source audit finding/i)
+  assert.match(report.message, /needs-review translation/i)
 })
 
 test('evaluateLocalizationCompleteness fails for unresolved and needs-review audit findings', () => {

@@ -12,20 +12,59 @@ function runtimeLocalizationSummary(analysis) {
   }
 }
 
-function dynamicMessageCandidateSummary(analysis) {
+function isDeferredCandidate(candidate) {
+  return candidate && candidate.decision === 'defer'
+}
+
+function classifyDynamicCandidates(candidates) {
+  const unreviewed = []
+  const deferred = []
+  const translationApproved = []
+  const intentionallyIgnored = []
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    if (candidate.disposition === 'intentionally-ignored') {
+      intentionallyIgnored.push(candidate)
+      continue
+    }
+    if (candidate.disposition === 'translation-approved') {
+      translationApproved.push(candidate)
+      continue
+    }
+    if (isDeferredCandidate(candidate)) {
+      deferred.push(candidate)
+      continue
+    }
+    if (candidate.disposition === 'needs-review' || candidate.disposition == null) {
+      unreviewed.push(candidate)
+    }
+  }
+  return { unreviewed, deferred, translationApproved, intentionallyIgnored }
+}
+
+function dynamicMessageCandidateSummary(analysis, classified) {
   const coverage = analysis.coverage || {}
   const dynamic = coverage.dynamicMessageCandidates || {}
   const candidates = analysis.dynamicMessageCandidates || []
+  const groups = classified || classifyDynamicCandidates(candidates)
   const needsReview = dynamic.needsReview != null
     ? dynamic.needsReview
-    : candidates.filter(item => item.disposition === 'needs-review').length
+    : groups.unreviewed.length + groups.deferred.length
   const intentionallyIgnored = dynamic.intentionallyIgnored != null
     ? dynamic.intentionallyIgnored
-    : candidates.filter(item => item.disposition === 'intentionally-ignored').length
+    : groups.intentionallyIgnored.length
+  const translationApproved = dynamic.translationApproved != null
+    ? dynamic.translationApproved
+    : groups.translationApproved.length
+  const deferred = dynamic.deferred != null
+    ? dynamic.deferred
+    : groups.deferred.length
   return {
     total: dynamic.total != null ? dynamic.total : candidates.length,
     needsReview,
-    intentionallyIgnored
+    intentionallyIgnored,
+    translationApproved,
+    deferred
   }
 }
 
@@ -156,30 +195,58 @@ function blockingMessage(parts) {
   return `project localization completeness failed: ${parts.join('; ')}`
 }
 
+function deferredPolicyOf(input) {
+  const policy = input.deferredDynamicCandidates
+  if (policy == null || policy === 'error') return 'error'
+  if (policy === 'warn') return 'warn'
+  return 'error'
+}
+
 function evaluateLocalizationCompleteness(input = {}) {
   const analysis = input.analysis || {}
+  const candidateFindings = analysis.dynamicMessageCandidates || []
+  const classified = classifyDynamicCandidates(candidateFindings)
   const runtimeLocalization = runtimeLocalizationSummary(analysis)
   const chineseSourceAudit = chineseSourceAuditSummary(analysis)
-  const dynamicMessageCandidates = dynamicMessageCandidateSummary(analysis)
+  const dynamicMessageCandidates = dynamicMessageCandidateSummary(analysis, classified)
   const sourceFreshness = evaluateSourceFreshness(analysis, input.committedSourceCatalog)
+  const deferredPolicy = deferredPolicyOf(input)
 
   const blocking = []
   const remediation = []
+  const warnings = []
 
   if (!sourceFreshness.ok) {
     blocking.push(sourceFreshness.reason)
     remediation.push(sourceFreshness.message)
   }
 
-  const candidateFindings = analysis.dynamicMessageCandidates || []
-  const blockingCandidates = candidateFindings.filter(
-    item => item.disposition !== 'intentionally-ignored'
-  )
-  if (blockingCandidates.length > 0 || dynamicMessageCandidates.needsReview > 0) {
-    blocking.push('dynamic-message-candidates')
+  if (classified.unreviewed.length > 0) {
+    blocking.push('unreviewed-dynamic-candidates')
     remediation.push(
-      `${blockingCandidates.length || dynamicMessageCandidates.needsReview} dynamic message candidate(s) (${sampleFindings(blockingCandidates)}); review to translate, intentionally ignore, or defer`
+      `${classified.unreviewed.length} unreviewed dynamic message candidate(s) (${sampleFindings(classified.unreviewed)}); review to translate, intentionally ignore, or defer`
     )
+  }
+
+  if (classified.translationApproved.length > 0) {
+    blocking.push('translation-approved-dynamic-candidates')
+    remediation.push(
+      `${classified.translationApproved.length} translation-approved dynamic message candidate(s) awaiting source migration (${sampleFindings(classified.translationApproved)}); migrate source to the approved explicit localization call`
+    )
+  }
+
+  if (classified.deferred.length > 0) {
+    const deferredMessage =
+      `${classified.deferred.length} deferred dynamic message candidate(s) (${sampleFindings(classified.deferred)}); translate, intentionally ignore, or keep deferred under project policy`
+    if (deferredPolicy === 'warn') {
+      warnings.push({
+        code: 'deferred-dynamic-candidates',
+        message: deferredMessage
+      })
+    } else {
+      blocking.push('deferred-dynamic-candidates')
+      remediation.push(deferredMessage)
+    }
   }
 
   const unresolvedFindings = (analysis.auditFindings || []).filter(
@@ -231,6 +298,7 @@ function evaluateLocalizationCompleteness(input = {}) {
   return {
     ok,
     blocking,
+    warnings,
     message: blockingMessage(remediation),
     sourceFreshness: {
       ok: sourceFreshness.ok,

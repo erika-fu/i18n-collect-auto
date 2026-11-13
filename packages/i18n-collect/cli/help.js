@@ -305,14 +305,18 @@ const CHECK_HELP = `i18n-collect check
 Evaluate project localization completeness without writing files.
 Check analyzes sources in memory, compares them with the committed source catalog from
 collect (or scan), and reports runtime localization coverage, Chinese source audit
-disposition, target-locale coverage, complete-static-copy baseline policy, and
-runtime-multilingual boundary policy. Completeness fails for a stale or missing source
-catalog, explicit-required messages, unresolved or needs-review audit findings, missing
-translations, needs-review translations, new or modified complete-static-copy violations,
-or runtime-multilingual boundary violations. Stale target keys and grandfathered baseline
+disposition, dynamic message candidate dispositions, target-locale coverage,
+complete-static-copy baseline policy, and runtime-multilingual boundary policy.
+Completeness fails for a stale or missing source catalog, unreviewed or
+translation-approved-pending-migration dynamic candidates, deferred dynamic candidates
+when deferredDynamicCandidates is "error" (the default), unresolved or needs-review audit
+findings, missing translations, needs-review translations, new or modified
+complete-static-copy violations, or runtime-multilingual boundary violations. Configure
+deferredDynamicCandidates to "warn" to report deferred candidates without failing while
+still blocking never-reviewed candidates. Stale target keys and grandfathered baseline
 entries are reported but do not fail completeness. Intentionally ignored audit findings
-stay visible with their reason and count as disposed. This command never rewrites project
-files.
+and intentionally ignored dynamic candidates stay visible with their reason and count as
+disposed. This command never rewrites project files.
 
 Usage:
   i18n-collect check [options]

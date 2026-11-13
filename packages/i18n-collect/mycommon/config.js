@@ -31,6 +31,7 @@ const DEFAULTS = {
   translationProvider: '',
   targetLocales: [],
   translationFailure: 'partial',
+  deferredDynamicCandidates: 'error',
   externalKeys: [],
   buildReplacement: null,
   staticAudit: { include: [] }
@@ -46,6 +47,7 @@ const BUILD_ADAPTERS = new Set(['js', 'vue2', 'vue3'])
 const STATIC_AUDIT_FIELDS = new Set(['include'])
 const EXPORT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const FAILURE_POLICIES = new Set(['partial', 'strict'])
+const DEFERRED_DYNAMIC_CANDIDATE_POLICIES = new Set(['error', 'warn'])
 const PLUGIN_FIELDS = new Set(['outputPath', 'sourceMapFilename', ...CATALOG_FIELDS])
 const SCOPE_OVERRIDE_FIELDS = ['include', 'exclude', 'contextFilters']
 let scopeOverrides = null
@@ -172,6 +174,9 @@ function validate(root, input) {
   if (config.targetLocales.includes(config.sourceLocale)) fail('targetLocales must not include sourceLocale')
   if (!FAILURE_POLICIES.has(config.translationFailure)) {
     fail('translationFailure must be "partial" or "strict"')
+  }
+  if (!DEFERRED_DYNAMIC_CANDIDATE_POLICIES.has(config.deferredDynamicCandidates)) {
+    fail('deferredDynamicCandidates must be "error" or "warn"')
   }
   array(
     config.externalKeys,

@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] Unreviewed candidates and translation-approved-pending-migration candidates block completeness by default with actionable diagnostics.
-- [ ] Projects can explicitly configure deferred candidates as warnings or errors; the default policy is error and does not silently waive never-reviewed candidates.
-- [ ] Existing audit `needs-review` and target translation `needs-review` behavior remains distinct and correct.
-- [ ] Regression tests cover policy defaults, warning and error configuration, disposition-specific diagnostics, and compatibility with existing completeness checks.
+- [x] Unreviewed candidates and translation-approved-pending-migration candidates block completeness by default with actionable diagnostics.
+- [x] Projects can explicitly configure deferred candidates as warnings or errors; the default policy is error and does not silently waive never-reviewed candidates.
+- [x] Existing audit `needs-review` and target translation `needs-review` behavior remains distinct and correct.
+- [x] Regression tests cover policy defaults, warning and error configuration, disposition-specific diagnostics, and compatibility with existing completeness checks.

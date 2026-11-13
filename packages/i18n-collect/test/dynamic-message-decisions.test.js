@@ -408,6 +408,7 @@ test('a defer decision keeps the candidate unreviewed and records why it was def
   assert.strictEqual(candidate.decision, 'defer')
   assert.strictEqual(candidate.deferReason, 'waiting on copy')
   assert.strictEqual(analysis.coverage.dynamicMessageCandidates.needsReview, 1)
+  assert.strictEqual(analysis.coverage.dynamicMessageCandidates.deferred, 1)
 })
 
 test('an unfinished or unverifiable migration is not a migrated terminal decision', () => {

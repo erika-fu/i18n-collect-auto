@@ -73,6 +73,7 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
       needsReview: 0,
       intentionallyIgnored: 0,
       translationApproved: 0,
+      deferred: 0,
       migrated: 0
     }
   })

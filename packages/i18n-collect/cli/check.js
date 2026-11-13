@@ -196,6 +196,7 @@ function summaryReport(analysis, evaluation, scannedFiles) {
     needsReviewTranslations: evaluation.needsReviewTranslations,
     staleTargetKeys: evaluation.staleTargetKeys,
     blocking: evaluation.blocking,
+    warnings: evaluation.warnings || [],
     message: evaluation.message,
     coverage: analysis.coverage,
     auditFindings: evaluation.auditFindings,
@@ -249,6 +250,9 @@ function humanSummary(evaluation, analysis) {
       : ''
     lines.push(`stale target keys (reported only): ${sample}${more}`)
   }
+  for (const warning of evaluation.warnings || []) {
+    lines.push(`warning: ${warning.message}`)
+  }
   return `${lines.join('\n')}\n`
 }
 
@@ -284,7 +288,8 @@ function check(args) {
       committedSourceCatalog,
       targetLocales: config.targetLocales,
       targets,
-      reviewState
+      reviewState,
+      deferredDynamicCandidates: config.deferredDynamicCandidates
     })
     const policy = evaluateHybridPolicy({ sources, config })
     const evaluation = mergePolicyIntoEvaluation(completeness, policy)

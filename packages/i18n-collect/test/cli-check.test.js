@@ -261,7 +261,7 @@ test('check fails when committed source catalog is missing or stale', () => {
   assertReadOnly(staleRoot, staleBefore, staleResult)
 })
 
-test('check fails for dynamic message candidates and missing translations', () => {
+test('check fails for unreviewed dynamic message candidates and missing translations', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-runtime-locale-'))
   fs.mkdirSync(path.join(root, 'src'), { recursive: true })
   fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
@@ -276,10 +276,134 @@ test('check fails for dynamic message candidates and missing translations', () =
   assert.notStrictEqual(result.status, 0, result.stdout)
   const report = JSON.parse(result.stdout)
   assert.strictEqual(report.ok, false)
-  assert.ok(report.blocking.includes('dynamic-message-candidates'))
+  assert.ok(report.blocking.includes('unreviewed-dynamic-candidates'))
+  assert.ok(!report.blocking.includes('needs-review-audit'))
+  assert.ok(!report.blocking.includes('needs-review-translations'))
   assert.ok(report.dynamicMessageCandidates.total >= 1)
   assert.ok(Array.isArray(report.dynamicMessageCandidateFindings))
   assert.ok(report.dynamicMessageCandidateFindings.length >= 1)
+  assert.deepStrictEqual(report.warnings, [])
+  assert.match(report.message, /unreviewed dynamic message candidate/i)
+  assertReadOnly(root, before, result)
+})
+
+test('check fails deferred dynamic candidates by default with a disposition-specific diagnostic', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-deferred-error-'))
+  const {
+    dynamicCandidateId,
+    scanCompleteStaticCopyPolicy
+  } = require('../mycommon/complete-static-copy-policy')
+  const expression = '`你好${name}`'
+  const source = `module.exports = ${expression}\n`
+  const id = dynamicCandidateId({
+    path: 'src/app.js',
+    expression,
+    reason: 'interpolation'
+  })
+  const baselineViolations = scanCompleteStaticCopyPolicy([{ path: 'src/app.js', source }])
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/app.js'), source)
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"] }\n'
+  )
+  writeJson(root, 'lang/catalog/source-catalog.json', {})
+  writeJson(root, 'lang/catalog/complete-static-copy-baseline.json', {
+    version: 1,
+    violations: baselineViolations
+  })
+  writeJson(root, 'lang/catalog/dynamic-message-decisions.json', {
+    version: 1,
+    decisions: [{
+      id,
+      path: 'src/app.js',
+      expression,
+      candidateReason: 'interpolation',
+      decision: 'defer',
+      reason: 'waiting on copy'
+    }]
+  })
+  const before = snapshotTree(root)
+  const result = run(['check', '--json'], root)
+  assert.notStrictEqual(result.status, 0, result.stdout)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, false)
+  assert.ok(report.blocking.includes('deferred-dynamic-candidates'))
+  assert.ok(!report.blocking.includes('unreviewed-dynamic-candidates'))
+  assert.deepStrictEqual(report.warnings, [])
+  assert.match(report.message, /deferred dynamic message candidate/i)
+  assert.strictEqual(report.dynamicMessageCandidates.deferred, 1)
+  assertReadOnly(root, before, result)
+})
+
+test('check warns for deferred dynamic candidates when deferredDynamicCandidates is warn', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-deferred-warn-'))
+  const {
+    dynamicCandidateId,
+    scanCompleteStaticCopyPolicy
+  } = require('../mycommon/complete-static-copy-policy')
+  const expression = '`你好${name}`'
+  const source = `module.exports = ${expression}\n`
+  const id = dynamicCandidateId({
+    path: 'src/app.js',
+    expression,
+    reason: 'interpolation'
+  })
+  const baselineViolations = scanCompleteStaticCopyPolicy([{ path: 'src/app.js', source }])
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/app.js'), source)
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"], deferredDynamicCandidates: "warn" }\n'
+  )
+  writeJson(root, 'lang/catalog/source-catalog.json', {})
+  writeJson(root, 'lang/catalog/complete-static-copy-baseline.json', {
+    version: 1,
+    violations: baselineViolations
+  })
+  writeJson(root, 'lang/catalog/dynamic-message-decisions.json', {
+    version: 1,
+    decisions: [{
+      id,
+      path: 'src/app.js',
+      expression,
+      candidateReason: 'interpolation',
+      decision: 'defer',
+      reason: 'waiting on copy'
+    }]
+  })
+  const before = snapshotTree(root)
+  const result = run(['check', '--json'], root)
+  assert.strictEqual(result.status, 0, result.stderr || result.stdout)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.deepStrictEqual(report.blocking, [])
+  assert.strictEqual(report.warnings.length, 1)
+  assert.strictEqual(report.warnings[0].code, 'deferred-dynamic-candidates')
+  assert.match(report.warnings[0].message, /deferred dynamic message candidate/i)
+  assert.strictEqual(report.dynamicMessageCandidates.deferred, 1)
+  assertReadOnly(root, before, result)
+})
+
+test('check still fails never-reviewed candidates when deferredDynamicCandidates is warn', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-check-deferred-warn-unreviewed-'))
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'lang/catalog'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/app.js'), 'module.exports = `你好${name}`\n')
+  fs.writeFileSync(
+    path.join(root, 'i18n-collect.config.js'),
+    'module.exports = { include: ["src"], deferredDynamicCandidates: "warn" }\n'
+  )
+  writeJson(root, 'lang/catalog/source-catalog.json', {})
+  const before = snapshotTree(root)
+  const result = run(['check', '--json'], root)
+  assert.notStrictEqual(result.status, 0, result.stdout)
+  const report = JSON.parse(result.stdout)
+  assert.strictEqual(report.ok, false)
+  assert.ok(report.blocking.includes('unreviewed-dynamic-candidates'))
+  assert.deepStrictEqual(report.warnings, [])
   assertReadOnly(root, before, result)
 })
 
