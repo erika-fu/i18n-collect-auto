@@ -25,7 +25,7 @@ Collection must make every discovered user-facing Chinese occurrence locatable w
 4. Make `collect` read that decision manifest, validate that each decision still matches its candidate, and regenerate the candidate disposition in `analysis-report.json`.
 5. Add `i18n-collect review` in interactive and non-interactive forms.
 6. Extend `check` so project policy evaluates unresolved or deferred dynamic candidates instead of treating every complex-copy finding as an unconditional explicit-required failure.
-7. Support `review --write` for proven-safe source migrations. In interactive use it shows the diff and requires confirmation; in non-interactive use `--yes` confirms the already-explicit write intent. It must not guess how to rewrite arbitrary dynamic expressions.
+7. ~~Support `review --write` for proven-safe source migrations.~~ Implemented: interactive use shows the diff and requires confirmation; non-interactive `--yes` confirms the already-explicit write intent. It does not guess how to rewrite arbitrary dynamic expressions.
 
 ## Classification
 
@@ -105,10 +105,8 @@ i18n-collect review dynamic.7a4e91 --translate \
   --key upload.selectedFiles \
   --source '已选择 {count} 个文件' --yes
 
-# Only after a shown diff and explicit confirmation, apply a supported migration.
-i18n-collect review dynamic.7a4e91 --translate \
-  --key upload.selectedFiles \
-  --source '已选择 {count} 个文件' --apply
+# Only after a shown diff and explicit confirmation, write a supported migration.
+i18n-collect review dynamic.7a4e91 --write --adapter js --yes
 ```
 
 `--write` is intentionally separate from recording the decision. Dynamic expressions vary by framework and semantics, so the tool must reject rewrites it cannot prove safe. For supported patterns, however, writing the approved explicit-localization migration is the normal purpose of write mode: it shows the diff and requires confirmation before writing source.

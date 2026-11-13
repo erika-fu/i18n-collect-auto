@@ -168,8 +168,12 @@ List unresolved dynamic message candidates and record auditable translate,
 intentionally-ignore, or defer decisions. Translate decisions atomically update
 dynamic-message-decisions.json and explicit-messages.json together; explicit-messages.json
 remains the authority for explicit keys, canonical Chinese source text, and placeholder
-contracts. This command does not rewrite application source; use a later review --write
-path only after a Translate decision when that capability is available.
+contracts.
+
+After a Translate decision, --write previews a source diff and, only after confirmation,
+migrates proven-safe concatenation and template-literal expressions to explicit
+localization calls. Expressions outside that proven-safe boundary are refused rather than
+guessed. --write is the only source-write flag; the legacy apply flag is not accepted.
 
 Usage:
   i18n-collect review [candidate-id] [options]
@@ -185,19 +189,24 @@ Options:
   --key <id>           Explicit localization key for --translate.
   --source <text>      Canonical Chinese source text for --translate.
   --reason <text>      Non-empty reason for --ignore, optional for --defer.
+  --write              Preview and write a proven-safe source migration for a
+                       translation-approved candidate. Requires --adapter and
+                       confirmation (--yes non-interactively). May combine with
+                       --translate to decide and write in one confirmed step.
+  --adapter <name>     Replacement call shape for --write: js, vue2, or vue3.
   --bulk               Apply the decision to every unresolved candidate compatible
                        with the given candidate id. Persists one decision per occurrence.
   --prune              Remove eligible migrated terminal decisions only. Never removes
                        active translate, ignore, or defer decisions.
-  --yes                Confirm a mutating decision or prune non-interactively.
+  --yes                Confirm a mutating decision, prune, or --write non-interactively.
   --json               Print the review report as JSON on stdout.
   -h, --help           Show this help.
 
 Exit codes:
   0  review finished
-  1  configuration failure, missing confirmation, or validation failure
+  1  configuration failure, missing confirmation, validation failure, or refused write
   2  analysis failure
-  6  decision or explicit-message manifests could not be saved
+  6  decision, explicit-message, or source files could not be saved
 `
 
 const ROOT_HELP = `i18n-collect
@@ -213,7 +222,7 @@ Commands:
   build         Verify collection outputs by default; rewrite in-memory modules and the formal webpack bundle only.
   replace       Preview source replacements, or write application source with --write.
   check         Read-only project localization completeness (including hybrid policy).
-  review        List and decide dynamic message candidates; writes decision and explicit-message manifests.
+  review        List and decide dynamic message candidates; optional proven-safe --write for source migrations.
   migrate-keys  One-shot migration of per-occurrence automatic keys to text-hash keys.
   scan          Filesystem analysis; writes source-catalog.json and analysis-report.json only (non-Webpack / legacy path).
   verify        Removed; use collect then check.

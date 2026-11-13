@@ -1,19 +1,33 @@
+const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
 const { loadConfig } = require('../mycommon/config')
 const {
   STATUS_MIGRATED,
   STATUS_NEEDS_REVIEW,
+  STATUS_TRANSLATION_APPROVED,
   compatibleCandidates,
   filterCandidates,
   loadReviewArtifacts,
   planDecisionWrites,
   pruneMigratedDecisions,
+  serializeDecisions,
+  serializeExplicitMessages,
   withOccurrences,
   writeReviewArtifacts
 } = require('../mycommon/dynamic-message-review')
+const { commitFiles } = require('../mycommon/output')
 const { analyzeProject } = require('../mycommon/project-analysis')
 const { listProjectSources } = require('../mycommon/project-sources')
+const {
+  applyEdits,
+  markDecisionMigrated,
+  offsetAt,
+  planProvenSafeMigration,
+  simpleDiff
+} = require('../mycommon/review-write-migration')
+
+const WRITE_ADAPTERS = new Set(['js', 'vue2', 'vue3'])
 
 const EXIT = {
   ok: 0,
@@ -53,6 +67,7 @@ function take(args, index, flag) {
 
 function parseReviewArgs(args) {
   const parsed = {
+    adapter: null,
     bulk: false,
     cwd: null,
     defer: false,
@@ -65,6 +80,7 @@ function parseReviewArgs(args) {
     source: null,
     status: null,
     translate: false,
+    write: false,
     yes: false
   }
   for (let index = 0; index < args.length; index += 1) {
@@ -102,11 +118,20 @@ function parseReviewArgs(args) {
     } else if (flag === '--defer') {
       if (inline !== null) throw commandError('configuration', 'unknown option "--defer"')
       parsed.defer = true
+    } else if (flag === '--write') {
+      if (inline !== null) throw commandError('configuration', 'unknown option "--write"')
+      parsed.write = true
+    } else if (flag === '--apply') {
+      throw commandError(
+        'configuration',
+        'unknown option "--apply"; use --write for proven-safe source migrations'
+      )
     } else if (flag === '--cwd') parsed.cwd = value('--cwd')
     else if (flag === '--status') parsed.status = value('--status')
     else if (flag === '--reason') parsed.reason = value('--reason')
     else if (flag === '--key') parsed.key = value('--key')
     else if (flag === '--source') parsed.source = value('--source')
+    else if (flag === '--adapter') parsed.adapter = value('--adapter')
     else if (flag.startsWith('-')) throw commandError('configuration', `unknown option "${flag}"`)
     else if (!parsed.id) parsed.id = arg
     else throw commandError('configuration', `unexpected argument "${arg}"`)
@@ -114,6 +139,9 @@ function parseReviewArgs(args) {
   const modes = [parsed.translate, parsed.ignore, parsed.defer, parsed.prune].filter(Boolean).length
   if (modes > 1) {
     throw commandError('configuration', 'review accepts only one of --translate, --ignore, --defer, or --prune')
+  }
+  if (parsed.write && (parsed.ignore || parsed.defer || parsed.prune)) {
+    throw commandError('configuration', 'review --write cannot combine with --ignore, --defer, or --prune')
   }
   return parsed
 }
@@ -134,16 +162,132 @@ function createTerminal({ input = process.stdin, output = process.stderr } = {})
   }
 }
 
-async function confirmDecision(parsed, terminal, summary) {
+async function confirmDecision(parsed, terminal, summary, prompt = 'Record this review decision? [y/N] ') {
   if (parsed.yes) return
   if (terminal.interactive) {
-    const answer = await terminal.ask(`${summary}\nRecord this review decision? [y/N] `)
+    const answer = await terminal.ask(`${summary}\n${prompt}`)
     if (/^(y|yes)$/i.test(String(answer || '').trim())) return
   }
   throw commandError(
     'configuration',
     'review decision was not confirmed; rerun with --yes for non-interactive use'
   )
+}
+
+function readProjectFile(root, projectPath) {
+  if (!projectPath || path.posix.isAbsolute(projectPath) || path.isAbsolute(projectPath)) {
+    throw commandError('configuration', `unsafe review write path "${projectPath}"`)
+  }
+  const full = path.resolve(root, projectPath)
+  const relative = path.relative(root, full)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw commandError('configuration', `unsafe review write path "${projectPath}"`)
+  }
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
+    throw commandError('configuration', `source file missing for review write: ${projectPath}`)
+  }
+  return { full, relative: projectPath.split('\\').join('/'), content: fs.readFileSync(full, 'utf8') }
+}
+
+function explicitSourceFor(artifacts, key) {
+  const message = (artifacts.explicitMessages || []).find(item => item.key === key)
+  if (!message || typeof message.source !== 'string') {
+    throw commandError('configuration', `explicit message "${key}" is required before review --write`)
+  }
+  return message.source
+}
+
+function decisionForCandidate(artifacts, candidate) {
+  const matches = (artifacts.decisions || []).filter(item => item.id === candidate.id)
+  if (matches.length === 0) {
+    throw commandError(
+      'configuration',
+      `candidate "${candidate.id}" has no translate decision; record --translate before --write`
+    )
+  }
+  if (matches.length > 1) {
+    throw commandError('configuration', `candidate "${candidate.id}" has ambiguous review decisions`)
+  }
+  return matches[0]
+}
+
+function planWriteMigrations({ root, adapter, candidates, artifacts, key, source }) {
+  if (!WRITE_ADAPTERS.has(adapter)) {
+    throw commandError('configuration', `unknown adapter "${adapter}"; expected js, vue2, or vue3`)
+  }
+  const byPath = new Map()
+  const planned = []
+  for (const candidate of candidates) {
+    const decision = key
+      ? { decision: 'translate', key, source }
+      : decisionForCandidate(artifacts, candidate)
+    if (decision.decision !== 'translate' && decision.decision !== 'migrated') {
+      throw commandError(
+        'configuration',
+        `candidate "${candidate.id}" decision "${decision.decision}" cannot be written`
+      )
+    }
+    const explicitKey = key || decision.key
+    const explicitSource = source || explicitSourceFor(artifacts, explicitKey)
+    const file = readProjectFile(root, candidate.location.path)
+    if (!byPath.has(file.relative)) {
+      byPath.set(file.relative, {
+        full: file.full,
+        relative: file.relative,
+        original: file.content,
+        edits: []
+      })
+    }
+    const bucket = byPath.get(file.relative)
+    const migration = planProvenSafeMigration({
+      candidate,
+      key: explicitKey,
+      source: explicitSource,
+      fileSource: bucket.original,
+      adapter
+    })
+    if (!migration.ok) {
+      throw commandError(
+        'configuration',
+        `review --write refused for "${candidate.id}": ${migration.reason}`
+      )
+    }
+    const start = offsetAt(bucket.original, candidate.location.start)
+    const end = offsetAt(bucket.original, candidate.location.end)
+    bucket.edits.push({ start, end, text: migration.call })
+    planned.push({
+      candidate,
+      key: explicitKey,
+      source: explicitSource,
+      call: migration.call,
+      path: file.relative
+    })
+  }
+  const files = [...byPath.values()].map(bucket => {
+    const content = applyEdits(bucket.original, bucket.edits)
+    return {
+      full: bucket.full,
+      relative: bucket.relative,
+      original: bucket.original,
+      content,
+      diff: simpleDiff(bucket.relative, bucket.original, content)
+    }
+  })
+  const diffs = new Map(files.map(file => [file.relative, file.diff]))
+  for (const item of planned) item.diff = diffs.get(item.path)
+  return { migrations: planned, files }
+}
+
+function humanWritePreview(migrations) {
+  const lines = [
+    `Proven-safe review write preview for ${migrations.length} candidate(s):`
+  ]
+  for (const item of migrations) {
+    lines.push(`  ${item.candidate.id} -> ${item.call}`)
+    lines.push(item.diff.trimEnd())
+  }
+  lines.push('')
+  return lines.join('\n')
 }
 
 function decisionFromParsed(parsed) {
@@ -306,6 +450,73 @@ async function execute(parsed, terminal) {
     )
   }
 
+  if (parsed.write && !parsed.translate && !parsed.ignore && !parsed.defer && !parsed.prune) {
+    if (!parsed.id) throw commandError('configuration', 'review --write requires a candidate id')
+    if (!parsed.adapter) throw commandError('configuration', 'review --write requires --adapter')
+    const selected = selectCandidates({ ...parsed, status: null }, analysis)
+    for (const candidate of selected) {
+      if (candidate.disposition !== STATUS_TRANSLATION_APPROVED) {
+        throw commandError(
+          'configuration',
+          `candidate "${candidate.id}" must be translation-approved before review --write`
+        )
+      }
+    }
+    const plannedWrite = planWriteMigrations({
+      root: config.root,
+      adapter: parsed.adapter,
+      candidates: selected,
+      artifacts
+    })
+    const preview = humanWritePreview(plannedWrite.migrations)
+    await confirmDecision(
+      parsed,
+      terminal,
+      preview,
+      'Write these proven-safe source migrations? [y/N] '
+    )
+    const decisions = [...artifacts.decisions]
+    for (const item of plannedWrite.migrations) {
+      const current = decisionForCandidate({ decisions }, item.candidate)
+      const migrated = markDecisionMigrated(current)
+      const index = decisions.findIndex(entry => entry.id === migrated.id)
+      if (index === -1) decisions.push(migrated)
+      else decisions[index] = migrated
+    }
+    const targets = [
+      ...plannedWrite.files.map(file => ({ file: file.full, content: file.content })),
+      {
+        file: artifacts.decisionsFile,
+        content: serializeDecisions(
+          decisions.sort((left, right) => left.id.localeCompare(right.id))
+        )
+      }
+    ]
+    try {
+      commitFiles(targets)
+    } catch (error) {
+      throw commandError('storage', error.message || String(error))
+    }
+    const report = {
+      command: 'review',
+      ok: true,
+      action: 'write',
+      written: plannedWrite.migrations.map(item => item.candidate.id),
+      files: plannedWrite.files.map(file => file.relative),
+      previews: plannedWrite.files.map(file => ({
+        path: file.relative,
+        content: file.content,
+        diff: file.diff
+      }))
+    }
+    if (parsed.json) return outcome(EXIT.ok, jsonText(report), '')
+    return outcome(
+      EXIT.ok,
+      `${preview}Wrote proven-safe migrations for ${report.written.length} candidate(s).\n`,
+      ''
+    )
+  }
+
   let decision = decisionFromParsed(parsed)
   if (!decision) {
     if (parsed.id && terminal.interactive && !parsed.json) {
@@ -354,6 +565,63 @@ async function execute(parsed, terminal) {
     existingExplicitMessages: artifacts.explicitMessages,
     decision
   })
+
+  if (parsed.write) {
+    if (decision.decision !== 'translate') {
+      throw commandError('configuration', 'review --write requires a Translate decision')
+    }
+    if (!parsed.adapter) throw commandError('configuration', 'review --write requires --adapter')
+    const plannedWrite = planWriteMigrations({
+      root: config.root,
+      adapter: parsed.adapter,
+      candidates: selected,
+      artifacts: {
+        ...artifacts,
+        decisions: planned.decisions,
+        explicitMessages: planned.explicitMessages
+      },
+      key: decision.key,
+      source: decision.source
+    })
+    const preview = humanWritePreview(plannedWrite.migrations)
+    await confirmDecision(
+      parsed,
+      terminal,
+      `${decisionSummary(decision, planned.recorded.length)}\n${preview}`,
+      'Record the Translate decision and write these proven-safe source migrations? [y/N] '
+    )
+    const migratedDecisions = planned.decisions.map(item => (
+      planned.recorded.some(recorded => recorded.id === item.id)
+        ? markDecisionMigrated(item)
+        : item
+    ))
+    const targets = [
+      ...plannedWrite.files.map(file => ({ file: file.full, content: file.content })),
+      { file: artifacts.decisionsFile, content: serializeDecisions(migratedDecisions) },
+      { file: artifacts.explicitFile, content: serializeExplicitMessages(planned.explicitMessages) }
+    ]
+    try {
+      commitFiles(targets)
+    } catch (error) {
+      throw commandError('storage', error.message || String(error))
+    }
+    const report = {
+      command: 'review',
+      ok: true,
+      action: 'write',
+      written: plannedWrite.migrations.map(item => item.candidate.id),
+      key: decision.key,
+      source: decision.source,
+      files: plannedWrite.files.map(file => file.relative)
+    }
+    if (parsed.json) return outcome(EXIT.ok, jsonText(report), '')
+    return outcome(
+      EXIT.ok,
+      `${preview}Recorded translate and wrote proven-safe migrations for ${report.written.length} candidate(s).\n`,
+      ''
+    )
+  }
+
   await confirmDecision(parsed, terminal, decisionSummary(decision, planned.recorded.length))
   writeReviewArtifacts({
     decisionsFile: artifacts.decisionsFile,

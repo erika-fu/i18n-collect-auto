@@ -6,6 +6,7 @@ const path = require('path')
 const test = require('node:test')
 const { dynamicCandidateId } = require('../mycommon/complete-static-copy-policy')
 const { review } = require('../cli/review')
+const { installVue3 } = require('./vue3-fixture')
 
 const bin = path.join(__dirname, '../bin/i18n-collect.js')
 
@@ -39,6 +40,7 @@ test('review help describes dynamic candidate decisions and prune', () => {
   assert.match(result.stdout, /--status/)
   assert.match(result.stdout, /--translate|--ignore|--defer/)
   assert.match(result.stdout, /--prune/)
+  assert.match(result.stdout, /--write/)
   assert.match(result.stdout, /--yes/)
   assert.match(result.stdout, /explicit-messages|dynamic-message-decisions/)
 })
@@ -285,6 +287,262 @@ test('review --bulk records a separate decision for every compatible occurrence'
   const remaining = run(['review', '--json'], root)
   assert.strictEqual(JSON.parse(remaining.stdout).candidates.length, 1)
   assert.match(JSON.parse(remaining.stdout).candidates[0].expression, /你好/)
+})
+
+test('review --write migrates proven-safe JS concatenation after confirmation and marks the decision migrated', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-write-js-'))
+  const source = "const label = '已选择 ' + count + ' 个文件'\n"
+  writeReviewProject(root, { source })
+  const listed = run(['review', '--json'], root)
+  assert.strictEqual(listed.status, 0, listed.stderr)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+
+  const translated = run([
+    'review', id,
+    '--translate',
+    '--key', 'upload.selectedFiles',
+    '--source', '已选择 {count} 个文件',
+    '--yes',
+    '--json'
+  ], root)
+  assert.strictEqual(translated.status, 0, translated.stderr)
+
+  const unconfirmed = run([
+    'review', id,
+    '--write',
+    '--adapter', 'js',
+    '--json'
+  ], root)
+  assert.notStrictEqual(unconfirmed.status, 0)
+  assert.match(unconfirmed.stderr, /not confirmed|--yes/)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
+
+  const written = run([
+    'review', id,
+    '--write',
+    '--adapter', 'js',
+    '--yes',
+    '--json'
+  ], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  const report = JSON.parse(written.stdout)
+  assert.strictEqual(report.ok, true)
+  assert.strictEqual(report.action, 'write')
+  assert.deepStrictEqual(report.written, [id])
+  assert.strictEqual(
+    fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'),
+    "const label = t('upload.selectedFiles', { count })\n"
+  )
+  const decisions = readJson(root, 'lang/catalog/dynamic-message-decisions.json')
+  assert.strictEqual(decisions.decisions[0].decision, 'migrated')
+  assert.strictEqual(decisions.decisions[0].key, 'upload.selectedFiles')
+})
+
+test('review --write migrates proven-safe Vue template expressions', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-write-vue-'))
+  installVue3(root)
+  const vueSource = [
+    '<template>',
+    '  <p>{{ "已选择 " + count + " 个文件" }}</p>',
+    '</template>',
+    '<script>',
+    'export default { name: "Home" }',
+    '</script>',
+    ''
+  ].join('\n')
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/Home.vue'), vueSource)
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = { include: ["src"], vueVersion: 3 }\n')
+
+  const listed = run(['review', '--json'], root)
+  assert.strictEqual(listed.status, 0, listed.stderr)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+  const translated = run([
+    'review', id,
+    '--translate',
+    '--key', 'upload.selectedFiles',
+    '--source', '已选择 {count} 个文件',
+    '--yes',
+    '--json'
+  ], root)
+  assert.strictEqual(translated.status, 0, translated.stderr)
+
+  const written = run([
+    'review', id,
+    '--write',
+    '--adapter', 'vue3',
+    '--yes',
+    '--json'
+  ], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  const next = fs.readFileSync(path.join(root, 'src/Home.vue'), 'utf8')
+  assert.ok(next.includes("{{ $t('upload.selectedFiles', { count }) }}"))
+  assert.ok(!next.includes('"已选择 " + count + " 个文件"'))
+})
+
+test('review --write migrates proven-safe JS template literals and shows a diff', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-write-tpl-'))
+  const source = 'const message = `你好${name}世界`\n'
+  writeReviewProject(root, { source })
+  const listed = run(['review', '--json'], root)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+  assert.strictEqual(run([
+    'review', id,
+    '--translate',
+    '--key', 'greet.hello',
+    '--source', '你好{name}世界',
+    '--yes',
+    '--json'
+  ], root).status, 0)
+
+  const cancelled = await review([id, '--write', '--adapter', 'js', '--cwd', root], {
+    interactive: true,
+    ask: async () => 'n'
+  })
+  assert.notStrictEqual(cancelled.code, 0)
+  assert.match(cancelled.stderr, /not confirmed|--yes/)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
+
+  const written = await review([id, '--write', '--adapter', 'js', '--cwd', root, '--yes'], {
+    interactive: false,
+    ask: async () => {
+      throw new Error('ask should not run with --yes')
+    }
+  })
+  assert.strictEqual(written.code, 0, written.stderr)
+  assert.match(written.stdout, /--- src\/app\.js|\+const message = t\('greet\.hello'/)
+  assert.strictEqual(
+    fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'),
+    "const message = t('greet.hello', { name })\n"
+  )
+})
+
+test('review --write migrates proven-safe TypeScript template literals', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-write-ts-'))
+  const source = 'const message: string = `你好${name}世界`\n'
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'src/app.ts'), source)
+  fs.writeFileSync(path.join(root, 'i18n-collect.config.js'), 'module.exports = { include: ["src"] }\n')
+
+  const listed = run(['review', '--json'], root)
+  assert.strictEqual(listed.status, 0, listed.stderr)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+  assert.strictEqual(run([
+    'review', id,
+    '--translate',
+    '--key', 'greet.hello',
+    '--source', '你好{name}世界',
+    '--yes',
+    '--json'
+  ], root).status, 0)
+
+  const written = run([
+    'review', id,
+    '--write',
+    '--adapter', 'js',
+    '--yes',
+    '--json'
+  ], root)
+  assert.strictEqual(written.status, 0, written.stderr)
+  assert.strictEqual(
+    fs.readFileSync(path.join(root, 'src/app.ts'), 'utf8'),
+    "const message: string = t('greet.hello', { name })\n"
+  )
+})
+
+test('review --write validation failure preserves source and translate decision', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-write-mismatch-'))
+  const source = "const label = '已选择 ' + count + ' 个文件'\n"
+  writeReviewProject(root, { source })
+  const listed = run(['review', '--json'], root)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+  assert.strictEqual(run([
+    'review', id,
+    '--translate',
+    '--key', 'upload.selectedFiles',
+    '--source', '已选择 {count} 个文件',
+    '--yes',
+    '--json'
+  ], root).status, 0)
+
+  const explicitPath = path.join(root, 'lang/catalog/explicit-messages.json')
+  const beforeExplicit = fs.readFileSync(explicitPath, 'utf8')
+  const beforeDecisions = fs.readFileSync(path.join(root, 'lang/catalog/dynamic-message-decisions.json'), 'utf8')
+  fs.writeFileSync(explicitPath, `${JSON.stringify({
+    version: 1,
+    messages: [{ key: 'upload.selectedFiles', source: '已选择 {total} 个文件' }]
+  }, null, 2)}\n`)
+
+  const refused = run([
+    'review', id,
+    '--write',
+    '--adapter', 'js',
+    '--yes',
+    '--json'
+  ], root)
+  assert.notStrictEqual(refused.status, 0)
+  assert.match(refused.stderr, /does not match|refused|approved explicit source/i)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
+  assert.strictEqual(
+    fs.readFileSync(path.join(root, 'lang/catalog/dynamic-message-decisions.json'), 'utf8'),
+    beforeDecisions
+  )
+  assert.notStrictEqual(fs.readFileSync(explicitPath, 'utf8'), beforeExplicit)
+})
+
+test('review --write refuses unsafe classes and preserves source', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-write-refuse-'))
+  const source = 'const label = ready ? "就绪" : "等待"\n'
+  writeReviewProject(root, { source })
+  const listed = run(['review', '--json'], root)
+  assert.strictEqual(listed.status, 0, listed.stderr)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+  const translated = run([
+    'review', id,
+    '--translate',
+    '--key', 'status.label',
+    '--source', '就绪等待',
+    '--yes',
+    '--json'
+  ], root)
+  assert.strictEqual(translated.status, 0, translated.stderr)
+
+  const refused = run([
+    'review', id,
+    '--write',
+    '--adapter', 'js',
+    '--yes',
+    '--json'
+  ], root)
+  assert.notStrictEqual(refused.status, 0)
+  assert.match(refused.stderr, /not proven-safe|proven-safe|refused|cannot/i)
+  assert.strictEqual(fs.readFileSync(path.join(root, 'src/app.js'), 'utf8'), source)
+  const decisions = readJson(root, 'lang/catalog/dynamic-message-decisions.json')
+  assert.strictEqual(decisions.decisions[0].decision, 'translate')
+})
+
+test('review rejects --apply and keeps --write as the only write flag', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-review-apply-'))
+  writeReviewProject(root)
+  const listed = run(['review', '--json'], root)
+  const id = JSON.parse(listed.stdout).candidates[0].id
+  const result = run([
+    'review', id,
+    '--apply',
+    '--adapter', 'js',
+    '--yes',
+    '--json'
+  ], root)
+  assert.notStrictEqual(result.status, 0)
+  assert.match(result.stderr, /unknown option|--write/i)
+})
+
+test('review help documents proven-safe --write', () => {
+  const result = run(['review', '--help'])
+  assert.strictEqual(result.status, 0, result.stderr)
+  assert.match(result.stdout, /--write/)
+  assert.match(result.stdout, /proven-safe|confirmation|diff/i)
+  assert.doesNotMatch(result.stdout, /^\s*--apply\b/m)
 })
 
 test('review --prune removes migrated terminal decisions and never discards active ones', () => {

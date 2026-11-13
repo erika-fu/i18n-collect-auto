@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Decision-manifest consumption and `review` decision recording are implemented; proven-safe `review --write` source migrations remain pending.
+Accepted. Decision-manifest consumption, `review` decision recording, and proven-safe `review --write` source migrations are implemented.
 
 ## Context
 

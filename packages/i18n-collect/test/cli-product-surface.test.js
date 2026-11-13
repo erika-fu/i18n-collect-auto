@@ -79,7 +79,9 @@ test('command help states write ownership for each primary command', () => {
   assert.match(collapse(review.stdout), /dynamic message candidate/i)
   assert.match(collapse(review.stdout), /explicit-messages|dynamic-message-decisions/)
   assert.match(collapse(review.stdout), /--prune/)
-  assert.match(collapse(review.stdout), /does not rewrite application source/i)
+  assert.match(collapse(review.stdout), /--write/)
+  assert.match(collapse(review.stdout), /proven-safe/)
+  assert.match(collapse(review.stdout), /confirmation/i)
 })
 test('run fails with a bounded migration error for any invocation', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-run-gone-'))

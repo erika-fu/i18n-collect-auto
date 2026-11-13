@@ -4,10 +4,10 @@
 
 **Blocked by:** 03: Add review CLI and atomic explicit-message decisions.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Safe string concatenation and template-literal cases with side-effect-free interpolations and mechanically derivable named placeholders can be previewed and written correctly.
-- [ ] Writes require an explicit confirmation path and preserve source on preview, refusal, validation failure, or cancellation.
-- [ ] Conditional construction, dynamic keys, plural/formatting logic, rich text, and other structured messages are rejected for automatic source writing while remaining reviewable.
-- [ ] The CLI has one canonical write flag, `--write`; no competing `--apply` behavior remains.
-- [ ] Regression tests cover successful JS/TS and Vue migrations, diffs, confirmation, and every rejected class.
+- [x] Safe string concatenation and template-literal cases with side-effect-free interpolations and mechanically derivable named placeholders can be previewed and written correctly.
+- [x] Writes require an explicit confirmation path and preserve source on preview, refusal, validation failure, or cancellation.
+- [x] Conditional construction, dynamic keys, plural/formatting logic, rich text, and other structured messages are rejected for automatic source writing while remaining reviewable.
+- [x] The CLI has one canonical write flag, `--write`; no competing `--apply` behavior remains.
+- [x] Regression tests cover successful JS/TS and Vue migrations, diffs, confirmation, and every rejected class.
