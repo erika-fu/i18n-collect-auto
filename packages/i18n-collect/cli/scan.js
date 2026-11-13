@@ -1,10 +1,7 @@
-const fs = require('fs')
 const path = require('path')
 const {
-  analysisReport,
-  analyzeProject,
-  buildSourceCatalog
-} = require('../mycommon/project-analysis')
+  analyzeFormalCollection
+} = require('../mycommon/formal-collection-analysis')
 const { clearCollectionOverrides, loadConfig, setCollectionOverrides } = require('../mycommon/config')
 const {
   ANALYSIS_REPORT_FILE,
@@ -13,32 +10,13 @@ const {
   sourceCatalogPath
 } = require('../mycommon/formal-outputs')
 const { commitFiles, json } = require('../mycommon/output')
-const { isResourceIncluded } = require('../myloader/resource')
+const { listProjectSources } = require('../mycommon/project-sources')
 
 const EXIT = {
   ok: 0,
   configuration: 1,
   collection: 2
 }
-
-const SOURCE_EXTENSIONS = new Set([
-  '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
-  '.vue', '.html', '.htm',
-  '.css', '.scss', '.sass', '.less', '.styl', '.stylus'
-])
-
-const SKIP_DIRECTORIES = new Set([
-  '.git',
-  '.hg',
-  '.svn',
-  'node_modules',
-  'dist',
-  'coverage',
-  '.next',
-  '.nuxt',
-  '.output',
-  '.cache'
-])
 
 function commandError(kind, message) {
   const error = new Error(message)
@@ -110,35 +88,6 @@ function parseScanArgs(args) {
   return parsed
 }
 
-function listSourceFiles(root, config) {
-  const files = []
-  const visit = directory => {
-    let entries
-    try {
-      entries = fs.readdirSync(directory, { withFileTypes: true })
-    } catch (error) {
-      return
-    }
-    for (const entry of entries) {
-      if (entry.name === '.' || entry.name === '..') continue
-      const absolute = path.join(directory, entry.name)
-      if (entry.isDirectory()) {
-        if (SKIP_DIRECTORIES.has(entry.name)) continue
-        visit(absolute)
-        continue
-      }
-      if (!entry.isFile()) continue
-      const projectPath = path.relative(root, absolute).split(path.sep).join('/')
-      const extension = path.posix.extname(projectPath).toLowerCase()
-      if (!SOURCE_EXTENSIONS.has(extension)) continue
-      if (!isResourceIncluded(projectPath, config)) continue
-      files.push({ absolute, projectPath })
-    }
-  }
-  visit(root)
-  return files.sort((left, right) => left.projectPath.localeCompare(right.projectPath))
-}
-
 function scan(args) {
   let parsed
   try {
@@ -155,14 +104,12 @@ function scan(args) {
     if (Object.keys(overrides).length) setCollectionOverrides(overrides)
 
     const config = loadConfig({ root })
-    const sources = listSourceFiles(config.root, config).map(file => ({
-      path: file.projectPath,
-      absolutePath: file.absolute,
-      source: fs.readFileSync(file.absolute, 'utf8')
-    }))
-    const analysis = analyzeProject({ files: sources, config })
-    const catalog = buildSourceCatalog(analysis)
-    const report = analysisReport(analysis)
+    const sources = listProjectSources(config.root, config)
+    const {
+      analysis,
+      sourceCatalog: catalog,
+      report
+    } = analyzeFormalCollection({ files: sources, config })
     const sourceCatalog = sourceCatalogPath(config)
     const analysisReportFile = analysisReportPath(config)
     // Scan owns only the formal pair; dictionary dual-write stays on Webpack collect.

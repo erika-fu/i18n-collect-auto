@@ -1,8 +1,8 @@
 {
   "version": 1,
   "messages": {
-    "react.app.taskSummary": "你有{count}条待处理任务",
-    "react.app.title": "React 脚本文案",
+    "react.app.taskSummary": "当前有 {count} 个任务",
+    "react.app.title": "React 显式本地化演示",
     "react.multilingual.body": "你好，{name}。此页仅通过显式本地化渲染。",
     "react.multilingual.title": "运行时多语言边界"
   }

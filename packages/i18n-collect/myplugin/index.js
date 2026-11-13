@@ -1,5 +1,5 @@
 const { canonicalRoot, loadConfig } = require('../mycommon/config')
-const { analysisReport, analyzeSnapshots, buildSourceCatalog } = require('../mycommon/project-analysis')
+const { analyzeFormalCollection } = require('../mycommon/formal-collection-analysis')
 const { publishCollectionOutputs } = require('../mycommon/formal-outputs')
 const { assembleLiveSet, getSession } = require('../mycommon/session')
 const { collectStaticAuditSnapshots } = require('../mycommon/static-audit')
@@ -104,9 +104,13 @@ class MyI18nPlugin {
       let analysis
       try {
         const staticSnapshots = collectStaticAuditSnapshots({ root: config.root, config })
-        analysis = analyzeSnapshots([...round.snapshots, ...staticSnapshots], config)
-        catalog = buildSourceCatalog(analysis)
-        report = analysisReport(analysis)
+        const formal = analyzeFormalCollection({
+          snapshots: [...round.snapshots, ...staticSnapshots],
+          config
+        })
+        analysis = formal.analysis
+        catalog = formal.sourceCatalog
+        report = formal.report
       } catch (error) {
         session.abandon(compilation)
         throw error

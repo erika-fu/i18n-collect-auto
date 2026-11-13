@@ -1,21 +1,9 @@
 {
   "version": 1,
   "messages": [
-    {
-      "key": "react.multilingual.title",
-      "source": "运行时多语言边界"
-    },
-    {
-      "key": "react.multilingual.body",
-      "source": "你好，{name}。此页仅通过显式本地化渲染。"
-    },
-    {
-      "key": "react.app.title",
-      "source": "React 脚本文案"
-    },
-    {
-      "key": "react.app.taskSummary",
-      "source": "你有{count}条待处理任务"
-    }
+    { "key": "react.app.taskSummary", "source": "当前有 {count} 个任务" },
+    { "key": "react.app.title", "source": "React 显式本地化演示" },
+    { "key": "react.multilingual.body", "source": "你好，{name}。此页仅通过显式本地化渲染。" },
+    { "key": "react.multilingual.title", "source": "运行时多语言边界" }
   ]
 }

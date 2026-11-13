@@ -6,59 +6,21 @@ const {
   normalizeDecision,
   readDynamicMessageDecisions
 } = require('./dynamic-message-decisions')
-const { normalizeExpressionForId } = require('./complete-static-copy-policy')
 const { identityFiles } = require('./config')
 const { commitFiles, json, recoverCommits } = require('./output')
+const {
+  applyEdits,
+  offsetAt,
+  planProvenSafeMigration,
+  simpleDiff
+} = require('./review-write-migration')
 
-const STATUS_NEEDS_REVIEW = 'needs-review'
-const STATUS_INTENTIONALLY_IGNORED = 'intentionally-ignored'
-const STATUS_TRANSLATION_APPROVED = 'translation-approved'
-const STATUS_MIGRATED = 'migrated'
-
-const LISTABLE_STATUSES = new Set([
-  STATUS_NEEDS_REVIEW,
-  STATUS_INTENTIONALLY_IGNORED,
-  STATUS_TRANSLATION_APPROVED,
-  STATUS_MIGRATED
-])
+const WRITE_ADAPTERS = new Set(['js', 'vue2', 'vue3'])
 
 function reviewError(kind, message) {
   const error = new Error(message)
   error.kind = kind
   return error
-}
-
-function withOccurrences(candidates) {
-  const counts = new Map()
-  return (candidates || []).map(candidate => {
-    const fingerprint = [
-      candidate.location && candidate.location.path,
-      candidate.reason,
-      normalizeExpressionForId(candidate.expression)
-    ].join('\0')
-    const occurrence = counts.get(fingerprint) || 0
-    counts.set(fingerprint, occurrence + 1)
-    return { ...candidate, occurrence }
-  })
-}
-
-function filterCandidates(candidates, status) {
-  if (!status) return [...(candidates || [])]
-  if (!LISTABLE_STATUSES.has(status)) {
-    throw reviewError('configuration', `unsupported review status "${status}"`)
-  }
-  if (status === STATUS_MIGRATED) return []
-  return (candidates || []).filter(candidate => candidate.disposition === status)
-}
-
-function compatibleWith(primary, candidate) {
-  if (!primary || !candidate) return false
-  return primary.reason === candidate.reason
-    && normalizeExpressionForId(primary.expression) === normalizeExpressionForId(candidate.expression)
-}
-
-function compatibleCandidates(primary, candidates) {
-  return (candidates || []).filter(candidate => compatibleWith(primary, candidate))
 }
 
 function coversFragments(source, fragments) {
@@ -183,6 +145,143 @@ function serializeExplicitMessages(messages) {
   })
 }
 
+function readProjectFile(root, projectPath) {
+  if (!projectPath || path.posix.isAbsolute(projectPath) || path.isAbsolute(projectPath)) {
+    throw reviewError('configuration', `unsafe review write path "${projectPath}"`)
+  }
+  const full = path.resolve(root, projectPath)
+  const relative = path.relative(root, full)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw reviewError('configuration', `unsafe review write path "${projectPath}"`)
+  }
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
+    throw reviewError('configuration', `source file missing for review write: ${projectPath}`)
+  }
+  return {
+    full,
+    relative: projectPath.split('\\').join('/'),
+    content: fs.readFileSync(full, 'utf8')
+  }
+}
+
+function explicitSourceFor(artifacts, key) {
+  const message = (artifacts.explicitMessages || []).find(item => item.key === key)
+  if (!message || typeof message.source !== 'string') {
+    throw reviewError('configuration', `explicit message "${key}" is required before review --write`)
+  }
+  return message.source
+}
+
+function decisionForCandidate(artifacts, candidate) {
+  const matches = (artifacts.decisions || []).filter(item => item.id === candidate.id)
+  if (matches.length === 0) {
+    throw reviewError(
+      'configuration',
+      `candidate "${candidate.id}" has no translate decision; record --translate before --write`
+    )
+  }
+  if (matches.length > 1) {
+    throw reviewError('configuration', `candidate "${candidate.id}" has ambiguous review decisions`)
+  }
+  return matches[0]
+}
+
+function planWriteMigrations({ root, adapter, candidates, artifacts, key, source }) {
+  if (!WRITE_ADAPTERS.has(adapter)) {
+    throw reviewError('configuration', `unknown adapter "${adapter}"; expected js, vue2, or vue3`)
+  }
+  const byPath = new Map()
+  const planned = []
+  for (const candidate of candidates) {
+    const decision = key
+      ? { decision: 'translate', key, source }
+      : decisionForCandidate(artifacts, candidate)
+    if (decision.decision !== 'translate' && decision.decision !== 'migrated') {
+      throw reviewError(
+        'configuration',
+        `candidate "${candidate.id}" decision "${decision.decision}" cannot be written`
+      )
+    }
+    const explicitKey = key || decision.key
+    const explicitSource = source || explicitSourceFor(artifacts, explicitKey)
+    const file = readProjectFile(root, candidate.location.path)
+    if (!byPath.has(file.relative)) {
+      byPath.set(file.relative, {
+        full: file.full,
+        relative: file.relative,
+        original: file.content,
+        edits: []
+      })
+    }
+    const bucket = byPath.get(file.relative)
+    const migration = planProvenSafeMigration({
+      candidate,
+      key: explicitKey,
+      source: explicitSource,
+      fileSource: bucket.original,
+      adapter
+    })
+    if (!migration.ok) {
+      throw reviewError(
+        'configuration',
+        `review --write refused for "${candidate.id}": ${migration.reason}`
+      )
+    }
+    const start = offsetAt(bucket.original, candidate.location.start)
+    const end = offsetAt(bucket.original, candidate.location.end)
+    bucket.edits.push({ start, end, text: migration.call })
+    planned.push({
+      candidate,
+      key: explicitKey,
+      source: explicitSource,
+      call: migration.call,
+      path: file.relative
+    })
+  }
+  const files = [...byPath.values()].map(bucket => {
+    const content = applyEdits(bucket.original, bucket.edits)
+    return {
+      full: bucket.full,
+      relative: bucket.relative,
+      original: bucket.original,
+      content,
+      diff: simpleDiff(bucket.relative, bucket.original, content)
+    }
+  })
+  const diffs = new Map(files.map(file => [file.relative, file.diff]))
+  for (const item of planned) item.diff = diffs.get(item.path)
+  return { migrations: planned, files }
+}
+
+function commitReviewTargets(targets, fsImpl) {
+  try {
+    commitFiles(targets, fsImpl)
+  } catch (error) {
+    const failure = reviewError('storage', error.message || String(error))
+    failure.cause = error
+    throw failure
+  }
+}
+
+function writeReviewMigration({
+  files,
+  decisionsFile,
+  decisions,
+  explicitFile,
+  explicitMessages,
+  writeExplicit = false,
+  fsImpl = fs
+}) {
+  const targets = [
+    ...(files || []).map(file => ({ file: file.full, content: file.content })),
+    { file: decisionsFile, content: serializeDecisions(decisions) }
+  ]
+  if (writeExplicit) {
+    targets.push({ file: explicitFile, content: serializeExplicitMessages(explicitMessages) })
+  }
+  commitReviewTargets(targets, fsImpl)
+}
+
 function loadReviewArtifacts(config) {
   const files = identityFiles(config)
   const decisionsFile = path.resolve(config.root, files.dynamicMessageDecisions)
@@ -211,29 +310,17 @@ function writeReviewArtifacts({
   if (writeExplicit) {
     targets.push({ file: explicitFile, content: serializeExplicitMessages(explicitMessages) })
   }
-  try {
-    commitFiles(targets, fsImpl)
-  } catch (error) {
-    const failure = reviewError('storage', error.message || String(error))
-    failure.cause = error
-    throw failure
-  }
+  commitReviewTargets(targets, fsImpl)
 }
 
 module.exports = {
-  LISTABLE_STATUSES,
-  STATUS_MIGRATED,
-  STATUS_NEEDS_REVIEW,
-  STATUS_INTENTIONALLY_IGNORED,
-  STATUS_TRANSLATION_APPROVED,
-  compatibleCandidates,
-  compatibleWith,
-  filterCandidates,
   loadReviewArtifacts,
+  decisionForCandidate,
   planDecisionWrites,
+  planWriteMigrations,
   pruneMigratedDecisions,
   serializeDecisions,
   serializeExplicitMessages,
-  withOccurrences,
-  writeReviewArtifacts
+  writeReviewArtifacts,
+  writeReviewMigration
 }

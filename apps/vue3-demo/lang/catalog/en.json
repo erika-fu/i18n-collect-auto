@@ -1,14 +1,14 @@
 {
   "2cb4acf6bd44f31e528b5dca612827ba": "Script template copy",
   "32e1fdeb2ca4ea8f7899f78791affb63": "Save profile",
-  "46ebde63da5dfb7e80c64df012510762": "profile name",
-  "5b9f19ea4d6225f0e6e9be10987c7140": "Interpolation string",
+  "46ebde63da5dfb7e80c64df012510762": "Profile name",
+  "5b9f19ea4d6225f0e6e9be10987c7140": "Interpolated string",
   "f6c02612482f1e3cc40a6febcfd34ad3": "Script copy",
-  "vue3.build.body": "Disk sources keep Chinese; the formal bundle renders through localization keys.",
-  "vue3.build.localeLabel": "Current language: Chinese",
+  "vue3.build.body": "The source stays in Chinese while the production bundle renders through localization keys.",
+  "vue3.build.localeLabel": "The current locale can be switched",
   "vue3.build.title": "Build replacement demo",
-  "vue3.fieldPlaceholder": "Enter {field} name",
+  "vue3.fieldPlaceholder": "Enter the {field} name",
   "vue3.heading": "Native Vue 3 template",
-  "vue3.htmlNotice": "Localized through Vue I18n",
+  "vue3.htmlNotice": "Localized with Vue I18n",
   "vue3.welcomeBack": "Welcome back, {name}"
 }

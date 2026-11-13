@@ -1,33 +1,24 @@
-const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
 const { loadConfig } = require('../mycommon/config')
 const {
+  loadReviewArtifacts,
+  decisionForCandidate,
+  planDecisionWrites,
+  planWriteMigrations,
+  pruneMigratedDecisions,
+  writeReviewArtifacts,
+  writeReviewMigration
+} = require('../mycommon/dynamic-message-review')
+const {
   STATUS_MIGRATED,
   STATUS_NEEDS_REVIEW,
   STATUS_TRANSLATION_APPROVED,
-  compatibleCandidates,
-  filterCandidates,
-  loadReviewArtifacts,
-  planDecisionWrites,
-  pruneMigratedDecisions,
-  serializeDecisions,
-  serializeExplicitMessages,
-  withOccurrences,
-  writeReviewArtifacts
-} = require('../mycommon/dynamic-message-review')
-const { commitFiles } = require('../mycommon/output')
+  markDecisionMigrated,
+  selectReviewCandidates
+} = require('../mycommon/dynamic-message-lifecycle')
 const { analyzeProject } = require('../mycommon/project-analysis')
 const { listProjectSources } = require('../mycommon/project-sources')
-const {
-  applyEdits,
-  markDecisionMigrated,
-  offsetAt,
-  planProvenSafeMigration,
-  simpleDiff
-} = require('../mycommon/review-write-migration')
-
-const WRITE_ADAPTERS = new Set(['js', 'vue2', 'vue3'])
 
 const EXIT = {
   ok: 0,
@@ -174,110 +165,6 @@ async function confirmDecision(parsed, terminal, summary, prompt = 'Record this 
   )
 }
 
-function readProjectFile(root, projectPath) {
-  if (!projectPath || path.posix.isAbsolute(projectPath) || path.isAbsolute(projectPath)) {
-    throw commandError('configuration', `unsafe review write path "${projectPath}"`)
-  }
-  const full = path.resolve(root, projectPath)
-  const relative = path.relative(root, full)
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw commandError('configuration', `unsafe review write path "${projectPath}"`)
-  }
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
-    throw commandError('configuration', `source file missing for review write: ${projectPath}`)
-  }
-  return { full, relative: projectPath.split('\\').join('/'), content: fs.readFileSync(full, 'utf8') }
-}
-
-function explicitSourceFor(artifacts, key) {
-  const message = (artifacts.explicitMessages || []).find(item => item.key === key)
-  if (!message || typeof message.source !== 'string') {
-    throw commandError('configuration', `explicit message "${key}" is required before review --write`)
-  }
-  return message.source
-}
-
-function decisionForCandidate(artifacts, candidate) {
-  const matches = (artifacts.decisions || []).filter(item => item.id === candidate.id)
-  if (matches.length === 0) {
-    throw commandError(
-      'configuration',
-      `candidate "${candidate.id}" has no translate decision; record --translate before --write`
-    )
-  }
-  if (matches.length > 1) {
-    throw commandError('configuration', `candidate "${candidate.id}" has ambiguous review decisions`)
-  }
-  return matches[0]
-}
-
-function planWriteMigrations({ root, adapter, candidates, artifacts, key, source }) {
-  if (!WRITE_ADAPTERS.has(adapter)) {
-    throw commandError('configuration', `unknown adapter "${adapter}"; expected js, vue2, or vue3`)
-  }
-  const byPath = new Map()
-  const planned = []
-  for (const candidate of candidates) {
-    const decision = key
-      ? { decision: 'translate', key, source }
-      : decisionForCandidate(artifacts, candidate)
-    if (decision.decision !== 'translate' && decision.decision !== 'migrated') {
-      throw commandError(
-        'configuration',
-        `candidate "${candidate.id}" decision "${decision.decision}" cannot be written`
-      )
-    }
-    const explicitKey = key || decision.key
-    const explicitSource = source || explicitSourceFor(artifacts, explicitKey)
-    const file = readProjectFile(root, candidate.location.path)
-    if (!byPath.has(file.relative)) {
-      byPath.set(file.relative, {
-        full: file.full,
-        relative: file.relative,
-        original: file.content,
-        edits: []
-      })
-    }
-    const bucket = byPath.get(file.relative)
-    const migration = planProvenSafeMigration({
-      candidate,
-      key: explicitKey,
-      source: explicitSource,
-      fileSource: bucket.original,
-      adapter
-    })
-    if (!migration.ok) {
-      throw commandError(
-        'configuration',
-        `review --write refused for "${candidate.id}": ${migration.reason}`
-      )
-    }
-    const start = offsetAt(bucket.original, candidate.location.start)
-    const end = offsetAt(bucket.original, candidate.location.end)
-    bucket.edits.push({ start, end, text: migration.call })
-    planned.push({
-      candidate,
-      key: explicitKey,
-      source: explicitSource,
-      call: migration.call,
-      path: file.relative
-    })
-  }
-  const files = [...byPath.values()].map(bucket => {
-    const content = applyEdits(bucket.original, bucket.edits)
-    return {
-      full: bucket.full,
-      relative: bucket.relative,
-      original: bucket.original,
-      content,
-      diff: simpleDiff(bucket.relative, bucket.original, content)
-    }
-  })
-  const diffs = new Map(files.map(file => [file.relative, file.diff]))
-  for (const item of planned) item.diff = diffs.get(item.path)
-  return { migrations: planned, files }
-}
-
 function humanWritePreview(migrations) {
   const lines = [
     `Proven-safe review write preview for ${migrations.length} candidate(s):`
@@ -384,31 +271,6 @@ function humanList(candidates, status) {
   return lines.join('\n')
 }
 
-function selectCandidates(parsed, analysis) {
-  const annotated = withOccurrences(analysis.dynamicMessageCandidates || [])
-  if (parsed.id) {
-    const primary = annotated.find(candidate => candidate.id === parsed.id)
-    if (!primary) throw commandError('configuration', `unknown dynamic candidate "${parsed.id}"`)
-    if (parsed.status && primary.disposition !== parsed.status) {
-      throw commandError(
-        'configuration',
-        `candidate "${parsed.id}" has disposition "${primary.disposition}", not "${parsed.status}"`
-      )
-    }
-    if (parsed.bulk) {
-      const pool = filterCandidates(annotated, parsed.status || STATUS_NEEDS_REVIEW)
-      const matched = compatibleCandidates(primary, pool)
-      if (!matched.some(item => item.id === primary.id)) matched.unshift(primary)
-      return matched
-    }
-    return [primary]
-  }
-  if (parsed.bulk) {
-    throw commandError('configuration', 'review --bulk requires a candidate id to define compatibility')
-  }
-  return filterCandidates(annotated, parsed.status || STATUS_NEEDS_REVIEW)
-}
-
 async function execute(parsed, terminal) {
   const root = path.resolve(parsed.cwd || process.cwd())
   const config = loadConfig({ root })
@@ -453,7 +315,12 @@ async function execute(parsed, terminal) {
   if (parsed.write && !parsed.translate && !parsed.ignore && !parsed.defer && !parsed.prune) {
     if (!parsed.id) throw commandError('configuration', 'review --write requires a candidate id')
     if (!parsed.adapter) throw commandError('configuration', 'review --write requires --adapter')
-    const selected = selectCandidates({ ...parsed, status: null }, analysis)
+    const selected = selectReviewCandidates({
+      candidates: analysis.dynamicMessageCandidates,
+      id: parsed.id,
+      status: null,
+      bulk: parsed.bulk
+    })
     for (const candidate of selected) {
       if (candidate.disposition !== STATUS_TRANSLATION_APPROVED) {
         throw commandError(
@@ -483,20 +350,11 @@ async function execute(parsed, terminal) {
       if (index === -1) decisions.push(migrated)
       else decisions[index] = migrated
     }
-    const targets = [
-      ...plannedWrite.files.map(file => ({ file: file.full, content: file.content })),
-      {
-        file: artifacts.decisionsFile,
-        content: serializeDecisions(
-          decisions.sort((left, right) => left.id.localeCompare(right.id))
-        )
-      }
-    ]
-    try {
-      commitFiles(targets)
-    } catch (error) {
-      throw commandError('storage', error.message || String(error))
-    }
+    writeReviewMigration({
+      files: plannedWrite.files,
+      decisionsFile: artifacts.decisionsFile,
+      decisions: decisions.sort((left, right) => left.id.localeCompare(right.id))
+    })
     const report = {
       command: 'review',
       ok: true,
@@ -520,7 +378,12 @@ async function execute(parsed, terminal) {
   let decision = decisionFromParsed(parsed)
   if (!decision) {
     if (parsed.id && terminal.interactive && !parsed.json) {
-      const [primary] = selectCandidates(parsed, analysis)
+      const [primary] = selectReviewCandidates({
+        candidates: analysis.dynamicMessageCandidates,
+        id: parsed.id,
+        status: parsed.status,
+        bulk: parsed.bulk
+      })
       decision = await promptInteractiveDecision(terminal, primary)
     } else {
       const status = parsed.status || STATUS_NEEDS_REVIEW
@@ -535,7 +398,12 @@ async function execute(parsed, terminal) {
           key: item.key
         }))
       } else {
-        candidates = selectCandidates({ ...parsed, status }, analysis).map(publicCandidate)
+        candidates = selectReviewCandidates({
+          candidates: analysis.dynamicMessageCandidates,
+          id: parsed.id,
+          status,
+          bulk: parsed.bulk
+        }).map(publicCandidate)
       }
       const report = {
         command: 'review',
@@ -549,7 +417,12 @@ async function execute(parsed, terminal) {
     }
   }
 
-  const selected = selectCandidates(parsed, analysis)
+  const selected = selectReviewCandidates({
+    candidates: analysis.dynamicMessageCandidates,
+    id: parsed.id,
+    status: parsed.status,
+    bulk: parsed.bulk
+  })
   const unresolved = selected.filter(candidate => candidate.disposition === STATUS_NEEDS_REVIEW)
   if (unresolved.length !== selected.length) {
     const blocked = selected.find(candidate => candidate.disposition !== STATUS_NEEDS_REVIEW)
@@ -595,16 +468,14 @@ async function execute(parsed, terminal) {
         ? markDecisionMigrated(item)
         : item
     ))
-    const targets = [
-      ...plannedWrite.files.map(file => ({ file: file.full, content: file.content })),
-      { file: artifacts.decisionsFile, content: serializeDecisions(migratedDecisions) },
-      { file: artifacts.explicitFile, content: serializeExplicitMessages(planned.explicitMessages) }
-    ]
-    try {
-      commitFiles(targets)
-    } catch (error) {
-      throw commandError('storage', error.message || String(error))
-    }
+    writeReviewMigration({
+      files: plannedWrite.files,
+      decisionsFile: artifacts.decisionsFile,
+      decisions: migratedDecisions,
+      explicitFile: artifacts.explicitFile,
+      explicitMessages: planned.explicitMessages,
+      writeExplicit: true
+    })
     const report = {
       command: 'review',
       ok: true,

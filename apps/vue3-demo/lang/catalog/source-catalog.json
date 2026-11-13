@@ -7,7 +7,7 @@
     "5b9f19ea4d6225f0e6e9be10987c7140": "插值字符串",
     "f6c02612482f1e3cc40a6febcfd34ad3": "脚本文案",
     "vue3.build.body": "磁盘源码保留中文，正式 bundle 通过 localization key 渲染。",
-    "vue3.build.localeLabel": "当前语言：中文",
+    "vue3.build.localeLabel": "当前语言可切换",
     "vue3.build.title": "构建替换演示",
     "vue3.fieldPlaceholder": "输入{field}名称",
     "vue3.heading": "原生 Vue 三模板",

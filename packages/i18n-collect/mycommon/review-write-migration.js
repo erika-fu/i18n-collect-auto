@@ -218,18 +218,6 @@ function simpleDiff(pathName, before, after) {
   return `${lines.join('\n')}\n`
 }
 
-function markDecisionMigrated(decision) {
-  if (!decision || (decision.decision !== 'translate' && decision.decision !== 'migrated')) {
-    const error = new Error('review write requires a translate decision for the candidate')
-    error.kind = 'configuration'
-    throw error
-  }
-  return {
-    ...decision,
-    decision: 'migrated'
-  }
-}
-
 function applyEdits(source, edits) {
   const ordered = [...edits].sort((left, right) => right.start - left.start || right.end - left.end)
   let next = source
@@ -242,7 +230,6 @@ function applyEdits(source, edits) {
 module.exports = {
   SAFE_REASONS,
   applyEdits,
-  markDecisionMigrated,
   offsetAt,
   planProvenSafeMigration,
   simpleDiff

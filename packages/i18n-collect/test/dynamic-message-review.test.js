@@ -6,11 +6,8 @@ const test = require('node:test')
 const {
   planDecisionWrites,
   pruneMigratedDecisions,
-  compatibleCandidates,
-  withOccurrences,
   writeReviewArtifacts
 } = require('../mycommon/dynamic-message-review')
-
 function candidate(overrides = {}) {
   return {
     id: 'dynamic.abcdef',
@@ -61,35 +58,6 @@ test('planDecisionWrites rejects translate source that drops static fragments', 
     }),
     /static fragments/
   )
-})
-
-test('compatibleCandidates groups equal expression fingerprints across occurrences', () => {
-  const first = candidate({ id: 'dynamic.111111', occurrence: 0 })
-  const second = candidate({ id: 'dynamic.222222', occurrence: 1 })
-  const other = candidate({
-    id: 'dynamic.333333',
-    expression: '`你好${name}世界`',
-    staticFragments: ['你好', '世界'],
-    reason: 'interpolation'
-  })
-  const matched = compatibleCandidates(first, [first, second, other])
-  assert.deepStrictEqual(matched.map(item => item.id), ['dynamic.111111', 'dynamic.222222'])
-})
-
-test('withOccurrences assigns stable occurrence indexes for duplicate fingerprints', () => {
-  const annotated = withOccurrences([
-    candidate({ id: 'dynamic.111111' }),
-    candidate({ id: 'dynamic.222222' }),
-    candidate({
-      id: 'dynamic.333333',
-      expression: '`你好${name}世界`',
-      staticFragments: ['你好', '世界'],
-      reason: 'interpolation'
-    })
-  ])
-  assert.strictEqual(annotated[0].occurrence, 0)
-  assert.strictEqual(annotated[1].occurrence, 1)
-  assert.strictEqual(annotated[2].occurrence, 0)
 })
 
 test('pruneMigratedDecisions removes only migrated terminals', () => {

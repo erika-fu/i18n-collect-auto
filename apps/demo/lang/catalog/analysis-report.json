@@ -798,7 +798,7 @@
       "resourceIdentity": "src/pages/BuildPage.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
-      "source": "当前语言：中文"
+      "source": "当前语言可切换"
     },
     {
       "text": "demo.home.namePhrase",
@@ -822,7 +822,7 @@
       "paramNames": [
         "name"
       ],
-      "source": "这是{name}的名字呀"
+      "source": "{name}的名字"
     },
     {
       "text": "demo.welcomeBack",
@@ -870,7 +870,7 @@
       "paramNames": [
         "count"
       ],
-      "source": "你有{count}条未读消息"
+      "source": "你有 {count} 条未读消息"
     },
     {
       "text": "demo.markup.currentUserAria",
@@ -894,7 +894,7 @@
       "paramNames": [
         "name"
       ],
-      "source": "当前用户{name}"
+      "source": "当前用户：{name}"
     },
     {
       "text": "demo.visit.banner",
@@ -1074,7 +1074,7 @@
         "terms",
         "privacy"
       ],
-      "source": "请阅读我们的{terms}与{privacy}"
+      "source": "请阅读{terms}和{privacy}。"
     },
     {
       "text": "demo.terms.link",

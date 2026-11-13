@@ -21,8 +21,9 @@ test('vue demo multilingual page resolves English through explicit localization'
   const zh = require('../../../apps/demo/lang/catalog/zh.json')
   const en = require('../../../apps/demo/lang/catalog/en.json')
   const hashDictionary = require('../../../apps/demo/lang/zh_hash.json')
-  const meta = require('../../../apps/demo/lang/catalog/catalog.meta.json')
+  const analysis = require('../../../apps/demo/lang/catalog/analysis-report.json')
   const boundaries = require('../../../apps/demo/lang/catalog/runtime-multilingual-boundaries.json')
+  const localizedKeys = new Set(analysis.localizedCallFindings.map(item => item.key))
 
   assert.deepStrictEqual(boundaries.boundaries[0].include, ['src/pages/multilingual'])
   assert.strictEqual(zh['demo.multilingual.title'], '运行时多语言边界')
@@ -32,10 +33,8 @@ test('vue demo multilingual page resolves English through explicit localization'
     en['demo.multilingual.body'],
     'Hello, {name}. This page renders only through explicit localization.'
   )
-  assert.strictEqual(meta.entries['demo.multilingual.title'].origin, 'explicit')
-  assert.strictEqual(meta.entries['demo.multilingual.body'].origin, 'explicit')
-  assert.strictEqual(meta.entries['demo.multilingual.title'].representation, 'localized-call')
-  assert.strictEqual(meta.entries['demo.multilingual.body'].representation, 'localized-call')
+  assert.ok(localizedKeys.has('demo.multilingual.title'))
+  assert.ok(localizedKeys.has('demo.multilingual.body'))
 
   assert.strictEqual(
     resolveDemoMessage('demo.multilingual.title', en, hashDictionary),
@@ -64,17 +63,18 @@ test('vue demo multilingual page resolves English through explicit localization'
 
 test('react demo multilingual panel resolves English through explicit localization', () => {
   const { setLocale, t } = require('../../../apps/react-demo/src/multilingual/i18n')
-  const meta = require('../../../apps/react-demo/lang/catalog/catalog.meta.json')
+  const analysis = require('../../../apps/react-demo/lang/catalog/analysis-report.json')
   const zh = require('../../../apps/react-demo/lang/catalog/zh.json')
   const en = require('../../../apps/react-demo/lang/catalog/en.json')
   const boundaries = require('../../../apps/react-demo/lang/catalog/runtime-multilingual-boundaries.json')
+  const localizedKeys = new Set(analysis.localizedCallFindings.map(item => item.key))
 
   assert.deepStrictEqual(boundaries.boundaries[0].include, ['src/multilingual'])
   assert.strictEqual(zh['react.multilingual.title'], '运行时多语言边界')
   assert.strictEqual(zh['react.multilingual.body'], '你好，{name}。此页仅通过显式本地化渲染。')
   assert.strictEqual(en['react.multilingual.title'], 'Runtime multilingual boundary')
-  assert.strictEqual(meta.entries['react.multilingual.title'].origin, 'explicit')
-  assert.strictEqual(meta.entries['react.multilingual.body'].representation, 'localized-call')
+  assert.ok(localizedKeys.has('react.multilingual.title'))
+  assert.ok(localizedKeys.has('react.multilingual.body'))
 
   setLocale('en')
   assert.strictEqual(t('react.multilingual.title'), 'Runtime multilingual boundary')

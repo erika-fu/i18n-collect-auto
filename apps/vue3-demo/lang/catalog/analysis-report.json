@@ -304,7 +304,7 @@
       "resourceIdentity": "src/App.vue::template[lang=html]",
       "paramsKind": "none",
       "paramNames": [],
-      "source": "当前语言：中文"
+      "source": "当前语言可切换"
     }
   ],
   "diagnostics": [],

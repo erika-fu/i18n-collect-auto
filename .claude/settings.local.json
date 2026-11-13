@@ -4,7 +4,21 @@
       "Bash(curl -I --connect-timeout 10 https://github.com)",
       "Bash(git ls-remote *)",
       "Bash(gh auth *)",
-      "Bash(curl -sS -o /dev/null -w '%{http_code}\\\\n' https://api.github.com/repos/erika-fu/i18n-collect-auto)"
+      "Bash(curl -sS -o /dev/null -w '%{http_code}\\\\n' https://api.github.com/repos/erika-fu/i18n-collect-auto)",
+      "Bash(npm test *)",
+      "Bash(node --test packages/i18n-collect/test/cli-collect-webpack.test.js packages/i18n-collect/test/webpack-runtime-collection-regression.test.js)",
+      "Bash(pwd; ls *)",
+      "Read(//tmp/**)",
+      "Bash(perl -ne 'print if /not ok|✖|failing tests|AssertionError|Error:/' /tmp/i18n-collect-full-test.log)",
+      "Bash(perl -ne 'if \\($. >= 1 && $. <= 1\\) {}; if \\(/build replaces Vue 3 SFC content/\\) { $show=1 } print if $show; exit if $show && /duration_ms/' /tmp/i18n-collect-full-test.log)",
+      "Bash(node --test --test-name-pattern=\"build replaces Vue 3 SFC content\" packages/i18n-collect/test/cli-build.test.js)",
+      "Bash(node --test --test-name-pattern=\"collect --replace\" packages/i18n-collect/test/webpack-runtime-collection-regression.test.js)",
+      "Bash(git checkout *)",
+      "Bash(node --test --test-name-pattern=\"collect --replace|plain collect publishes|collect rejects --replace\" packages/i18n-collect/test/cli-collect-webpack.test.js packages/i18n-collect/test/webpack-runtime-collection-regression.test.js)",
+      "Bash(git -C 'c:/Users/Lenovo/i18n-collect-auto' diff --check HEAD)",
+      "Bash(git -C 'c:/Users/Lenovo/i18n-collect-auto' diff --stat HEAD)",
+      "Bash(git -C 'c:/Users/Lenovo/i18n-collect-auto' diff --name-only HEAD)",
+      "Bash(git -C 'c:/Users/Lenovo/i18n-collect-auto' diff --no-ext-diff --unified=80 HEAD -- packages/i18n-collect/cli/collect.js packages/i18n-collect/cli/help.js packages/i18n-collect/myloader/index.js packages/i18n-collect/myplugin/index.js packages/i18n-collect/test/cli-collect-webpack.test.js packages/i18n-collect/test/webpack-runtime-collection-regression.test.js README.md docs/migration.md docs/webpack-runtime-collection-design.md .claude/settings.local.json)"
     ]
   }
 }

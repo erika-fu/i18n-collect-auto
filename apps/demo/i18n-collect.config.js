@@ -3,6 +3,7 @@ module.exports = {
   include: ['public', 'src'],
   exclude: ['fixtures/**'],
   targetLocales: ['en'],
+  translationProvider: 'i18n/provider.js',
   vueVersion: 2,
   staticAudit: {
     include: ['public/**/*.html', 'src/base.css']

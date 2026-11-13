@@ -2,6 +2,7 @@ const { fingerprintOf } = require('./catalog')
 const { buildSourceCatalog } = require('./project-analysis')
 const { catalogEqual, sourceCatalogMessages } = require('./source-catalog-freshness')
 const { needsReview, planTranslation } = require('./translate')
+const { classifyDynamicCandidates } = require('./dynamic-message-lifecycle')
 
 function runtimeLocalizationSummary(analysis) {
   const coverage = analysis.coverage || {}
@@ -10,36 +11,6 @@ function runtimeLocalizationSummary(analysis) {
     automaticallyRuntimeLocalizable: runtime.automaticallyRuntimeLocalizable || 0,
     alreadyLocalized: runtime.alreadyLocalized || 0
   }
-}
-
-function isDeferredCandidate(candidate) {
-  return candidate && candidate.decision === 'defer'
-}
-
-function classifyDynamicCandidates(candidates) {
-  const unreviewed = []
-  const deferred = []
-  const translationApproved = []
-  const intentionallyIgnored = []
-  for (const candidate of candidates) {
-    if (!candidate) continue
-    if (candidate.disposition === 'intentionally-ignored') {
-      intentionallyIgnored.push(candidate)
-      continue
-    }
-    if (candidate.disposition === 'translation-approved') {
-      translationApproved.push(candidate)
-      continue
-    }
-    if (isDeferredCandidate(candidate)) {
-      deferred.push(candidate)
-      continue
-    }
-    if (candidate.disposition === 'needs-review' || candidate.disposition == null) {
-      unreviewed.push(candidate)
-    }
-  }
-  return { unreviewed, deferred, translationApproved, intentionallyIgnored }
 }
 
 function dynamicMessageCandidateSummary(analysis, classified) {

@@ -1,49 +1,19 @@
 {
   "version": 1,
   "messages": [
-    {
-      "key": "demo.items.deleted",
-      "source": "已删除 {count} 项"
-    },
-    {
-      "key": "demo.unread.count",
-      "source": "你有{count}条未读消息"
-    },
-    {
-      "key": "demo.terms.notice",
-      "source": "请阅读我们的{terms}与{privacy}"
-    },
-    {
-      "key": "demo.terms.link",
-      "source": "服务条款"
-    },
-    {
-      "key": "demo.privacy.link",
-      "source": "隐私政策"
-    },
-    {
-      "key": "demo.multilingual.title",
-      "source": "运行时多语言边界"
-    },
-    {
-      "key": "demo.multilingual.body",
-      "source": "你好，{name}。此页仅通过显式本地化渲染。"
-    },
-    {
-      "key": "demo.build.localeLabel",
-      "source": "当前语言：中文"
-    },
-    {
-      "key": "demo.home.namePhrase",
-      "source": "这是{name}的名字呀"
-    },
-    {
-      "key": "demo.welcomeBack",
-      "source": "欢迎{name}回来"
-    },
-    {
-      "key": "demo.markup.currentUserAria",
-      "source": "当前用户{name}"
-    }
+    { "key": "demo.build.localeLabel", "source": "当前语言可切换" },
+    { "key": "demo.home.namePhrase", "source": "{name}的名字" },
+    { "key": "demo.items.deleted", "source": "已删除 {count} 项" },
+    { "key": "demo.markup.currentUserAria", "source": "当前用户：{name}" },
+    { "key": "demo.multilingual.body", "source": "你好，{name}。此页仅通过显式本地化渲染。" },
+    { "key": "demo.multilingual.title", "source": "运行时多语言边界" },
+    { "key": "demo.privacy.link", "source": "隐私政策" },
+    { "key": "demo.shared.title", "source": "共享标题" },
+    { "key": "demo.terms.link", "source": "服务条款" },
+    { "key": "demo.terms.notice", "source": "请阅读{terms}和{privacy}。" },
+    { "key": "demo.unread.count", "source": "你有 {count} 条未读消息" },
+    { "key": "demo.visit.banner", "source": "欢迎" },
+    { "key": "demo.visit.farewell", "source": "欢迎" },
+    { "key": "demo.welcomeBack", "source": "欢迎{name}回来" }
   ]
 }

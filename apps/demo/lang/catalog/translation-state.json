@@ -99,7 +99,7 @@
         "review": "current"
       },
       "demo.build.localeLabel": {
-        "sourceFingerprint": "e8d025f8a8223339",
+        "sourceFingerprint": "c6a40a246392456a",
         "review": "current"
       },
       "demo.build.title": {
@@ -107,7 +107,7 @@
         "review": "current"
       },
       "demo.home.namePhrase": {
-        "sourceFingerprint": "a7942b05a4f97fbc",
+        "sourceFingerprint": "942db44841555a0c",
         "review": "current"
       },
       "demo.items.deleted": {
@@ -115,7 +115,7 @@
         "review": "current"
       },
       "demo.markup.currentUserAria": {
-        "sourceFingerprint": "a0ed39376a47fb33",
+        "sourceFingerprint": "0c387f69342c09d9",
         "review": "current"
       },
       "demo.multilingual.body": {
@@ -147,11 +147,11 @@
         "review": "current"
       },
       "demo.terms.notice": {
-        "sourceFingerprint": "0710960f7b265028",
+        "sourceFingerprint": "60bf9b953dada3c3",
         "review": "current"
       },
       "demo.unread.count": {
-        "sourceFingerprint": "d304739da72dcad2",
+        "sourceFingerprint": "27ec9447bdd31d0c",
         "review": "current"
       },
       "demo.visit.banner": {

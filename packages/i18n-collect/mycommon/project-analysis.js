@@ -4,10 +4,12 @@ const { REPRESENTATION_LOCALIZED_CALL } = require('./localized-call')
 const { messageContract, readExplicitMessages, referenceMessage } = require('./catalog')
 const { identityFiles } = require('./config')
 const {
-  applyDynamicMessageDecisions,
   normalizeDecision,
   readDynamicMessageDecisions
 } = require('./dynamic-message-decisions')
+const {
+  evaluateDynamicMessageLifecycle
+} = require('./dynamic-message-lifecycle')
 const { keyFor } = require('./store')
 const {
   discoverDynamicMessageCandidates
@@ -171,22 +173,6 @@ function loadDynamicMessageDecisions(input, config) {
   if (!config || !config.root || !config.catalogDir) return []
   const file = path.resolve(config.root, identityFiles(config).dynamicMessageDecisions)
   return readDynamicMessageDecisions(file)
-}
-
-function refreshDynamicCoverage(analysis) {
-  const candidates = analysis.dynamicMessageCandidates
-  analysis.coverage.dynamicMessageCandidates = {
-    total: candidates.length,
-    needsReview: candidates.filter(candidate => candidate.disposition === DISPOSITION_NEEDS_REVIEW).length,
-    intentionallyIgnored: candidates.filter(
-      candidate => candidate.disposition === DISPOSITION_INTENTIONALLY_IGNORED
-    ).length,
-    translationApproved: candidates.filter(
-      candidate => candidate.disposition === DISPOSITION_TRANSLATION_APPROVED
-    ).length,
-    deferred: candidates.filter(candidate => candidate.decision === 'defer').length,
-    migrated: Array.isArray(analysis.migratedDynamicDecisions) ? analysis.migratedDynamicDecisions.length : 0
-  }
 }
 
 function loadExplicitMessages(input, config) {
@@ -605,16 +591,18 @@ function finalizeAnalysis(analysis, input, config) {
   analysis.localizedCallFindings = sortFindings(analysis.localizedCallFindings)
   analysis.diagnostics = sortDiagnostics(analysis.diagnostics)
   const explicitMessages = loadExplicitMessages(input, config)
-  const migratedDynamicDecisions = applyDynamicMessageDecisions(
-    analysis.dynamicMessageCandidates,
-    loadDynamicMessageDecisions(input, config),
+  const lifecycle = evaluateDynamicMessageLifecycle({
+    candidates: analysis.dynamicMessageCandidates,
+    decisions: loadDynamicMessageDecisions(input, config),
     explicitMessages,
-    analysis.localizedCallFindings
-  )
-  if (migratedDynamicDecisions.length) {
-    analysis.migratedDynamicDecisions = migratedDynamicDecisions
+    calls: analysis.localizedCallFindings,
+    annotateOccurrences: false
+  })
+  analysis.dynamicMessageCandidates = lifecycle.candidates
+  if (lifecycle.migrated.length) {
+    analysis.migratedDynamicDecisions = lifecycle.migrated
   }
-  refreshDynamicCoverage(analysis)
+  analysis.coverage.dynamicMessageCandidates = lifecycle.coverage
   const externalKeys = loadExternalKeys(input, config)
   const pendingExplicitKeys = new Set(
     analysis.dynamicMessageCandidates

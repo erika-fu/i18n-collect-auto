@@ -3,9 +3,7 @@
   "boundaries": [
     {
       "id": "react-multilingual",
-      "include": [
-        "src/multilingual"
-      ]
+      "include": ["src/multilingual"]
     }
   ]
 }

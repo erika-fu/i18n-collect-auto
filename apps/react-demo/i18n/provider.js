@@ -1,0 +1,8 @@
+const byKey = {
+  'react.app.taskSummary': '{count} tasks are currently open',
+  'react.app.title': 'React explicit localization demo',
+  'react.multilingual.body': 'Hello, {name}. This page renders only through explicit localization.',
+  'react.multilingual.title': 'Runtime multilingual boundary'
+}
+
+module.exports = require('../../../scripts/demo-translation-provider')(byKey, {})

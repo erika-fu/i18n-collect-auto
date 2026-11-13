@@ -3,9 +3,7 @@
   "boundaries": [
     {
       "id": "demo-multilingual",
-      "include": [
-        "src/pages/multilingual"
-      ]
+      "include": ["src/pages/multilingual"]
     }
   ]
 }
