@@ -306,7 +306,9 @@
     "dynamicMessageCandidates": {
       "total": 0,
       "needsReview": 0,
-      "intentionallyIgnored": 0
+      "intentionallyIgnored": 0,
+      "translationApproved": 0,
+      "migrated": 0
     }
   }
 }

@@ -140,19 +140,39 @@ function normalizeExpressionForId(expression) {
   return result
 }
 
-function dynamicCandidateId({ path: projectPath, expression, reason }) {
+function dynamicCandidateId({ path: projectPath, expression, reason, occurrence }) {
+  const parts = [
+    String(projectPath || '').split('\\').join('/'),
+    String(reason || ''),
+    normalizeExpressionForId(expression)
+  ]
+  // The first occurrence keeps the coordinate-free fingerprint. Later copies of
+  // the same expression in that resource get their own review identity.
+  if (occurrence) parts.push(String(occurrence))
   const fingerprint = crypto
     .createHash('sha256')
-    .update(
-      [
-        String(projectPath || '').split('\\').join('/'),
-        String(reason || ''),
-        normalizeExpressionForId(expression)
-      ].join('\0'),
-      'utf8'
-    )
+    .update(parts.join('\0'), 'utf8')
     .digest('hex')
   return `dynamic.${fingerprint.slice(0, 6)}`
+}
+
+function assignOccurrenceIdentities(candidates) {
+  const counts = new Map()
+  for (const candidate of candidates) {
+    const fingerprint = [
+      candidate.location.path,
+      candidate.reason,
+      normalizeExpressionForId(candidate.expression)
+    ].join('\0')
+    const occurrence = counts.get(fingerprint) || 0
+    counts.set(fingerprint, occurrence + 1)
+    candidate.id = dynamicCandidateId({
+      path: candidate.location.path,
+      expression: candidate.expression,
+      reason: candidate.reason,
+      occurrence
+    })
+  }
 }
 
 const FORMAT_METHODS = new Set([
@@ -1529,6 +1549,7 @@ function scanPolicyFiles(files, options = {}) {
     }
     return left.expression.localeCompare(right.expression)
   })
+  assignOccurrenceIdentities(candidates)
   return { violations, candidates }
 }
 
@@ -1665,6 +1686,7 @@ module.exports = {
   comparePolicyBaseline,
   discoverDynamicMessageCandidates,
   dynamicCandidateId,
+  normalizeExpressionForId,
   readPolicyBaseline,
   scanCompleteStaticCopyPolicy
 }

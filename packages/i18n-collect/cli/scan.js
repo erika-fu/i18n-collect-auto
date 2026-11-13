@@ -161,22 +161,6 @@ function scan(args) {
       source: fs.readFileSync(file.absolute, 'utf8')
     }))
     const analysis = analyzeProject({ files: sources, config })
-    if (analysis.dynamicMessageCandidates.length > 0) {
-      const sample = analysis.dynamicMessageCandidates
-        .slice(0, 5)
-        .map(item => {
-          const at = `${item.location.path}:${item.location.start.line}:${item.location.start.column}`
-          return `  ${item.id}: ${JSON.stringify(item.expression)} at ${at}`
-        })
-        .join('\n')
-      const more = analysis.dynamicMessageCandidates.length > 5
-        ? `\n  ... and ${analysis.dynamicMessageCandidates.length - 5} more`
-        : ''
-      throw commandError(
-        'collection',
-        `scan rejected ${analysis.dynamicMessageCandidates.length} dynamic message candidate(s); review to translate, intentionally ignore, or defer\n${sample}${more}`
-      )
-    }
     const catalog = buildSourceCatalog(analysis)
     const report = analysisReport(analysis)
     const sourceCatalog = sourceCatalogPath(config)

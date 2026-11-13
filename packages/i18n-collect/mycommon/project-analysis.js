@@ -3,6 +3,11 @@ const path = require('path')
 const { REPRESENTATION_LOCALIZED_CALL } = require('./localized-call')
 const { messageContract, readExplicitMessages, referenceMessage } = require('./catalog')
 const { identityFiles } = require('./config')
+const {
+  applyDynamicMessageDecisions,
+  normalizeDecision,
+  readDynamicMessageDecisions
+} = require('./dynamic-message-decisions')
 const { keyFor } = require('./store')
 const {
   discoverDynamicMessageCandidates
@@ -32,6 +37,7 @@ const CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED = 'explicit-localization-require
 const DISPOSITION_UNRESOLVED = 'unresolved'
 const DISPOSITION_NEEDS_REVIEW = 'needs-review'
 const DISPOSITION_INTENTIONALLY_IGNORED = 'intentionally-ignored'
+const DISPOSITION_TRANSLATION_APPROVED = 'translation-approved'
 const STANDALONE_HTML_EXTENSIONS = new Set(['.html', '.htm'])
 const AUDIT_KINDS = new Set([
   'static-html-text',
@@ -68,7 +74,9 @@ function emptyAnalysis() {
       dynamicMessageCandidates: {
         total: 0,
         needsReview: 0,
-        intentionallyIgnored: 0
+        intentionallyIgnored: 0,
+        translationApproved: 0,
+        migrated: 0
       }
     }
   }
@@ -155,6 +163,30 @@ function unusedMessage(errors) {
   return lines.join('\n')
 }
 
+function loadDynamicMessageDecisions(input, config) {
+  if (Array.isArray(input.dynamicMessageDecisions)) {
+    return input.dynamicMessageDecisions.map((item, index) => normalizeDecision(item, index))
+  }
+  if (!config || !config.root || !config.catalogDir) return []
+  const file = path.resolve(config.root, identityFiles(config).dynamicMessageDecisions)
+  return readDynamicMessageDecisions(file)
+}
+
+function refreshDynamicCoverage(analysis) {
+  const candidates = analysis.dynamicMessageCandidates
+  analysis.coverage.dynamicMessageCandidates = {
+    total: candidates.length,
+    needsReview: candidates.filter(candidate => candidate.disposition === DISPOSITION_NEEDS_REVIEW).length,
+    intentionallyIgnored: candidates.filter(
+      candidate => candidate.disposition === DISPOSITION_INTENTIONALLY_IGNORED
+    ).length,
+    translationApproved: candidates.filter(
+      candidate => candidate.disposition === DISPOSITION_TRANSLATION_APPROVED
+    ).length,
+    migrated: Array.isArray(analysis.migratedDynamicDecisions) ? analysis.migratedDynamicDecisions.length : 0
+  }
+}
+
 function loadExplicitMessages(input, config) {
   if (Array.isArray(input.explicitMessages)) return input.explicitMessages
   if (!config || !config.root || !config.catalogDir) return []
@@ -168,7 +200,7 @@ function loadExternalKeys(input, config) {
   return []
 }
 
-function validateAndBindExplicitMessages(analysis, explicitMessages, externalKeys) {
+function validateAndBindExplicitMessages(analysis, explicitMessages, externalKeys, pendingExplicitKeys = new Set()) {
   const external = new Set(externalKeys || [])
   const explicitByKey = new Map((explicitMessages || []).map(item => [item.key, item]))
   const automaticByKey = new Map()
@@ -214,7 +246,7 @@ function validateAndBindExplicitMessages(analysis, explicitMessages, externalKey
   }
 
   for (const item of explicitMessages || []) {
-    if (!referencedExplicit.has(item.key)) {
+    if (!referencedExplicit.has(item.key) && !pendingExplicitKeys.has(item.key)) {
       unusedErrors.push({ key: item.key, reason: 'unused' })
     }
   }
@@ -514,7 +546,9 @@ function classifyCollected(collected, dynamicRequired = { candidates: [], matchK
     dynamicMessageCandidates: {
       total: dynamicTotal,
       needsReview: dynamicNeedsReview,
-      intentionallyIgnored: dynamicIgnored
+      intentionallyIgnored: dynamicIgnored,
+      translationApproved: 0,
+      migrated: 0
     }
   }
   return analysis
@@ -564,8 +598,23 @@ function finalizeAnalysis(analysis, input, config) {
   analysis.localizedCallFindings = sortFindings(analysis.localizedCallFindings)
   analysis.diagnostics = sortDiagnostics(analysis.diagnostics)
   const explicitMessages = loadExplicitMessages(input, config)
+  const migratedDynamicDecisions = applyDynamicMessageDecisions(
+    analysis.dynamicMessageCandidates,
+    loadDynamicMessageDecisions(input, config),
+    explicitMessages,
+    analysis.localizedCallFindings
+  )
+  if (migratedDynamicDecisions.length) {
+    analysis.migratedDynamicDecisions = migratedDynamicDecisions
+  }
+  refreshDynamicCoverage(analysis)
   const externalKeys = loadExternalKeys(input, config)
-  validateAndBindExplicitMessages(analysis, explicitMessages, externalKeys)
+  const pendingExplicitKeys = new Set(
+    analysis.dynamicMessageCandidates
+      .filter(candidate => candidate.disposition === DISPOSITION_TRANSLATION_APPROVED && candidate.key)
+      .map(candidate => candidate.key)
+  )
+  validateAndBindExplicitMessages(analysis, explicitMessages, externalKeys, pendingExplicitKeys)
   return analysis
 }
 
@@ -655,7 +704,7 @@ function buildSourceCatalog(analysis) {
 }
 
 function analysisReport(analysis) {
-  return {
+  const report = {
     version: ANALYSIS_REPORT_VERSION,
     runtimeMessages: analysis.runtimeMessages,
     auditFindings: analysis.auditFindings,
@@ -664,6 +713,10 @@ function analysisReport(analysis) {
     diagnostics: sortDiagnostics(analysis.diagnostics),
     coverage: analysis.coverage
   }
+  if (Array.isArray(analysis.migratedDynamicDecisions) && analysis.migratedDynamicDecisions.length) {
+    report.migratedDynamicDecisions = analysis.migratedDynamicDecisions
+  }
+  return report
 }
 
 module.exports = {

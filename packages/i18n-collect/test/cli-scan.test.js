@@ -68,7 +68,13 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 }
+    dynamicMessageCandidates: {
+      total: 0,
+      needsReview: 0,
+      intentionallyIgnored: 0,
+      translationApproved: 0,
+      migrated: 0
+    }
   })
 
   const catalogPath = path.join(root, 'lang/catalog/source-catalog.json')
@@ -90,19 +96,20 @@ test('scan writes a deterministic source catalog and machine-readable analysis r
   assert.deepStrictEqual(analysis.coverage, report.coverage)
 })
 
-test('scan rejects dynamic message candidates and keeps previous outputs unpublished', () => {
+test('scan publishes an unreviewed dynamic candidate as needs-review', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-scan-dynamic-cand-'))
   writeScanProject(root, {
     source: 'const message = `你好${name}世界`\n'
   })
   const result = run(['scan', '--json'], root)
-  assert.notStrictEqual(result.status, 0, result.stdout)
-  assert.match(result.stderr, /dynamic message candidate|你好\$\{name\}世界/)
+  assert.strictEqual(result.status, 0, result.stderr)
   const report = JSON.parse(result.stdout)
-  assert.strictEqual(report.ok, false)
-  assert.match(report.message, /dynamic message candidate/)
-  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/source-catalog.json')))
-  assert.ok(!fs.existsSync(path.join(root, 'lang/catalog/analysis-report.json')))
+  assert.strictEqual(report.ok, true)
+  const analysis = JSON.parse(fs.readFileSync(path.join(root, 'lang/catalog/analysis-report.json'), 'utf8'))
+  assert.strictEqual(analysis.dynamicMessageCandidates.length, 1)
+  assert.strictEqual(analysis.dynamicMessageCandidates[0].expression, '`你好${name}世界`')
+  assert.strictEqual(analysis.dynamicMessageCandidates[0].disposition, 'needs-review')
+  assert.strictEqual(analysis.coverage.dynamicMessageCandidates.needsReview, 1)
 })
 
 test('scan validates explicit messages, unknown keys, and external keys', () => {

@@ -11,6 +11,7 @@ const IDENTITY_CONFIRMATIONS_FILE = 'identity-confirmations.json'
 const IDENTITY_AMBIGUITIES_FILE = 'identity-ambiguities.json'
 const RETIREMENT_CONFIRMATIONS_FILE = 'retirement-confirmations.json'
 const EXPLICIT_MESSAGES_FILE = 'explicit-messages.json'
+const DYNAMIC_MESSAGE_DECISIONS_FILE = 'dynamic-message-decisions.json'
 const COMPLETE_STATIC_COPY_BASELINE_FILE = 'complete-static-copy-baseline.json'
 const RUNTIME_MULTILINGUAL_BOUNDARIES_FILE = 'runtime-multilingual-boundaries.json'
 const LOCALE = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$/
@@ -240,6 +241,7 @@ function identityFiles(config) {
     ambiguities: path.posix.join(config.catalogDir, IDENTITY_AMBIGUITIES_FILE),
     retirements: path.posix.join(config.catalogDir, RETIREMENT_CONFIRMATIONS_FILE),
     explicitMessages: path.posix.join(config.catalogDir, EXPLICIT_MESSAGES_FILE),
+    dynamicMessageDecisions: path.posix.join(config.catalogDir, DYNAMIC_MESSAGE_DECISIONS_FILE),
     completeStaticCopyBaseline: path.posix.join(config.catalogDir, COMPLETE_STATIC_COPY_BASELINE_FILE),
     runtimeMultilingualBoundaries: path.posix.join(config.catalogDir, RUNTIME_MULTILINGUAL_BOUNDARIES_FILE)
   }

@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] Matching decision entries produce the correct generated candidate dispositions in both collection workflows, while each candidate occurrence keeps an independent review identity and decision.
-- [ ] Unverifiable or ambiguous active translate/ignore decisions fail the collection round and preserve the previous formal outputs.
-- [ ] A completed source migration may retain a verifiable migrated decision terminal state rather than being treated as an invalid stale decision.
-- [ ] Regression tests cover successful matching, source changes, removed candidates, ambiguous matches, collection atomicity, and collect/scan parity.
+- [x] Matching decision entries produce the correct generated candidate dispositions in both collection workflows, while each candidate occurrence keeps an independent review identity and decision.
+- [x] Unverifiable or ambiguous active translate/ignore decisions fail the collection round and preserve the previous formal outputs.
+- [x] A completed source migration may retain a verifiable migrated decision terminal state rather than being treated as an invalid stale decision.
+- [x] Regression tests cover successful matching, source changes, removed candidates, ambiguous matches, collection atomicity, and collect/scan parity.

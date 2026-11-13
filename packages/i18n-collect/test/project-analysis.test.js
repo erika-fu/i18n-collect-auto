@@ -120,7 +120,13 @@ test('analyzeProject classifies dynamic script interpolation as a whole-expressi
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    dynamicMessageCandidates: { total: 1, needsReview: 1, intentionallyIgnored: 0 }
+    dynamicMessageCandidates: {
+      total: 1,
+      needsReview: 1,
+      intentionallyIgnored: 0,
+      translationApproved: 0,
+      migrated: 0
+    }
   })
 })
 
@@ -179,7 +185,13 @@ test('analyzeProject reports coverage totals that distinguish discovery from run
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 }
+    dynamicMessageCandidates: {
+      total: 0,
+      needsReview: 0,
+      intentionallyIgnored: 0,
+      translationApproved: 0,
+      migrated: 0
+    }
   })
 })
 
@@ -481,7 +493,13 @@ test('analyzeProject classifies standalone HTML text and allowlisted attributes 
       needsReview: 0,
       intentionallyIgnored: 0
     },
-    dynamicMessageCandidates: { total: 0, needsReview: 0, intentionallyIgnored: 0 }
+    dynamicMessageCandidates: {
+      total: 0,
+      needsReview: 0,
+      intentionallyIgnored: 0,
+      translationApproved: 0,
+      migrated: 0
+    }
   })
   assert.deepStrictEqual(buildSourceCatalog(analysis), { version: 1, messages: {} })
 })

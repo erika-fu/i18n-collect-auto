@@ -84,6 +84,7 @@ function normalizeAnalysisReport(report) {
     runtimeMessages: normalizeFindingList(report.runtimeMessages),
     auditFindings: normalizeFindingList(report.auditFindings),
     dynamicMessageCandidates: normalizeFindingList(report.dynamicMessageCandidates),
+    migratedDynamicDecisions: normalizeFindingList(report.migratedDynamicDecisions),
     localizedCallFindings: normalizeFindingList(report.localizedCallFindings),
     diagnostics: normalizeDiagnosticList(report.diagnostics),
     coverage: stripEnvironment(report.coverage || {})
