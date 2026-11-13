@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Command-line review and decision-manifest support are pending implementation.
+Accepted. Decision-manifest consumption and `review` decision recording are implemented; proven-safe `review --write` source migrations remain pending.
 
 ## Context
 

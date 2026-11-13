@@ -4,10 +4,10 @@
 
 **Blocked by:** 02: Add dynamic decision manifest and candidate lifecycle validation.
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] The CLI supports filtering/listing unresolved candidates and recording each supported decision with required confirmation and non-empty reasons where applicable.
-- [ ] A successful Translate operation writes compatible, mutually consistent decision and explicit-message inputs atomically; failure leaves neither partially changed.
-- [ ] The CLI can make compatible candidates in bulk while persisting a separate decision for every occurrence.
-- [ ] `review --prune` explicitly removes eligible migrated terminal decisions and never silently discards active decisions.
-- [ ] Regression tests cover interactive-independent/scriptable invocation, atomicity, validation failures, bulk eligibility, and pruning.
+- [x] The CLI supports filtering/listing unresolved candidates and recording each supported decision with required confirmation and non-empty reasons where applicable.
+- [x] A successful Translate operation writes compatible, mutually consistent decision and explicit-message inputs atomically; failure leaves neither partially changed.
+- [x] The CLI can make compatible candidates in bulk while persisting a separate decision for every occurrence.
+- [x] `review --prune` explicitly removes eligible migrated terminal decisions and never silently discards active decisions.
+- [x] Regression tests cover interactive-independent/scriptable invocation, atomicity, validation failures, bulk eligibility, and pruning.

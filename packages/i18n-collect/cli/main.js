@@ -5,6 +5,7 @@ const { collect, EXIT } = require('./collect')
 const { helpFor } = require('./help')
 const { migrateKeys } = require('./migrate-keys')
 const { replace } = require('./replace')
+const { review } = require('./review')
 const { run } = require('./run')
 const { scan } = require('./scan')
 const { translate } = require('./translate')
@@ -27,6 +28,7 @@ async function main(argv) {
     && command !== 'collect'
     && command !== 'translate'
     && command !== 'replace'
+    && command !== 'review'
     && command !== 'run'
     && command !== 'check'
     && command !== 'check-policy'
@@ -51,17 +53,19 @@ async function main(argv) {
         ? await translate(commandArgs)
         : command === 'replace'
           ? replace(commandArgs)
-          : command === 'check'
-            ? check(commandArgs)
-            : command === 'check-policy'
-              ? checkPolicy(commandArgs)
-              : command === 'verify'
-                ? await verify(commandArgs)
-                : command === 'build'
-                  ? await build(commandArgs)
-                  : command === 'migrate-keys'
-                    ? migrateKeys(commandArgs)
-                    : await run(commandArgs)
+          : command === 'review'
+            ? await review(commandArgs)
+            : command === 'check'
+              ? check(commandArgs)
+              : command === 'check-policy'
+                ? checkPolicy(commandArgs)
+                : command === 'verify'
+                  ? await verify(commandArgs)
+                  : command === 'build'
+                    ? await build(commandArgs)
+                    : command === 'migrate-keys'
+                      ? migrateKeys(commandArgs)
+                      : await run(commandArgs)
   write(process.stdout, outcome.stdout)
   write(process.stderr, outcome.stderr)
   if (typeof outcome.waitUntilClosed === 'function') {

@@ -73,8 +73,14 @@ test('command help states write ownership for each primary command', () => {
   assert.match(collapse(check.stdout), /without writing|never rewrites|writes no/i)
   assert.match(collapse(check.stdout), /complete-static-copy|runtime-multilingual|policy/i)
   assert.match(collapse(check.stdout), /unresolved or needs-review/i)
-})
 
+  const review = run(['review', '--help'])
+  assert.strictEqual(review.status, 0)
+  assert.match(collapse(review.stdout), /dynamic message candidate/i)
+  assert.match(collapse(review.stdout), /explicit-messages|dynamic-message-decisions/)
+  assert.match(collapse(review.stdout), /--prune/)
+  assert.match(collapse(review.stdout), /does not rewrite application source/i)
+})
 test('run fails with a bounded migration error for any invocation', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-run-gone-'))
   const result = run(['run', '--translate', '--json'], root)

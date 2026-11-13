@@ -162,6 +162,44 @@ Exit codes:
   1  configuration failure with migration guidance
 `
 
+const REVIEW_HELP = `i18n-collect review
+
+List unresolved dynamic message candidates and record auditable translate,
+intentionally-ignore, or defer decisions. Translate decisions atomically update
+dynamic-message-decisions.json and explicit-messages.json together; explicit-messages.json
+remains the authority for explicit keys, canonical Chinese source text, and placeholder
+contracts. This command does not rewrite application source; use a later review --write
+path only after a Translate decision when that capability is available.
+
+Usage:
+  i18n-collect review [candidate-id] [options]
+
+Options:
+  --cwd <dir>          Project root. Defaults to the current directory.
+  --status <name>      Filter listed candidates. Names: needs-review,
+                       intentionally-ignored, translation-approved, migrated.
+                       Defaults to needs-review when listing.
+  --translate          Record a Translate decision. Requires --key and --source.
+  --ignore             Record an intentionally-ignore decision. Requires --reason.
+  --defer              Record a defer decision. Optional --reason.
+  --key <id>           Explicit localization key for --translate.
+  --source <text>      Canonical Chinese source text for --translate.
+  --reason <text>      Non-empty reason for --ignore, optional for --defer.
+  --bulk               Apply the decision to every unresolved candidate compatible
+                       with the given candidate id. Persists one decision per occurrence.
+  --prune              Remove eligible migrated terminal decisions only. Never removes
+                       active translate, ignore, or defer decisions.
+  --yes                Confirm a mutating decision or prune non-interactively.
+  --json               Print the review report as JSON on stdout.
+  -h, --help           Show this help.
+
+Exit codes:
+  0  review finished
+  1  configuration failure, missing confirmation, or validation failure
+  2  analysis failure
+  6  decision or explicit-message manifests could not be saved
+`
+
 const ROOT_HELP = `i18n-collect
 
 Primary workflow: collect, translate, build, replace, and check.
@@ -175,6 +213,7 @@ Commands:
   build         Verify collection outputs by default; rewrite in-memory modules and the formal webpack bundle only.
   replace       Preview source replacements, or write application source with --write.
   check         Read-only project localization completeness (including hybrid policy).
+  review        List and decide dynamic message candidates; writes decision and explicit-message manifests.
   migrate-keys  One-shot migration of per-occurrence automatic keys to text-hash keys.
   scan          Filesystem analysis; writes source-catalog.json and analysis-report.json only (non-Webpack / legacy path).
   verify        Removed; use collect then check.
@@ -333,6 +372,7 @@ function helpFor(command) {
   if (command === 'collect') return COLLECT_HELP
   if (command === 'translate') return TRANSLATE_HELP
   if (command === 'replace') return REPLACE_HELP
+  if (command === 'review') return REVIEW_HELP
   if (command === 'build') return BUILD_HELP
   if (command === 'run') return RUN_HELP
   if (command === 'check') return CHECK_HELP
@@ -348,6 +388,7 @@ module.exports = {
   COLLECT_HELP,
   MIGRATE_KEYS_HELP,
   REPLACE_HELP,
+  REVIEW_HELP,
   ROOT_HELP,
   RUN_HELP,
   SCAN_HELP,

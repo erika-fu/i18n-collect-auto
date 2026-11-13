@@ -309,6 +309,7 @@ function dynamicCandidatesFromPolicy(files, config) {
         item.kind === 'html-text' || item.kind === 'html-attribute' ? 'template' : 'script'
       ),
       semanticRole: item.semanticRole,
+      reason: item.reason,
       capability: CAPABILITY_EXPLICIT_LOCALIZATION_REQUIRED,
       disposition: item.disposition || DISPOSITION_NEEDS_REVIEW,
       diagnostic: item.diagnostic
